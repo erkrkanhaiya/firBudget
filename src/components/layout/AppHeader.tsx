@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle } from 'lucide-react';
+import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle, Sun, Moon } from 'lucide-react'; // Added Sun, Moon
 import { AppLogo } from '@/components/AppLogo';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -20,6 +20,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import React, { useState } from 'react';
+import { useTheme } from '@/contexts/ThemeContext'; // Added useTheme
 
 // Mock notifications data
 const mockNotifications = [
@@ -38,6 +39,7 @@ const NotificationIcon = ({ type }: { type: string }) => {
 
 export function AppHeader() {
   const { currentUser, logout } = useUser();
+  const { theme, toggleTheme, isThemeInitialized } = useTheme(); // Consumed theme context
   const router = useRouter();
   const [notifications, setNotifications] = useState(mockNotifications);
 
@@ -61,7 +63,6 @@ export function AppHeader() {
     setNotifications(prev => 
       prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
     );
-    // Optionally navigate to the notification's link
     const notification = notifications.find(n => n.id === notificationId);
     if (notification?.href) {
       router.push(notification.href);
@@ -77,6 +78,12 @@ export function AppHeader() {
          <AppLogo iconSize={24} textSize="text-xl" />
       </div>
       <div className="flex w-full items-center justify-end gap-2 sm:gap-4">
+        {isThemeInitialized && (
+            <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full" title="Toggle theme">
+            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            <span className="sr-only">Toggle theme</span>
+            </Button>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full relative">
