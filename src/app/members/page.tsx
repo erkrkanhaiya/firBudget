@@ -15,10 +15,12 @@ import type { AppMemberContact } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
 
 export default function MembersPage() {
   const { currentUser } = useUser();
   const { toast } = useToast();
+  const { addNotification } = useNotification(); // Use notification context
 
   const [members, setMembers] = useState<AppMemberContact[]>([]);
   const [newMemberName, setNewMemberName] = useState('');
@@ -64,17 +66,28 @@ export default function MembersPage() {
     }
 
     setIsSubmitting(true);
+    const memberName = newMemberName.trim(); // Store for notification
     try {
       await addDoc(collection(db, 'appMemberContacts'), {
-        name: newMemberName.trim(),
+        name: memberName,
         addedByUid: currentUser.id,
         createdAt: serverTimestamp(),
       });
-      toast({ title: "Member Added", description: `"${newMemberName.trim()}" has been added.` });
+      toast({ title: "Member Added", description: `"${memberName}" has been added.` });
+      addNotification({
+        title: "New Contact Added",
+        message: `You added "${memberName}" to your contacts.`,
+        type: "success",
+      });
       setNewMemberName('');
     } catch (error) {
       console.error("Error adding member:", error);
       toast({ title: "Error", description: "Could not add member.", variant: "destructive" });
+      addNotification({
+        title: "Contact Add Failed",
+        message: `Could not add contact: "${memberName}"`,
+        type: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }

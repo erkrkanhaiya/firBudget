@@ -13,9 +13,11 @@ import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '@/lib/firebase'; // Import auth directly
+import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
 
 export default function ProfilePage() {
   const { currentUser, isLoadingAuth } = useUser();
+  const { addNotification } = useNotification(); // Use notification context
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState(''); // Email is generally not editable directly this way
@@ -27,7 +29,7 @@ export default function ProfilePage() {
     if (currentUser) {
       setName(currentUser.name || '');
       setEmail(currentUser.email || 'No email provided');
-      setAvatarPreview(currentUser.avatarUrl); // Initialize with current Firebase photoURL
+      setAvatarPreview(currentUser.avatarUrl); 
     }
   }, [currentUser]);
 
@@ -68,30 +70,33 @@ export default function ProfilePage() {
       return;
     }
     setIsSaving(true);
+    const oldName = currentUser.name; // Store for notification
     try {
       const updates: { displayName?: string; photoURL?: string } = {};
       if (name !== currentUser.name) {
         updates.displayName = name;
       }
-      // Avatar update logic:
-      // If avatarPreview is different AND it's a new file (e.g., data URI),
-      // it should be uploaded to Firebase Storage first.
-      // Then, updates.photoURL should be set to the new storage URL.
-      // For simplicity, this example assumes avatarPreview would be a direct URL if changed.
-      // A real avatar upload is more complex.
-      // if (avatarPreview && avatarPreview !== currentUser.avatarUrl) {
-      //   updates.photoURL = avatarPreview; // This line is simplified
+      // Avatar update logic still simplified - actual upload to Firebase Storage needed for persistence
+      // if (avatarPreview && avatarPreview !== currentUser.avatarUrl && avatarPreview.startsWith('data:image')) {
+      //   updates.photoURL = avatarPreview; // This would be the URL from Firebase Storage in a real app
       // }
 
       if (Object.keys(updates).length > 0) {
         await updateProfile(auth.currentUser, updates);
-        // UserContext will pick up changes via onAuthStateChanged,
-        // or you might need to manually trigger a refresh of currentUser in context.
-        // Forcing a reload of the user profile can sometimes help:
-        // await auth.currentUser.reload(); 
+        // Manually trigger a refresh of UserContext or rely on its onAuthStateChanged to pick up display name change
+        // Forcing a reload of the user profile:
+        // await auth.currentUser.reload(); // This can sometimes cause issues, use with caution
+        // The UserContext's onAuthStateChanged should pick up the displayName update eventually.
+        // Re-setting currentUser in context or forcing a page refresh are other strategies if it doesn't update immediately.
+
         toast({
           title: "Profile Updated",
           description: "Your profile information has been saved.",
+        });
+        addNotification({
+          title: "Profile Updated",
+          message: `Your name was changed ${oldName ? `from "${oldName}"` : ""} to "${name}".`,
+          type: "success",
         });
       } else {
         toast({
@@ -103,6 +108,11 @@ export default function ProfilePage() {
     } catch (error) {
       console.error("Error updating profile:", error);
       toast({ title: "Error", description: "Could not update profile.", variant: "destructive" });
+      addNotification({
+        title: "Profile Update Failed",
+        message: "Could not save profile changes.",
+        type: "destructive",
+      });
     } finally {
       setIsSaving(false);
     }
@@ -121,7 +131,6 @@ export default function ProfilePage() {
   };
 
   const handleCancelEdit = () => {
-    // Reset fields to original currentUser values
     if (currentUser) {
       setName(currentUser.name || '');
       setAvatarPreview(currentUser.avatarUrl);
@@ -186,5 +195,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-    

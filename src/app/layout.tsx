@@ -6,7 +6,8 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import { UserProvider } from '@/contexts/UserContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
-import { PageWrapper } from '@/components/layout/PageWrapper'; // Import new PageWrapper
+import { NotificationProvider } from '@/contexts/NotificationContext'; // Import NotificationProvider
+import { PageWrapper } from '@/components/layout/PageWrapper';
 
 export const metadata: Metadata = {
   title: 'BalanceBeam - Smart Expense Sharing',
@@ -30,9 +31,11 @@ export default function RootLayout({
           <UserProvider>
             <LanguageProvider>
               <CurrencyProvider>
-                <PageWrapper>
-                  {children}
-                </PageWrapper>
+                <NotificationProvider> {/* Wrap with NotificationProvider */}
+                  <PageWrapper>
+                    {children}
+                  </PageWrapper>
+                </NotificationProvider>
               </CurrencyProvider>
             </LanguageProvider>
           </UserProvider>

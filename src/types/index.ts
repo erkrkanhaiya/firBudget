@@ -77,3 +77,16 @@ export interface AppMemberContact {
   addedByUid: string; // Firebase UID of the user who added this contact
   createdAt: string; // ISO string representation of Firestore Timestamp
 }
+
+// Notification Item Type
+export type NotificationType = 'info' | 'success' | 'alert' | 'destructive';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  time: string; // ISO string or formatted time string
+  read: boolean;
+  href?: string;
+}

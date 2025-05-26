@@ -39,6 +39,7 @@ import 'jspdf-autotable';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/firebase'; 
 import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction } from 'firebase/firestore';
+import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDFWithAutoTable;
@@ -64,6 +65,7 @@ export default function GroupDetailPage() {
   const { toast } = useToast();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
+  const { addNotification } = useNotification(); // Use notification context
 
   const [group, setGroup] = useState<Group | null>(null);
   const [firestoreExpenses, setFirestoreExpenses] = useState<Expense[]>([]);
@@ -385,30 +387,37 @@ export default function GroupDetailPage() {
       toast({ title: "Error", description: "You do not have permission to delete this group.", variant: "destructive"});
       return;
     }
+    const groupName = group.name; // Store for notification
     try {
-      // Transaction to delete group and its subcollections (expenses, activityLog)
       await runTransaction(db, async (transaction) => {
         const groupDocRef = doc(db, 'groups', groupId);
         
-        // Delete expenses subcollection
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
-        const expensesSnapshot = await getDocs(query(expensesColRef)); // No need to pass transaction to getDocs
+        const expensesSnapshot = await getDocs(query(expensesColRef)); 
         expensesSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
 
-        // Delete activityLog subcollection
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
-        const activityLogSnapshot = await getDocs(query(activityLogColRef)); // No need to pass transaction to getDocs
+        const activityLogSnapshot = await getDocs(query(activityLogColRef)); 
         activityLogSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
         
-        // Delete the group document itself
         transaction.delete(groupDocRef);
       });
 
-      toast({ title: "Group Deleted", description: `Group "${group.name}" and all its data have been deleted from Firestore.`});
+      toast({ title: "Group Deleted", description: `Group "${groupName}" and all its data have been deleted from Firestore.`});
+      addNotification({
+        title: "Group Deleted",
+        message: `You deleted the group: "${groupName}"`,
+        type: "destructive",
+      });
       router.push('/groups');
     } catch (error) {
       console.error("Error deleting group and its subcollections:", error);
       toast({ title: "Error", description: "Could not delete group. Subcollections might still exist.", variant: "destructive"});
+      addNotification({
+        title: "Group Deletion Failed",
+        message: `Could not delete group: "${groupName}"`,
+        type: "destructive",
+      });
     }
   };
 
@@ -774,4 +783,3 @@ export default function GroupDetailPage() {
     </div>
   );
 }
-

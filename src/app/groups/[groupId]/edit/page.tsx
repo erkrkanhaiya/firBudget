@@ -10,51 +10,92 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ArrowLeft, Save, Image as ImageIcon, Lock, Unlock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Save, Image as ImageIcon, Lock, Unlock, AlertTriangle, Loader2 } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
-import { mockGroups } from '@/data/mock'; // Using mock data
+// Removed mockGroups import, will fetch from Firestore
 import type { Group, GroupVisibility } from '@/types';
 import { useToast } from "@/hooks/use-toast";
-import Image from 'next/image'; // Next.js Image component
+import NextImage from 'next/image'; // Renamed to avoid conflict with Lucide's Image
+import { db } from '@/lib/firebase';
+import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
 
 export default function EditGroupPage() {
   const params = useParams();
   const router = useRouter();
   const { currentUser } = useUser();
   const { toast } = useToast();
+  const { addNotification } = useNotification(); // Use notification context
   const groupId = params.groupId as string;
 
   const [group, setGroup] = useState<Group | null>(null);
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
-  const [groupPhoto, setGroupPhoto] = useState<File | null>(null);
-  const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
+  const [groupPhoto, setGroupPhoto] = useState<File | null>(null); // For new file upload
+  const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null); // For display
   const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
-    const foundGroup = mockGroups.find(g => g.id === groupId);
-    if (foundGroup) {
-      if (!currentUser || foundGroup.ownerId !== currentUser.id) {
-        toast({ title: "Access Denied", description: "You are not the owner of this group.", variant: "destructive" });
-        setAccessDenied(true);
-        // Optionally redirect: router.push('/groups');
+    const fetchGroup = async () => {
+      if (!currentUser || !groupId) {
+        setIsLoading(false);
+        if (!currentUser) router.push('/login');
         return;
       }
-      setGroup(foundGroup);
-      setGroupName(foundGroup.name);
-      setGroupDescription(foundGroup.description || '');
-      setGroupPhotoPreview(foundGroup.photoUrl || null);
-      setGroupVisibility(foundGroup.visibility);
-    } else {
-      toast({ title: "Group not found", variant: "destructive" });
-      setAccessDenied(true);
-      // Optionally redirect: router.push('/groups');
-    }
+      setIsLoading(true);
+      try {
+        const groupDocRef = doc(db, 'groups', groupId);
+        const groupDocSnap = await getDoc(groupDocRef);
+
+        if (groupDocSnap.exists()) {
+          const data = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & {createdAt: Timestamp};
+          const fetchedGroup: Group = { 
+            id: groupDocSnap.id, 
+            ...data,
+            members: data.members || [],
+            memberIds: data.memberIds || [],
+            createdAt: data.createdAt.toDate().toISOString()
+          };
+          
+          if (fetchedGroup.ownerId !== currentUser.id) {
+            toast({ title: "Access Denied", description: "You are not the owner of this group.", variant: "destructive" });
+            setAccessDenied(true);
+            setIsLoading(false);
+            return;
+          }
+
+          setGroup(fetchedGroup);
+          setGroupName(fetchedGroup.name);
+          setGroupDescription(fetchedGroup.description || '');
+          setGroupPhotoPreview(fetchedGroup.photoUrl || null);
+          setGroupVisibility(fetchedGroup.visibility);
+        } else {
+          toast({ title: "Group not found", variant: "destructive" });
+          setAccessDenied(true); // Or router.push('/groups');
+        }
+      } catch (error) {
+        console.error("Error fetching group for edit:", error);
+        toast({ title: "Error", description: "Could not load group details for editing.", variant: "destructive" });
+        setAccessDenied(true); // Or router.push('/groups');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchGroup();
   }, [groupId, currentUser, toast, router]);
 
-  if (accessDenied) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (accessDenied || !group) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -72,15 +113,11 @@ export default function EditGroupPage() {
     );
   }
 
-  if (!currentUser || !group) {
-    return <p>Loading group details...</p>;
-  }
-
   const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      setGroupPhoto(file);
-      setGroupPhotoPreview(URL.createObjectURL(file));
+      setGroupPhoto(file); // Store the file object for potential upload
+      setGroupPhotoPreview(URL.createObjectURL(file)); // Set preview
     }
   };
 
@@ -93,30 +130,66 @@ export default function EditGroupPage() {
       setIsSubmitting(false);
       return;
     }
+    if (!group) {
+        toast({ title: "Error", description: "Group data not loaded.", variant: "destructive" });
+        setIsSubmitting(false);
+        return;
+    }
 
-    // Simulate updating the group in mockGroups
-    const groupIndex = mockGroups.findIndex(g => g.id === groupId);
-    if (groupIndex > -1) {
-      mockGroups[groupIndex] = {
-        ...mockGroups[groupIndex],
-        name: groupName,
-        description: groupDescription,
-        // In a real app, upload photo if groupPhoto is new, then update photoUrl
-        photoUrl: groupPhotoPreview || mockGroups[groupIndex].photoUrl, // Keep old if no new preview
-        visibility: groupVisibility,
-        // members and ownerId should not be editable here directly
-      };
+    const oldGroupName = group.name; // Store for notification
+
+    // In a real app, if groupPhoto (File object) exists, upload it to Firebase Storage
+    // and get the new photoUrl. For this demo, if groupPhotoPreview changed and it's
+    // a blob URL (from new upload), we'll just use the preview as is.
+    // This part needs Firebase Storage integration for real photo uploads.
+    let finalPhotoUrl = group.photoUrl;
+    if (groupPhoto && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
+      // Here you would:
+      // 1. Upload groupPhoto to Firebase Storage
+      // 2. Get the downloadURL from storage
+      // finalPhotoUrl = downloadURL;
+      // For now, we'll simulate by keeping the preview URL, but this is not persistent.
+      finalPhotoUrl = groupPhotoPreview; 
+      toast({ title: "Photo Upload (Mock)", description: "Photo preview updated. Real upload needs Firebase Storage.", variant: "info" });
+    } else if (!groupPhotoPreview && group.photoUrl) { // If preview was cleared
+        finalPhotoUrl = ''; // Clear photo
+    }
+
+
+    const groupDataToUpdate = {
+      name: groupName.trim(),
+      description: groupDescription.trim(),
+      photoUrl: finalPhotoUrl,
+      visibility: groupVisibility,
+      // ownerId, members, memberIds, createdAt should generally not be updated here
+    };
+    
+    try {
+      const groupDocRef = doc(db, 'groups', groupId);
+      await updateDoc(groupDocRef, groupDataToUpdate);
+
       toast({
         title: "Group Updated!",
-        description: `The group "${groupName}" has been successfully updated.`,
+        description: `The group "${groupName}" has been successfully updated in Firestore.`,
       });
-      // Simulate API delay then navigate
-      await new Promise(resolve => setTimeout(resolve, 300));
-      router.push(`/groups/${groupId}`);
-    } else {
-      toast({ title: "Error", description: "Could not find group to update.", variant: "destructive" });
+      addNotification({
+        title: "Group Updated",
+        message: `Group "${oldGroupName}" was updated to "${groupName.trim()}".`,
+        type: "success",
+        href: `/groups/${groupId}`,
+      });
+      router.push(`/groups/${groupId}?refresh=${Date.now()}`); // Refresh to show changes
+    } catch (error) {
+      console.error("Error updating group:", error);
+      toast({ title: "Error", description: "Could not update group details in Firestore.", variant: "destructive" });
+      addNotification({
+        title: "Group Update Failed",
+        message: `Could not update group: "${oldGroupName}"`,
+        type: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   return (
@@ -129,7 +202,7 @@ export default function EditGroupPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Edit Group: {group.name}</CardTitle>
-          <CardDescription>Update the details for your group.</CardDescription>
+          <CardDescription>Update the details for your group. Changes will be saved to Firestore.</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-6">
@@ -158,19 +231,27 @@ export default function EditGroupPage() {
               <Label htmlFor="groupPhoto">Group Photo (Optional)</Label>
               <div className="mt-1 flex items-center gap-4">
                 {groupPhotoPreview ? (
-                  <Image data-ai-hint="group photo" src={groupPhotoPreview} alt="Group photo preview" width={80} height={80} className="rounded-md object-cover h-20 w-20" />
+                  <NextImage data-ai-hint="group photo" src={groupPhotoPreview} alt="Group photo preview" width={80} height={80} className="rounded-md object-cover h-20 w-20" />
                 ) : (
                   <div className="h-20 w-20 bg-muted rounded-md flex items-center justify-center">
                     <ImageIcon className="h-10 w-10 text-muted-foreground" />
                   </div>
                 )}
-                <Button type="button" variant="outline" asChild disabled={isSubmitting}>
-                  <label htmlFor="group-photo-upload" className="cursor-pointer">
-                    {groupPhotoPreview ? 'Change Photo' : 'Upload Photo'}
-                  </label>
-                </Button>
+                 <div className="flex flex-col gap-2">
+                    <Button type="button" variant="outline" size="sm" asChild disabled={isSubmitting}>
+                        <label htmlFor="group-photo-upload" className="cursor-pointer">
+                            {groupPhotoPreview ? 'Change Photo' : 'Upload Photo'}
+                        </label>
+                    </Button>
+                    {groupPhotoPreview && (
+                        <Button type="button" variant="ghost" size="sm" className="text-xs text-destructive" onClick={() => { setGroupPhotoPreview(null); setGroupPhoto(null); }} disabled={isSubmitting}>
+                            Remove Photo
+                        </Button>
+                    )}
+                 </div>
                 <input id="group-photo-upload" type="file" className="hidden" accept="image/*" onChange={handlePhotoChange} disabled={isSubmitting} />
               </div>
+              <p className="text-xs text-muted-foreground mt-1">Note: Photo upload to server requires Firebase Storage (not fully implemented in this demo).</p>
             </div>
 
             <div>
@@ -205,24 +286,11 @@ export default function EditGroupPage() {
                     </div>
                 </RadioGroup>
             </div>
-            
-            {/* Placeholder for member management - can be added in a future iteration */}
-            {/* 
-            <div>
-              <Label>Manage Members (Coming Soon)</Label>
-              <Card className="mt-1">
-                <CardContent className="p-4 text-muted-foreground">
-                  Member management features will be available here.
-                </CardContent>
-              </Card>
-            </div>
-            */}
-
           </CardContent>
           <CardFooter className="border-t px-6 py-4">
             <Button type="submit" className="ml-auto" disabled={isSubmitting}>
               {isSubmitting ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground mr-2"></div>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Save className="mr-2 h-4 w-4" />
               )}

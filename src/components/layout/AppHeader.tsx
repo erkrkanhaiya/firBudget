@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle } from 'lucide-react';
+import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle, Trash2 } from 'lucide-react';
 import { AppLogo } from '@/components/AppLogo';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -19,21 +19,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
+import { formatDistanceToNow, parseISO } from 'date-fns';
+import type { NotificationType as CustomNotificationType } from '@/types'; // Use CustomNotificationType alias
 
-// Mock notifications data - kept as static examples but will be managed in state
-const initialMockNotifications = [
-  { id: '1', type: 'info', title: 'New Expense Feature', message: 'You can now add expenses to your groups!', time: '2h ago', read: false, href: '/groups' },
-  { id: '2', type: 'alert', title: 'Invite Friends', message: 'Remember to invite your friends to collaborate.', time: '1d ago', read: false, href: '/groups/create' },
-  { id: '3', type: 'success', title: 'Welcome to BalanceBeam!', message: 'Start by creating a group or joining one.', time: '3d ago', read: true, href: '/dashboard' },
-  { id: '4', type: 'info', title: 'Profile Update', message: 'You can update your profile picture now.', time: '5h ago', read: false, href: '/profile'},
-];
-
-
-const NotificationIcon = ({ type }: { type: string }) => {
-  if (type === 'alert') return <AlertCircle className="h-4 w-4 text-destructive" />;
+const NotificationIcon = ({ type }: { type: CustomNotificationType }) => {
+  if (type === 'alert') return <AlertCircle className="h-4 w-4 text-yellow-500" />;
   if (type === 'success') return <CheckCircle className="h-4 w-4 text-green-500" />;
+  if (type === 'destructive') return <AlertCircle className="h-4 w-4 text-destructive" />;
   return <Info className="h-4 w-4 text-blue-500" />;
 };
 
@@ -41,7 +36,7 @@ export function AppHeader() {
   const { currentUser, logout } = useUser();
   const { translate } = useLanguage();
   const router = useRouter();
-  const [notifications, setNotifications] = useState(initialMockNotifications);
+  const { notifications, markAsRead, clearAllNotifications, unreadCount } = useNotification(); // Use notification context
 
   const handleLogout = async () => {
     await logout(); 
@@ -58,23 +53,15 @@ export function AppHeader() {
     return "U";
   };
 
-  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
-
   const handleNotificationClick = (notificationId: string, href?: string) => {
-    setNotifications(prevNotifications =>
-      prevNotifications.map(n =>
-        n.id === notificationId ? { ...n, read: true } : n
-      )
-    );
+    markAsRead(notificationId);
     if (href) {
       router.push(href);
     }
   };
 
-  const handleMarkAllAsRead = () => {
-    setNotifications(prevNotifications =>
-      prevNotifications.map(n => ({ ...n, read: true }))
-    );
+  const handleClearAll = () => {
+    clearAllNotifications();
   };
 
   return (
@@ -91,9 +78,9 @@ export function AppHeader() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full relative">
               <Bell className="h-5 w-5" />
-              {unreadNotificationsCount > 0 && ( 
+              {unreadCount > 0 && ( 
                 <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 p-0 justify-center text-xs">
-                  {unreadNotificationsCount}
+                  {unreadCount}
                 </Badge>
               )}
               <span className="sr-only">Toggle notifications</span>
@@ -102,9 +89,9 @@ export function AppHeader() {
           <DropdownMenuContent className="w-80 sm:w-96" align="end">
             <DropdownMenuLabel className="flex justify-between items-center">
               <span>Notifications</span>
-              {unreadNotificationsCount > 0 && (
-                <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={handleMarkAllAsRead}>
-                  Mark all as read
+              {notifications.length > 0 && (
+                <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={handleClearAll}>
+                   <Trash2 className="mr-1 h-3 w-3" /> Clear All
                 </Button>
               )}
             </DropdownMenuLabel>
@@ -121,7 +108,9 @@ export function AppHeader() {
                     <div className="flex-1">
                       <p className={`text-sm font-medium ${!notification.read ? 'text-primary-foreground group-[.bg-primary/5]:text-primary group-[.bg-primary/10]:text-primary' : 'text-foreground'}`}>{notification.title}</p>
                       <p className={`text-xs ${!notification.read ? 'text-primary-foreground/80 group-[.bg-primary/5]:text-primary/80 group-[.bg-primary/10]:text-primary/80' : 'text-foreground/80'}`}>{notification.message}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{notification.time}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {formatDistanceToNow(parseISO(notification.time), { addSuffix: true })}
+                      </p>
                     </div>
                     {!notification.read && (
                         <div className="h-2.5 w-2.5 bg-primary rounded-full self-center ml-2 shrink-0"></div>
@@ -131,10 +120,10 @@ export function AppHeader() {
               </DropdownMenuGroup>
             ) : (
               <div className="p-4 text-center text-sm text-muted-foreground">
-                No notifications.
+                No new notifications.
               </div>
             )}
-            <DropdownMenuSeparator />
+            {notifications.length > 0 && <DropdownMenuSeparator />}
             <DropdownMenuItem className="justify-center" asChild>
               <Link href="/activity" className="text-sm text-primary hover:underline">
                 View all activity

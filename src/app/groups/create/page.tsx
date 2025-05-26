@@ -18,6 +18,7 @@ import NextImage from 'next/image';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where } from 'firebase/firestore';
+import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
 
 // Helper to get initials
 const getInitials = (name: string | null | undefined): string => {
@@ -33,6 +34,7 @@ export default function CreateGroupPage() {
   const router = useRouter();
   const { currentUser, isLoadingAuth } = useUser();
   const { toast } = useToast();
+  const { addNotification } = useNotification(); // Use notification context
 
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
@@ -59,7 +61,7 @@ export default function CreateGroupPage() {
 
   useEffect(() => {
     const fetchAppContacts = async () => {
-      if (!currentUser) { // Only fetch if a user is logged in, otherwise they can't create groups anyway
+      if (!currentUser) { 
         setIsLoadingPotentialMembers(false);
         return;
       }
@@ -70,13 +72,13 @@ export default function CreateGroupPage() {
           .map(doc => {
             const data = doc.data() as AppMemberContact;
             return {
-              id: doc.id, // Use the Firestore document ID as the contact's ID
+              id: doc.id, 
               name: data.name,
-              email: null, // AppMemberContact doesn't have email
-              avatarUrl: undefined, // AppMemberContact doesn't have avatar
-            } as User; // Cast to User for selection UI compatibility
+              email: null, 
+              avatarUrl: undefined, 
+            } as User; 
           })
-          .filter(contact => contact.id !== currentUser.id); // Exclude current user from potential list
+          .filter(contact => contact.id !== currentUser.id); 
 
         setAllPotentialMembers(contactsList);
       } catch (error) {
@@ -119,7 +121,7 @@ export default function CreateGroupPage() {
   };
 
   const toggleMemberSelection = (userToToggle: User) => {
-    if (userToToggle.id === currentUser.id) return; // Admin (current user) cannot be deselected
+    if (userToToggle.id === currentUser.id) return; 
     
     setSelectedMembers(prev =>
       prev.find(member => member.id === userToToggle.id)
@@ -188,7 +190,7 @@ export default function CreateGroupPage() {
       toast({ title: "User not authenticated", variant: "destructive" });
       return;
     }
-    if (selectedMembers.length === 0) { // Should always have at least current user
+    if (selectedMembers.length === 0) { 
       toast({ title: "Add Members", description: "A group must have at least one member (you).", variant: "destructive" });
       return;
     }
@@ -198,7 +200,9 @@ export default function CreateGroupPage() {
     let photoURLToSave = '';
     if (groupPhoto && groupPhotoPreview) {
       // Placeholder: Real implementation would upload to Firebase Storage
-      photoURLToSave = groupPhotoPreview;
+      // For now, we'll assume groupPhotoPreview is a temporary URL or placeholder.
+      // In a real app: await uploadFileToFirebaseStorage(groupPhoto);
+      photoURLToSave = groupPhotoPreview; // This would be the public URL from storage
     }
 
     const memberIds = selectedMembers.map(m => m.id);
@@ -222,10 +226,16 @@ export default function CreateGroupPage() {
     };
 
     try {
-      await addDoc(collection(db, "groups"), groupDataToSave);
+      const docRef = await addDoc(collection(db, "groups"), groupDataToSave);
       toast({
         title: "Group Created!",
         description: `The group "${groupName}" has been successfully created in Firestore.`,
+      });
+      addNotification({
+        title: "New Group Created",
+        message: `You created the group: "${groupName.trim()}"`,
+        type: "success",
+        href: `/groups/${docRef.id}`,
       });
       router.push('/groups'); 
     } catch (error) {
@@ -234,6 +244,11 @@ export default function CreateGroupPage() {
         title: "Error Creating Group",
         description: (error instanceof Error ? error.message : "Could not save group to database."),
         variant: "destructive",
+      });
+      addNotification({
+        title: "Group Creation Failed",
+        message: `Could not create group: "${groupName.trim()}"`,
+        type: "destructive",
       });
     } finally {
       setIsSubmitting(false);
@@ -411,6 +426,3 @@ export default function CreateGroupPage() {
     </div>
   );
 }
-
-
-    

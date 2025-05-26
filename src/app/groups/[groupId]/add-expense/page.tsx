@@ -22,6 +22,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
+import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
 
 interface StoredExpenseData {
   groupId: string;
@@ -42,6 +43,7 @@ export default function AddExpensePage() {
   const { toast } = useToast();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
+  const { addNotification } = useNotification(); // Use notification context
 
   const [group, setGroup] = useState<Group | null>(null);
   const [description, setDescription] = useState('');
@@ -162,13 +164,21 @@ export default function AddExpensePage() {
             const activityLogColRef = collection(db, 'groups', storedExp.groupId, 'activityLog');
             const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
               groupId: storedExp.groupId,
-              userId: storedExp.paidByUserId, // Actor is the payer
+              userId: storedExp.paidByUserId, 
               actionType: 'expense_added',
               description: `${storedExp.actorNameForLog || 'User'} added expense: ${storedExp.description} (synced from offline)`,
-              relatedExpenseId: newExpenseDocRef.id, // Link to the new expense ID
+              relatedExpenseId: newExpenseDocRef.id, 
             };
             batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
             syncedCount++;
+            
+            // Add notification for synced expense
+            addNotification({
+              title: "Offline Expense Synced",
+              message: `Expense "${storedExp.description}" for group "${group.name}" submitted.`,
+              type: "success",
+              href: `/groups/${storedExp.groupId}`,
+            });
           }
 
           try {
@@ -183,16 +193,21 @@ export default function AddExpensePage() {
               title: "Back Online!",
               description: `${syncedCount} pending expense(s) for this group have been submitted to Firestore.`,
             });
-             router.refresh(); // To reflect synced data on group page
+             router.refresh(); 
           } catch (error) {
             console.error("Error syncing expenses to Firestore:", error);
             toast({ title: "Sync Error", description: "Some offline expenses could not be synced.", variant: "destructive" });
+            addNotification({
+              title: "Expense Sync Failed",
+              message: `Could not sync ${syncedCount} offline expense(s).`,
+              type: "destructive",
+            });
           }
         }
       }
     };
     syncPendingExpenses();
-  }, [isOnline, group, currentUser, groupId, toast, router]);
+  }, [isOnline, group, currentUser, groupId, toast, router, addNotification]);
 
 
   if (isLoadingGroup || !currentUser || !group) {
@@ -214,7 +229,7 @@ export default function AddExpensePage() {
             setCustomSplitAmounts(currentAmounts => {
                 const updatedAmounts = { ...currentAmounts };
                 if (!isChecked && userId in updatedAmounts) { 
-                    updatedAmounts[userId] = ''; // Clear amount if deselected
+                    updatedAmounts[userId] = ''; 
                 } else if (isChecked && !(userId in updatedAmounts)) { 
                     updatedAmounts[userId] = ''; 
                 }
@@ -288,7 +303,7 @@ export default function AddExpensePage() {
       currentTotalCustomSplit = parseFloat(currentTotalCustomSplit.toFixed(2));
       const totalExpenseAmount = parseFloat(numericAmount.toFixed(2));
 
-      if (Math.abs(currentTotalCustomSplit - totalExpenseAmount) > 0.005) { // Allow for small floating point discrepancies
+      if (Math.abs(currentTotalCustomSplit - totalExpenseAmount) > 0.005) { 
         toast({
           title: "Custom Split Mismatch",
           description: `The sum of custom shares (${getCurrencySymbol()}${currentTotalCustomSplit.toFixed(2)}) must equal the total expense amount (${getCurrencySymbol()}${totalExpenseAmount.toFixed(2)}). Remaining: ${getCurrencySymbol()}${(totalExpenseAmount - currentTotalCustomSplit).toFixed(2)}`,
@@ -317,32 +332,36 @@ export default function AddExpensePage() {
       pending.push(expenseDataForStorage);
       localStorage.setItem('pendingExpenses', JSON.stringify(pending));
       toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
+      addNotification({
+        title: "Expense Saved Offline",
+        message: `"${description.trim()}" for group "${group.name}" saved locally.`,
+        type: "info",
+      });
       setIsSubmitting(false);
       router.push(`/groups/${groupId}`);
       return;
     }
 
-    // ---- ONLINE SUBMISSION to FIRESTORE ----
     try {
       const expenseColRef = collection(db, 'groups', groupId, 'expenses');
-      const newExpenseDocRef = doc(expenseColRef); // Auto-generate ID for the new expense
+      const newExpenseDocRef = doc(expenseColRef); 
 
       const expenseForFirestore: Omit<Expense, 'id' | 'createdAt'> = {
         groupId: expenseDataForStorage.groupId,
         description: expenseDataForStorage.description,
         amount: expenseDataForStorage.amount,
         paidByUserId: expenseDataForStorage.paidByUserId,
-        date: expenseDataForStorage.date, // ISO string
+        date: expenseDataForStorage.date, 
         participants: expenseDataForStorage.participants,
       };
       
       const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
       const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
         groupId: expenseDataForStorage.groupId,
-        userId: expenseDataForStorage.paidByUserId, // Actor is the payer
+        userId: expenseDataForStorage.paidByUserId, 
         actionType: 'expense_added',
         description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
-        relatedExpenseId: newExpenseDocRef.id, // Link to the new expense ID
+        relatedExpenseId: newExpenseDocRef.id, 
       };
       
       const batch = writeBatch(db);
@@ -355,12 +374,23 @@ export default function AddExpensePage() {
         title: "Expense Added to Firestore!",
         description: `Expense "${description}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been added.`,
       });
-      await new Promise(resolve => setTimeout(resolve, 300)); // UI nicety
-      router.push(`/groups/${groupId}?refresh=${Date.now()}`); // Add refresh query param to trigger data reload on group page
+      addNotification({
+        title: "Expense Added",
+        message: `You added "${description.trim()}" to group "${group.name}".`,
+        type: "success",
+        href: `/groups/${groupId}`,
+      });
+      await new Promise(resolve => setTimeout(resolve, 300)); 
+      router.push(`/groups/${groupId}?refresh=${Date.now()}`); 
 
     } catch (error) {
         console.error("Error adding expense to Firestore:", error);
         toast({ title: "Firestore Error", description: "Could not save expense. Please try again.", variant: "destructive" });
+        addNotification({
+          title: "Expense Add Failed",
+          message: `Could not add "${description.trim()}" to group "${group.name}".`,
+          type: "destructive",
+        });
     } finally {
         setIsSubmitting(false);
     }
@@ -429,7 +459,7 @@ export default function AddExpensePage() {
                         selected={expenseDate}
                         onSelect={setExpenseDate}
                         initialFocus
-                        disabled={isSubmitting || !expenseDate} // Ensure date is not cleared accidently
+                        disabled={isSubmitting || !expenseDate} 
                         />
                     </PopoverContent>
                 </Popover>
@@ -540,4 +570,3 @@ export default function AddExpensePage() {
     </div>
   );
 }
-
