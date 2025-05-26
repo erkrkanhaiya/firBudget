@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, FormEvent } from 'react';
@@ -32,7 +33,7 @@ export default function AddExpensePage() {
   const [paidByUserId, setPaidByUserId] = useState<string>('');
   const [expenseDate, setExpenseDate] = useState<Date | undefined>(new Date());
   const [participants, setParticipants] = useState<string[]>([]); // Array of user IDs
-  const [splitEqually, setSplitEqually] = useState(true); // For now, only equal split
+  const [splitEqually, setSplitEqually] = useState(true);
 
   useEffect(() => {
     const foundGroup = mockGroups.find(g => g.id === groupId);
@@ -71,6 +72,15 @@ export default function AddExpensePage() {
       return;
     }
 
+    if (!splitEqually) {
+      toast({
+        title: "Custom Split Not Implemented",
+        description: "The ability to split expenses unequally is not yet available. Please check 'Split equally' to add the expense.",
+        variant: "default",
+      });
+      return;
+    }
+
     const numericAmount = parseFloat(amount);
     const share = numericAmount / participants.length;
     const expenseParticipants: ExpenseParticipant[] = participants.map(userId => ({
@@ -86,11 +96,12 @@ export default function AddExpensePage() {
       paidByUserId,
       date: expenseDate.toISOString(),
       participants: expenseParticipants,
+      splitEqually: splitEqually, // Added for logging
     });
 
     toast({
       title: "Expense Added!",
-      description: `Expense "${description}" for $${numericAmount.toFixed(2)} has been added.`,
+      description: `Expense "${description}" for $${numericAmount.toFixed(2)} has been added and split equally.`,
     });
     router.push(`/groups/${groupId}`);
   };
@@ -192,10 +203,13 @@ export default function AddExpensePage() {
                 ))}
               </div>
             </div>
-            {/* Future: Add advanced split options here */}
             <div className="flex items-center space-x-2">
-                <Checkbox id="splitEqually" checked={splitEqually} onCheckedChange={(checked) => setSplitEqually(Boolean(checked))} disabled />
-                <Label htmlFor="splitEqually" className="font-normal">Split equally (currently only option)</Label>
+                <Checkbox
+                  id="splitEqually"
+                  checked={splitEqually}
+                  onCheckedChange={(checked) => setSplitEqually(Boolean(checked))}
+                />
+                <Label htmlFor="splitEqually" className="font-normal">Split equally</Label>
             </div>
 
           </CardContent>
