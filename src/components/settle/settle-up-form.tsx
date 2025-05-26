@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { mockUsers, currentUser } from "@/lib/mock-data";
 import { useToast } from "@/hooks/use-toast";
 import { HandCoins } from "lucide-react";
@@ -66,7 +66,7 @@ export function SettleUpForm() {
     <Card className="w-full max-w-lg mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="text-2xl">Record a Payment</CardTitle>
-        <FormDescription>Log a payment made to settle a debt.</FormDescription>
+        <CardDescription>Log a payment made to settle a debt.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
