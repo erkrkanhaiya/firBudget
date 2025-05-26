@@ -69,3 +69,11 @@ export interface Balance {
 }
 
 export type Currency = 'USD' | 'INR';
+
+// New type for App Member Contacts
+export interface AppMemberContact {
+  id: string;
+  name: string;
+  addedByUid: string; // Firebase UID of the user who added this contact
+  createdAt: string; // ISO string representation of Firestore Timestamp
+}

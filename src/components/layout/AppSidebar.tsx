@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, UserCircle, Settings, CreditCard, Activity, type LucideIcon } from 'lucide-react';
+import { Home, Users, UserCircle, Settings, CreditCard, Activity, Users2, type LucideIcon } from 'lucide-react';
 import {
   Sidebar,
   SidebarHeader,
@@ -28,6 +28,7 @@ const navItems: NavItem[] = [
   { href: '/groups', label: { en: 'Groups', hi: 'समूह' }, icon: Users },
   { href: '/expenses', label: { en: 'My Expenses', hi: 'मेरे खर्च' }, icon: CreditCard },
   { href: '/activity', label: { en: 'Activity Feed', hi: 'गतिविधि फ़ीड' }, icon: Activity },
+  { href: '/members', label: { en: 'Members', hi: 'सदस्य' }, icon: Users2 }, // New Members link
 ];
 
 const bottomNavItems: NavItem[] = [
