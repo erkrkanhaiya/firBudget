@@ -1,10 +1,12 @@
 
 import type { Metadata } from 'next';
 import { GeistSans } from 'geist/font/sans';
-// import { GeistMono } from 'geist/font/mono'; // Removed as per previous fix
 import './globals.css';
-import { MainLayout } from '@/components/layout/MainLayout';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { UserProvider } from '@/contexts/UserContext';
+import { LanguageProvider } from '@/contexts/LanguageContext';
+import { CurrencyProvider } from '@/contexts/CurrencyContext';
+import { PageWrapper } from '@/components/layout/PageWrapper'; // Import new PageWrapper
 
 export const metadata: Metadata = {
   title: 'BalanceBeam - Smart Expense Sharing',
@@ -25,9 +27,15 @@ export default function RootLayout({
       </head>
       <body className={`${GeistSans.variable} font-sans antialiased`}>
         <ThemeProvider>
-          <MainLayout>
-            {children}
-          </MainLayout>
+          <UserProvider>
+            <LanguageProvider>
+              <CurrencyProvider>
+                <PageWrapper>
+                  {children}
+                </PageWrapper>
+              </CurrencyProvider>
+            </LanguageProvider>
+          </UserProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -6,9 +6,6 @@ import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AppHeader } from './AppHeader';
 import { AppSidebar } from './AppSidebar';
 import { Toaster } from "@/components/ui/toaster";
-import { UserProvider } from '@/contexts/UserContext';
-import { LanguageProvider } from '@/contexts/LanguageContext';
-import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import React, { useState, useEffect, useCallback } from 'react';
 import { InstallAppBanner } from './InstallAppBanner';
 
@@ -77,27 +74,21 @@ export function MainLayout({ children }: MainLayoutProps) {
   }, []);
 
   return (
-    <UserProvider>
-      <LanguageProvider>
-        <CurrencyProvider>
-          <SidebarProvider defaultOpen={true}>
-            <AppSidebar />
-            <SidebarInset>
-              <AppHeader />
-              <main className="flex-1 p-4 md:p-6 lg:p-8">
-                {children}
-              </main>
-              <Toaster />
-              {showInstallBanner && deferredPrompt && (
-                <InstallAppBanner
-                  onInstall={handleInstallClick}
-                  onDismiss={handleDismissInstallBanner}
-                />
-              )}
-            </SidebarInset>
-          </SidebarProvider>
-        </CurrencyProvider>
-      </LanguageProvider>
-    </UserProvider>
+    <SidebarProvider defaultOpen={true}>
+      <AppSidebar />
+      <SidebarInset>
+        <AppHeader />
+        <main className="flex-1 p-4 md:p-6 lg:p-8">
+          {children}
+        </main>
+        <Toaster />
+        {showInstallBanner && deferredPrompt && (
+          <InstallAppBanner
+            onInstall={handleInstallClick}
+            onDismiss={handleDismissInstallBanner}
+          />
+        )}
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
