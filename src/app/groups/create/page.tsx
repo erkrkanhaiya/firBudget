@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -8,13 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus, Lock, Unlock } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { mockUsers } from '@/data/mock'; // for member selection demo
 import { useToast } from "@/hooks/use-toast";
-import type { User } from '@/types';
+import type { User, GroupVisibility } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Image from 'next/image'; // For Next/Image component
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+
 
 export default function CreateGroupPage() {
   const router = useRouter();
@@ -26,6 +29,7 @@ export default function CreateGroupPage() {
   const [groupPhoto, setGroupPhoto] = useState<File | null>(null);
   const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
   const [selectedMembers, setSelectedMembers] = useState<User[]>(currentUser ? [currentUser] : []);
+  const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
 
   if (!currentUser) {
     // router.push('/login'); // Or show a message
@@ -62,10 +66,11 @@ export default function CreateGroupPage() {
       photo: groupPhoto?.name || 'No photo',
       ownerId: currentUser.id,
       members: selectedMembers.map(m => m.id),
+      visibility: groupVisibility,
     });
     toast({
       title: "Group Created!",
-      description: `The group "${groupName}" has been successfully created.`,
+      description: `The group "${groupName}" has been successfully created as a ${groupVisibility} group.`,
     });
     // For demo, navigate to groups page. Ideally, navigate to the new group's page.
     router.push('/groups'); 
@@ -131,6 +136,40 @@ export default function CreateGroupPage() {
                 <input id="group-photo-upload" type="file" className="hidden" accept="image/*" onChange={handlePhotoChange} />
               </div>
             </div>
+
+            <div>
+                <Label>Group Visibility</Label>
+                <RadioGroup
+                    defaultValue="private"
+                    value={groupVisibility}
+                    onValueChange={(value: GroupVisibility) => setGroupVisibility(value)}
+                    className="mt-1 grid grid-cols-2 gap-4"
+                >
+                    <div>
+                        <RadioGroupItem value="private" id="private" className="peer sr-only" />
+                        <Label
+                            htmlFor="private"
+                            className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                        >
+                            <Lock className="mb-2 h-6 w-6" />
+                            Private
+                            <span className="text-xs text-muted-foreground text-center mt-1">Only invited members can see and participate.</span>
+                        </Label>
+                    </div>
+                    <div>
+                        <RadioGroupItem value="public" id="public" className="peer sr-only" />
+                        <Label
+                            htmlFor="public"
+                            className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                        >
+                            <Unlock className="mb-2 h-6 w-6" />
+                            Public
+                            <span className="text-xs text-muted-foreground text-center mt-1">Anyone logged in can view the group. Only members can participate.</span>
+                        </Label>
+                    </div>
+                </RadioGroup>
+            </div>
+
 
             <div>
               <Label>Add Members</Label>

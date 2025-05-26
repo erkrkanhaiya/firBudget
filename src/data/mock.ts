@@ -1,3 +1,4 @@
+
 import type { User, Group, Expense, Payment, ActivityLog, Balance } from '@/types';
 
 export const mockUser: User = {
@@ -24,6 +25,7 @@ export const mockGroups: Group[] = [
     ownerId: 'user1',
     members: [mockUsers[0], mockUsers[1], mockUsers[2]],
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days ago
+    visibility: 'public',
   },
   {
     id: 'group2',
@@ -34,6 +36,7 @@ export const mockGroups: Group[] = [
     ownerId: 'user2',
     members: [mockUsers[0], mockUsers[1], mockUsers[3]],
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(), // 30 days ago
+    visibility: 'private',
   },
   {
     id: 'group3',
@@ -42,6 +45,7 @@ export const mockGroups: Group[] = [
     ownerId: 'user1',
     members: [mockUsers[0], mockUsers[3]],
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
+    visibility: 'private',
   },
 ];
 

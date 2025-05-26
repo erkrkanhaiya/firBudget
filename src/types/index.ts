@@ -6,6 +6,8 @@ export interface User {
   avatarUrl?: string;
 }
 
+export type GroupVisibility = 'public' | 'private';
+
 export interface Group {
   id: string;
   name: string;
@@ -15,6 +17,7 @@ export interface Group {
   members: User[]; // Store full user objects or just IDs and fetch details as needed
   ownerId: string;
   createdAt: string;
+  visibility: GroupVisibility;
 }
 
 export interface ExpenseParticipant {
