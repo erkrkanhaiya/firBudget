@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle, Sun, Moon, Languages, Check } from 'lucide-react';
+import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle } from 'lucide-react';
 import { AppLogo } from '@/components/AppLogo';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -20,10 +20,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import React, { useState } from 'react';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useLanguage, Language } from '@/contexts/LanguageContext';
-// Removed useCurrency and Currency type as they are no longer used here
-// Removed DollarSign icon
+import { useLanguage } from '@/contexts/LanguageContext';
 
 // Mock notifications data
 const mockNotifications = [
@@ -42,9 +39,7 @@ const NotificationIcon = ({ type }: { type: string }) => {
 
 export function AppHeader() {
   const { currentUser, logout } = useUser();
-  const { theme, toggleTheme, isThemeInitialized } = useTheme();
-  const { language, setLanguage: setAppLanguage, isLanguageInitialized: isLangInitialized, translate } = useLanguage();
-  // Removed currency related hooks and state
+  const { translate } = useLanguage();
   const router = useRouter();
   const [notifications, setNotifications] = useState(mockNotifications);
 
@@ -83,38 +78,7 @@ export function AppHeader() {
          <AppLogo iconSize={24} textSize="text-xl" />
       </div>
       <div className="flex w-full items-center justify-end gap-1 sm:gap-2">
-        {isThemeInitialized && (
-            <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full" title="Toggle theme">
-            {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-            <span className="sr-only">Toggle theme</span>
-            </Button>
-        )}
-
-        {isLangInitialized && (
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full" title={translate({en: "Change language", hi: "भाषा बदलें"})}>
-                    <Languages className="h-5 w-5" />
-                    <span className="sr-only">{translate({en: "Change language", hi: "भाषा बदलें"})}</span>
-                </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{translate({en: "Select Language", hi: "भाषा चुनें"})}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setAppLanguage('en')} disabled={language === 'en'}>
-                    English
-                    {language === 'en' && <Check className="ml-auto h-4 w-4" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setAppLanguage('hi')} disabled={language === 'hi'}>
-                    हिन्दी
-                    {language === 'hi' && <Check className="ml-auto h-4 w-4" />}
-                </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        )}
         
-        {/* Currency Dropdown Removed */}
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full relative">
