@@ -101,13 +101,13 @@ export function AppHeader() {
                 {notifications.map((notification) => (
                   <DropdownMenuItem 
                     key={notification.id} 
-                    className={`cursor-pointer flex items-start gap-3 p-3 ${!notification.read ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/50'}`}
+                    className={`cursor-pointer flex items-start gap-3 p-3 ${!notification.read ? 'bg-accent hover:bg-accent/90' : 'hover:bg-muted/50'}`}
                     onClick={() => handleNotificationClick(notification.id, notification.href)}
                   >
                     <NotificationIcon type={notification.type} />
                     <div className="flex-1">
-                      <p className={`text-sm font-medium ${!notification.read ? 'text-primary-foreground group-[.bg-primary/5]:text-primary group-[.bg-primary/10]:text-primary' : 'text-foreground'}`}>{notification.title}</p>
-                      <p className={`text-xs ${!notification.read ? 'text-primary-foreground/80 group-[.bg-primary/5]:text-primary/80 group-[.bg-primary/10]:text-primary/80' : 'text-foreground/80'}`}>{notification.message}</p>
+                      <p className={`text-sm font-medium ${!notification.read ? 'text-accent-foreground' : 'text-foreground'}`}>{notification.title}</p>
+                      <p className={`text-xs ${!notification.read ? 'text-accent-foreground/90' : 'text-foreground/80'}`}>{notification.message}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {formatDistanceToNow(parseISO(notification.time), { addSuffix: true })}
                       </p>
