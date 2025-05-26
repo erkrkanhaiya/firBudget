@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,11 +32,13 @@ import type { User } from "@/types";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
+const NO_GROUP_SENTINEL_VALUE = "___NO_GROUP_SENTINEL___";
+
 const expenseFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   totalAmount: z.coerce.number().positive("Amount must be positive"),
   paidByUserId: z.string().min(1, "Payer is required"),
-  groupId: z.string().optional(),
+  groupId: z.string().optional(), // This will store the sentinel value if "No Group" is chosen
   splitType: z.enum(["equal", "unequal"], {
     required_error: "You need to select a split type.",
   }),
@@ -67,6 +70,7 @@ const defaultValues: Partial<ExpenseFormValues> = {
   title: "",
   totalAmount: 0,
   paidByUserId: currentUser.id,
+  // groupId is implicitly undefined here, which is correct for the placeholder to show
   splitType: "equal",
   participants: mockUsers.map(u => ({ userId: u.id, name: u.name, selected: u.id === currentUser.id, amountOwed: 0 })),
 };
@@ -89,12 +93,16 @@ export function ExpenseForm() {
   const selectedParticipants = form.watch("participants").filter(p => p.selected);
 
   useEffect(() => {
-    if (splitType === "equal" && selectedParticipants.length > 0) {
+    if (splitType === "equal" && selectedParticipants.length > 0 && totalAmount > 0) {
       const amountPerParticipant = totalAmount / selectedParticipants.length;
       const updatedParticipants = form.getValues("participants").map(p => ({
         ...p,
         amountOwed: p.selected ? parseFloat(amountPerParticipant.toFixed(2)) : 0,
       }));
+      form.setValue("participants", updatedParticipants, { shouldValidate: true });
+    } else if (splitType === "equal" && (selectedParticipants.length === 0 || totalAmount <= 0)) {
+      // Reset amounts if no participants or no total amount for equal split
+      const updatedParticipants = form.getValues("participants").map(p => ({ ...p, amountOwed: 0 }));
       form.setValue("participants", updatedParticipants, { shouldValidate: true });
     }
   }, [splitType, totalAmount, selectedParticipants.length, form]);
@@ -116,10 +124,12 @@ export function ExpenseForm() {
         return;
       }
     }
-
+    
+    const processedGroupId = data.groupId === NO_GROUP_SENTINEL_VALUE ? undefined : data.groupId;
 
     console.log("Expense data:", {
       ...data,
+      groupId: processedGroupId, // Use the processed value
       participants: finalParticipants,
     });
     toast({
@@ -196,14 +206,17 @@ export function ExpenseForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Group (Optional)</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select 
+                    onValueChange={field.onChange} 
+                    value={field.value === undefined ? "" : field.value} // Handle undefined for placeholder
+                  >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a group" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">No Group (Direct Expense)</SelectItem>
+                      <SelectItem value={NO_GROUP_SENTINEL_VALUE}>No Group (Direct Expense)</SelectItem>
                       {mockGroups.map((group) => (
                         <SelectItem key={group.id} value={group.id}>
                           {group.name}
@@ -265,20 +278,25 @@ export function ExpenseForm() {
                             checked={checkboxField.value}
                             onCheckedChange={(checked) => {
                               checkboxField.onChange(checked);
-                              // Also update the participant's amountOwed if equal split is selected
                               const participants = form.getValues("participants");
-                              participants[index].selected = !!checked; // Ensure boolean
-                              if (form.getValues("splitType") === "equal" && selectedParticipants.length > 0) {
-                                const amount = totalAmount / participants.filter(p=>p.selected).length;
+                              participants[index].selected = !!checked; 
+                              
+                              const currentSplitType = form.getValues("splitType");
+                              const currentTotalAmount = form.getValues("totalAmount");
+                              const currentSelectedParticipants = participants.filter(p => p.selected);
+
+                              if (currentSplitType === "equal" && currentSelectedParticipants.length > 0 && currentTotalAmount > 0) {
+                                const amount = currentTotalAmount / currentSelectedParticipants.length;
                                 participants.forEach(p => {
                                   if (p.selected) p.amountOwed = parseFloat(amount.toFixed(2));
                                   else p.amountOwed = 0;
                                 });
-                                form.setValue("participants", participants, { shouldValidate: true });
-                              } else if (!checked) { // if deselected, reset amount
+                              } else if (!checked) { 
                                 participants[index].amountOwed = 0;
-                                form.setValue("participants", participants, { shouldValidate: true });
+                              } else if (currentSplitType === "equal" && (currentSelectedParticipants.length === 0 || currentTotalAmount <= 0)) {
+                                participants.forEach(p => p.amountOwed = 0);
                               }
+                              form.setValue("participants", participants, { shouldValidate: true });
                             }}
                           />
                         </FormControl>
@@ -325,3 +343,6 @@ export function ExpenseForm() {
     </Card>
   );
 }
+
+
+    
