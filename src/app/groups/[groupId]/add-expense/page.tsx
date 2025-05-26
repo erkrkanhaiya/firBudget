@@ -13,14 +13,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
-import { mockGroups, mockUsers } from '@/data/mock';
-import type { Group, User as UserType, ExpenseParticipant } from '@/types';
+import { mockGroups, mockUsers, mockExpenses, mockActivityLog } from '@/data/mock';
+import type { Group, User as UserType, ExpenseParticipant, Expense } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
+
+// Define the type for expenses stored in localStorage
+type StoredExpenseData = Omit<Expense, 'id' | 'createdAt'> & { tempId: string };
 
 export default function AddExpensePage() {
   const params = useParams();
@@ -42,7 +45,20 @@ export default function AddExpensePage() {
   const [sumOfCustomShares, setSumOfCustomShares] = useState<number>(0);
   const [remainingToAllocate, setRemainingToAllocate] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
 
+  useEffect(() => {
+    const updateOnlineStatus = () => {
+      setIsOnline(navigator.onLine);
+    };
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus(); // Initial check
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  }, []);
 
   useEffect(() => {
     const foundGroup = mockGroups.find(g => g.id === groupId);
@@ -58,7 +74,6 @@ export default function AddExpensePage() {
       if (currentUser) {
         setPaidByUserId(currentUser.id);
       }
-      // Initialize custom split amounts for all members if switching to custom split later
       const initialCustomAmounts: Record<string, string> = {};
       memberIds.forEach(id => { initialCustomAmounts[id] = ''; });
       setCustomSplitAmounts(initialCustomAmounts);
@@ -84,6 +99,58 @@ export default function AddExpensePage() {
     }
   }, [customSplitAmounts, amount, selectedParticipantIds, splitEqually]);
 
+  // Effect to "sync" pending expenses when online
+  useEffect(() => {
+    if (isOnline && group && currentUser) {
+      const pendingExpensesData = localStorage.getItem('pendingExpenses');
+      if (pendingExpensesData) {
+        const allPendingStoredExpenses: StoredExpenseData[] = JSON.parse(pendingExpensesData);
+        const expensesToSyncForThisGroup = allPendingStoredExpenses.filter(exp => exp.groupId === groupId);
+
+        if (expensesToSyncForThisGroup.length > 0) {
+          expensesToSyncForThisGroup.forEach(storedExp => {
+            const newExpense: Expense = {
+              id: `exp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+              groupId: storedExp.groupId,
+              description: storedExp.description,
+              amount: storedExp.amount,
+              paidByUserId: storedExp.paidByUserId,
+              date: storedExp.date, // This is already an ISO string
+              participants: storedExp.participants,
+              createdAt: new Date().toISOString(),
+            };
+            mockExpenses.push(newExpense); // Add to mock data (session only)
+
+            const actor = mockUsers.find(u => u.id === newExpense.paidByUserId) || currentUser;
+            mockActivityLog.push({
+              id: `act-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+              groupId: newExpense.groupId,
+              userId: actor.id,
+              actionType: 'expense_added',
+              timestamp: new Date().toISOString(),
+              description: `${actor.name} added expense: ${newExpense.description} (synced from offline)`,
+              relatedExpenseId: newExpense.id,
+            });
+          });
+
+          const remainingOverallPendingExpenses = allPendingStoredExpenses.filter(exp => exp.groupId !== groupId);
+          if (remainingOverallPendingExpenses.length > 0) {
+            localStorage.setItem('pendingExpenses', JSON.stringify(remainingOverallPendingExpenses));
+          } else {
+            localStorage.removeItem('pendingExpenses');
+          }
+          
+          toast({
+            title: "Back Online!",
+            description: `${expensesToSyncForThisGroup.length} pending expense(s) for this group have been submitted.`,
+          });
+          // Consider router.refresh() if changes aren't immediately visible on other pages,
+          // but direct mutation of mockData usually works for session-long demos.
+        }
+      }
+    }
+  }, [isOnline, group, currentUser, groupId, toast, router]);
+
 
   if (!currentUser || !group) {
     return <p>Loading...</p>;
@@ -98,10 +165,10 @@ export default function AddExpensePage() {
         if (!splitEqually) {
             setCustomSplitAmounts(currentAmounts => {
                 const updatedAmounts = { ...currentAmounts };
-                if (!isChecked && userId in updatedAmounts) { // User was removed
+                if (!isChecked && userId in updatedAmounts) { 
                     delete updatedAmounts[userId];
-                } else if (isChecked && !(userId in updatedAmounts)) { // User was added
-                    updatedAmounts[userId] = ''; // Initialize or keep if toggling
+                } else if (isChecked && !(userId in updatedAmounts)) { 
+                    updatedAmounts[userId] = ''; 
                 }
                 return updatedAmounts;
             });
@@ -112,12 +179,8 @@ export default function AddExpensePage() {
   
   const handleSplitEquallyChange = (checked: boolean) => {
     setSplitEqually(checked);
-    if (!checked) { // Switched to custom split
+    if (!checked) { 
         const initialAmounts: Record<string, string> = {};
-        // const numParticipants = selectedParticipantIds.length;
-        // const totalAmount = parseFloat(amount) || 0;
-        // const prefillAmount = numParticipants > 0 ? (totalAmount / numParticipants).toFixed(2) : '0.00';
-
         selectedParticipantIds.forEach(pid => {
             initialAmounts[pid] = ''; 
         });
@@ -154,7 +217,6 @@ export default function AddExpensePage() {
         amountOwed: parseFloat(share.toFixed(2)),
       }));
     } else {
-      // Custom split logic
       let currentTotalCustomSplit = 0;
       expenseParticipants = [];
 
@@ -189,23 +251,59 @@ export default function AddExpensePage() {
       }
     }
 
-    // In a real app, send this to an API
-    console.log('Submitting expense:', {
+    const expenseDataForSubmission: StoredExpenseData = {
       groupId,
       description,
       amount: numericAmount,
       paidByUserId,
       date: expenseDate.toISOString(),
       participants: expenseParticipants,
-      splitEqually: splitEqually,
-    });
+      // splitEqually // Not part of Expense type, but could be useful for storage if needed
+      tempId: `pending-${Date.now()}` // For potential use if directly adding to UI before sync
+    };
+
+    if (!isOnline) {
+      const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
+      pending.push(expenseDataForSubmission);
+      localStorage.setItem('pendingExpenses', JSON.stringify(pending));
+      toast({ title: "Offline", description: "Expense saved locally. Will submit when online." });
+      setIsSubmitting(false);
+      router.push(`/groups/${groupId}`);
+      return;
+    }
+
+    // ---- ONLINE SUBMISSION (Mock) ----
+    const newExpense: Expense = {
+      id: `exp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      groupId: expenseDataForSubmission.groupId,
+      description: expenseDataForSubmission.description,
+      amount: expenseDataForSubmission.amount,
+      paidByUserId: expenseDataForSubmission.paidByUserId,
+      date: expenseDataForSubmission.date,
+      participants: expenseDataForSubmission.participants,
+      createdAt: new Date().toISOString(),
+    };
+    mockExpenses.push(newExpense);
+
+    const actor = mockUsers.find(u => u.id === newExpense.paidByUserId) || currentUser;
+    if (actor) {
+      mockActivityLog.push({
+        id: `act-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        groupId: newExpense.groupId,
+        userId: actor.id,
+        actionType: 'expense_added',
+        timestamp: new Date().toISOString(),
+        description: `${actor.name} added expense: ${newExpense.description}`,
+        relatedExpenseId: newExpense.id,
+      });
+    }
+    // ---- END ONLINE SUBMISSION (Mock) ----
 
     toast({
       title: "Expense Added!",
       description: `Expense "${description}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been added.`,
     });
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 300)); // Simulate API delay
     setIsSubmitting(false);
     router.push(`/groups/${groupId}`);
   };
@@ -220,7 +318,7 @@ export default function AddExpensePage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Add Expense to "{group.name}"</CardTitle>
-          <CardDescription>Record a new shared expense for the group.</CardDescription>
+          <CardDescription>Record a new shared expense for the group. {isOnline ? "" : <span className="text-destructive font-semibold">(Offline Mode)</span>}</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-6">
@@ -376,7 +474,7 @@ export default function AddExpensePage() {
               ) : (
                 <PlusCircle className="mr-2 h-4 w-4" />
               )}
-              {isSubmitting ? "Adding..." : "Add Expense"}
+              {isSubmitting ? "Adding..." : (isOnline ? "Add Expense" : "Save Offline")}
             </Button>
           </CardFooter>
         </form>
@@ -384,3 +482,4 @@ export default function AddExpensePage() {
     </div>
   );
 }
+
