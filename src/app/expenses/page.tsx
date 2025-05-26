@@ -4,50 +4,133 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, CreditCard, Users, CalendarDays, DollarSign as DollarSignIcon, ArrowRight } from 'lucide-react';
+import { AlertTriangle, CreditCard, Users, CalendarDays, DollarSign as DollarSignIcon, ArrowRight, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
-import { mockExpenses, mockUsers, mockGroups } from '@/data/mock';
-import type { Expense, User as UserType, Group } from '@/types';
+import type { Expense, User as UserType, Group as GroupType } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { Skeleton } from '@/components/ui/skeleton';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { db } from '@/lib/firebase';
+import { collection, collectionGroup, query, where, getDocs, Timestamp, doc, getDoc } from 'firebase/firestore';
 
-const getInitials = (name: string | undefined) => {
+const getInitials = (name: string | undefined | null) => {
   if (!name) return "U";
   const names = name.split(' ');
-  if (names.length > 1) {
-    return names[0][0] + names[names.length - 1][0];
+  if (names.length > 1 && names[0] && names[names.length - 1]) {
+    return (names[0][0] + names[names.length - 1][0]).toUpperCase();
   }
-  return name.substring(0, 2).toUpperCase();
+  if (name.length > 0) return name.substring(0, 2).toUpperCase();
+  return "U";
 };
+
+interface EnrichedExpense extends Expense {
+  groupName?: string;
+  payerName?: string;
+  payerAvatarUrl?: string | null;
+}
 
 export default function MyExpensesPage() {
   const { currentUser } = useUser();
   const { getCurrencySymbol } = useCurrency();
   const [isLoading, setIsLoading] = useState(true);
-  const [userInvolvedExpenses, setUserInvolvedExpenses] = useState<Expense[]>([]);
+  const [userInvolvedExpenses, setUserInvolvedExpenses] = useState<EnrichedExpense[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (currentUser) {
-      // Simulate data fetching
-      const timer = setTimeout(() => {
-        const filteredExpenses = mockExpenses.filter(expense =>
-          expense.paidByUserId === currentUser.id ||
-          expense.participants.some(p => p.userId === currentUser.id)
-        ).sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
-        setUserInvolvedExpenses(filteredExpenses);
+    const fetchUserExpenses = async () => {
+      if (!currentUser) {
         setIsLoading(false);
-      }, 750); // 0.75 second delay
-      return () => clearTimeout(timer);
-    } else {
-      setIsLoading(false);
-    }
+        return;
+      }
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // 1. Get all groups the user is a member of
+        const userGroupsQuery = query(
+          collection(db, 'groups'),
+          where('memberIds', 'array-contains', currentUser.id)
+        );
+        const userGroupsSnapshot = await getDocs(userGroupsQuery);
+        const userGroupIds = userGroupsSnapshot.docs.map(doc => doc.id);
+        
+        const groupsDataMap = new Map<string, GroupType>();
+        userGroupsSnapshot.docs.forEach(docSnap => {
+             const data = docSnap.data();
+             groupsDataMap.set(docSnap.id, {
+                id: docSnap.id,
+                name: data.name,
+                members: data.members || [], // Ensure members array exists
+                memberIds: data.memberIds || [],
+                ownerId: data.ownerId,
+                visibility: data.visibility,
+                createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
+                description: data.description,
+                photoUrl: data.photoUrl,
+             } as GroupType);
+        });
+
+
+        if (userGroupIds.length === 0) {
+          setUserInvolvedExpenses([]);
+          setIsLoading(false);
+          return;
+        }
+
+        // 2. For each group, fetch its expenses and filter if current user is involved
+        const allExpensesPromises: Promise<QuerySnapshot<Expense>>[] = [];
+        const expenseQueries = userGroupIds.map(groupId => {
+          const expensesColRef = collection(db, 'groups', groupId, 'expenses');
+          // We fetch all expenses for groups user is in, then filter client-side by participant or payer.
+          // More complex queries (OR on paidByUserId and participants array) are hard with Firestore subcollections directly.
+          return getDocs(query(expensesColRef));
+        });
+        
+        const groupExpenseSnapshots = await Promise.all(expenseQueries);
+        
+        let fetchedExpenses: EnrichedExpense[] = [];
+        groupExpenseSnapshots.forEach((snapshot, index) => {
+          const groupId = userGroupIds[index];
+          const group = groupsDataMap.get(groupId);
+
+          snapshot.forEach(docSnap => {
+            const expenseData = docSnap.data() as Omit<Expense, 'id' | 'createdAt' | 'date'> & { createdAt: Timestamp, date: Timestamp | string };
+            const isPayer = expenseData.paidByUserId === currentUser.id;
+            const isParticipant = expenseData.participants.some(p => p.userId === currentUser.id);
+
+            if (isPayer || isParticipant) {
+              const payer = group?.members.find(m => m.id === expenseData.paidByUserId);
+              fetchedExpenses.push({
+                id: docSnap.id,
+                ...expenseData,
+                date: (expenseData.date instanceof Timestamp ? expenseData.date.toDate().toISOString() : expenseData.date as string),
+                createdAt: (expenseData.createdAt instanceof Timestamp ? expenseData.createdAt.toDate().toISOString() : new Date().toISOString()),
+                groupName: group?.name,
+                payerName: payer?.name,
+                payerAvatarUrl: payer?.avatarUrl
+              });
+            }
+          });
+        });
+
+        fetchedExpenses.sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+        setUserInvolvedExpenses(fetchedExpenses);
+
+      } catch (err) {
+        console.error("Error fetching user expenses:", err);
+        setError("Could not load your expenses. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserExpenses();
   }, [currentUser]);
 
-  if (!currentUser && !isLoading) {
+  if (!currentUser && !isLoading && !error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -60,11 +143,22 @@ export default function MyExpensesPage() {
     );
   }
 
+  if (error) {
+     return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
+        <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
+        <h1 className="text-3xl font-bold mb-2">Error</h1>
+        <p className="text-lg text-muted-foreground mb-6">{error}</p>
+        <Button onClick={() => window.location.reload()}>Try Again</Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">My Expenses</h1>
-        <p className="text-muted-foreground">A summary of all expenses you're involved in.</p>
+        <p className="text-muted-foreground">A summary of all expenses you're involved in from Firestore.</p>
       </div>
 
       {isLoading ? (
@@ -89,27 +183,24 @@ export default function MyExpensesPage() {
       ) : userInvolvedExpenses.length > 0 ? (
         <div className="space-y-6">
           {userInvolvedExpenses.map((expense) => {
-            const payer = mockUsers.find(u => u.id === expense.paidByUserId);
-            const group = mockGroups.find(g => g.id === expense.groupId);
             const currentUserParticipantInfo = expense.participants.find(p => p.userId === currentUser!.id);
-
             return (
               <Card key={expense.id} className="overflow-hidden">
                 <CardHeader className="flex flex-row items-start bg-muted/50 gap-4 p-4">
                   <Avatar className="h-12 w-12 border">
-                    <AvatarImage src={payer?.avatarUrl} alt={payer?.name} />
-                    <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback>
+                    <AvatarImage src={expense.payerAvatarUrl || undefined} alt={expense.payerName} />
+                    <AvatarFallback>{getInitials(expense.payerName)}</AvatarFallback>
                   </Avatar>
                   <div className="grid gap-0.5 flex-1">
                     <CardTitle className="text-lg group flex items-center gap-2">
                       {expense.description}
                     </CardTitle>
                     <CardDescription className="text-xs">
-                      Paid by {payer?.id === currentUser!.id ? "You" : payer?.name || 'Unknown User'} on {format(parseISO(expense.date), "MMMM d, yyyy")}
+                      Paid by {expense.paidByUserId === currentUser!.id ? "You" : expense.payerName || 'Unknown User'} on {format(parseISO(expense.date), "MMMM d, yyyy")}
                     </CardDescription>
-                     {group && (
+                     {expense.groupName && expense.groupId && (
                         <p className="text-xs text-muted-foreground">
-                            In group: <Link href={`/groups/${group.id}`} className="text-primary hover:underline">{group.name}</Link>
+                            In group: <Link href={`/groups/${expense.groupId}`} className="text-primary hover:underline">{expense.groupName}</Link>
                         </p>
                     )}
                   </div>
@@ -124,6 +215,9 @@ export default function MyExpensesPage() {
                     {expense.paidByUserId === currentUser!.id && expense.participants.length > 1 && (
                          <Badge variant="secondary" className="mt-1 text-xs">You paid</Badge>
                     )}
+                     {expense.paidByUserId === currentUser!.id && expense.participants.length === 1 && expense.participants[0].userId === currentUser!.id && (
+                         <Badge variant="outline" className="mt-1 text-xs">Personal Expense</Badge>
+                    )}
                   </div>
                 </CardHeader>
               </Card>
@@ -136,7 +230,7 @@ export default function MyExpensesPage() {
             <CreditCard className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold mb-2">No Expenses Yet!</h3>
             <p className="text-muted-foreground">
-              You're not currently part of any expenses. Expenses from your groups will appear here.
+              You're not currently part of any expenses in Firestore. Expenses from your groups will appear here.
             </p>
           </CardContent>
         </Card>
@@ -144,3 +238,5 @@ export default function MyExpensesPage() {
     </div>
   );
 }
+
+    

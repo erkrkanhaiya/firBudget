@@ -22,12 +22,11 @@ import { Badge } from '@/components/ui/badge';
 import React, { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-// Mock notifications data
+// Mock notifications data - kept as static examples
 const mockNotifications = [
-  { id: '1', type: 'info', title: 'New Expense Added', message: 'Maria added "Dinner" to Europe Trip.', time: '2h ago', read: false, href: '/groups/group1' },
-  { id: '2', type: 'alert', title: 'Payment Reminder', message: 'You owe Ken $15 in "Europe Trip".', time: '1d ago', read: false, href: '/groups/group1/settle-up' },
-  { id: '3', type: 'success', title: 'Payment Received', message: 'Alex Johnson paid you $50 for "Monthly Rent".', time: '3d ago', read: true, href: '/expenses' },
-  { id: '4', type: 'info', title: 'Welcome!', message: 'Thanks for joining BalanceBeam!', time: '5d ago', read: true, href: '/dashboard' },
+  { id: '1', type: 'info', title: 'New Expense Feature', message: 'You can now add expenses to your groups!', time: '2h ago', read: false, href: '/groups' },
+  { id: '2', type: 'alert', title: 'Invite Friends', message: 'Remember to invite your friends to collaborate.', time: '1d ago', read: false, href: '/groups/create' },
+  { id: '3', type: 'success', title: 'Welcome to BalanceBeam!', message: 'Start by creating a group or joining one.', time: '3d ago', read: true, href: '/dashboard' },
 ];
 
 
@@ -41,31 +40,31 @@ export function AppHeader() {
   const { currentUser, logout } = useUser();
   const { translate } = useLanguage();
   const router = useRouter();
-  const [notifications, setNotifications] = useState(mockNotifications);
+  // Notifications are now static examples
+  const notifications = mockNotifications; 
 
   const handleLogout = async () => {
-    await logout(); // Wait for Firebase logout to complete
+    await logout(); 
     router.push('/login'); 
   };
   
   const getInitials = (name: string | undefined | null) => {
     if (!name) return 'U';
     const names = name.split(' ');
-    if (names.length > 1) {
-      return names[0][0] + names[names.length - 1][0];
+    if (names.length > 1 && names[0] && names[names.length - 1]) {
+      return (names[0][0] + names[names.length - 1][0]).toUpperCase();
     }
-    return name.substring(0, 2);
+    if (name.length > 0) return name.substring(0, 2).toUpperCase();
+    return "U";
   };
 
-  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
+  // Unread count is removed as notifications are static examples
+  // const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
-  const handleNotificationClick = (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
-    );
-    const notification = notifications.find(n => n.id === notificationId);
-    if (notification?.href) {
-      router.push(notification.href);
+  const handleNotificationClick = (href?: string) => {
+    // Mark as read functionality is removed for static example
+    if (href) {
+      router.push(href);
     }
   };
 
@@ -83,9 +82,10 @@ export function AppHeader() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full relative">
               <Bell className="h-5 w-5" />
-              {unreadNotificationsCount > 0 && (
+              {/* Static badge example, or remove if not desired for mock data */}
+              {notifications.some(n => !n.read) && ( 
                 <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 p-0 justify-center text-xs">
-                  {unreadNotificationsCount}
+                  {notifications.filter(n => !n.read).length}
                 </Badge>
               )}
               <span className="sr-only">Toggle notifications</span>
@@ -93,12 +93,8 @@ export function AppHeader() {
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-80 sm:w-96" align="end">
             <DropdownMenuLabel className="flex justify-between items-center">
-              <span>Notifications</span>
-              {notifications.length > 0 && (
-                 <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={() => setNotifications(prev => prev.map(n => ({...n, read: true})))}>
-                    Mark all as read
-                 </Button>
-              )}
+              <span>Notifications (Examples)</span>
+              {/* Mark all as read button removed */}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {notifications.length > 0 ? (
@@ -106,22 +102,23 @@ export function AppHeader() {
                 {notifications.map((notification) => (
                   <DropdownMenuItem 
                     key={notification.id} 
-                    className={`cursor-pointer flex items-start gap-3 p-3 ${!notification.read ? 'bg-accent/50' : ''}`}
-                    onClick={() => handleNotificationClick(notification.id)}
+                    className={`cursor-pointer flex items-start gap-3 p-3`}
+                    onClick={() => handleNotificationClick(notification.href)}
+                    // Styling for read/unread removed as it's static
                   >
                     <NotificationIcon type={notification.type} />
                     <div className="flex-1">
-                      <p className={`text-sm font-medium ${!notification.read ? 'text-foreground' : 'text-muted-foreground'}`}>{notification.title}</p>
-                      <p className={`text-xs ${!notification.read ? 'text-foreground/80' : 'text-muted-foreground/80'}`}>{notification.message}</p>
+                      <p className={`text-sm font-medium text-foreground`}>{notification.title}</p>
+                      <p className={`text-xs text-foreground/80`}>{notification.message}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{notification.time}</p>
                     </div>
-                    {!notification.read && <div className="h-2 w-2 rounded-full bg-primary mt-1 self-center"></div>}
+                    {/* Read indicator dot removed */}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuGroup>
             ) : (
               <div className="p-4 text-center text-sm text-muted-foreground">
-                No new notifications.
+                No example notifications.
               </div>
             )}
             <DropdownMenuSeparator />
@@ -187,3 +184,5 @@ export function AppHeader() {
     </header>
   );
 }
+
+    

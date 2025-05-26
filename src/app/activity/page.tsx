@@ -4,22 +4,24 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, Activity as ActivityIcon } from 'lucide-react';
+import { AlertTriangle, Activity as ActivityIcon, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
-import { mockActivityLog, mockUsers, mockGroups } from '@/data/mock';
-import type { ActivityLog, User as UserType } from '@/types';
+import type { ActivityLog, User as UserType, Group as GroupType } from '@/types';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs, Timestamp, orderBy } from 'firebase/firestore';
 
-const getInitials = (name: string | undefined) => {
+const getInitials = (name: string | undefined | null) => {
   if (!name) return "U";
   const names = name.split(' ');
-  if (names.length > 1) {
-    return names[0][0] + names[names.length - 1][0];
+  if (names.length > 1 && names[0] && names[names.length - 1]) {
+    return (names[0][0] + names[names.length - 1][0]).toUpperCase();
   }
-  return name.substring(0, 2).toUpperCase();
+  if (name.length > 0) return name.substring(0, 2).toUpperCase();
+  return "U";
 };
 
 interface ClientFormattedDateProps {
@@ -47,33 +49,99 @@ const ClientFormattedDate: React.FC<ClientFormattedDateProps> = ({ timestamp, fo
   return <>{formattedDate}</>;
 };
 
+interface EnrichedActivityLog extends ActivityLog {
+  groupName?: string;
+  actorName?: string;
+  actorAvatarUrl?: string | null;
+}
 
 export default function ActivityFeedPage() {
   const { currentUser } = useUser();
   const [isLoading, setIsLoading] = useState(true);
-  const [relevantActivityLogs, setRelevantActivityLogs] = useState<ActivityLog[]>([]);
+  const [relevantActivityLogs, setRelevantActivityLogs] = useState<EnrichedActivityLog[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (currentUser) {
-      // Simulate data fetching
-      const timer = setTimeout(() => {
-        const userGroupIds = mockGroups
-          .filter(group => group.members.some(member => member.id === currentUser.id))
-          .map(group => group.id);
-
-        const filteredLogs = mockActivityLog
-          .filter(log => userGroupIds.includes(log.groupId))
-          .sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
-        setRelevantActivityLogs(filteredLogs);
+    const fetchActivityLogs = async () => {
+      if (!currentUser) {
         setIsLoading(false);
-      }, 750); // 0.75 second delay
-      return () => clearTimeout(timer);
-    } else {
-      setIsLoading(false);
-    }
+        return;
+      }
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // 1. Get all groups the user is a member of
+        const userGroupsQuery = query(
+          collection(db, 'groups'),
+          where('memberIds', 'array-contains', currentUser.id)
+        );
+        const userGroupsSnapshot = await getDocs(userGroupsQuery);
+        const userGroupIds = userGroupsSnapshot.docs.map(doc => doc.id);
+
+        const groupsDataMap = new Map<string, GroupType>();
+        userGroupsSnapshot.docs.forEach(docSnap => {
+             const data = docSnap.data();
+             groupsDataMap.set(docSnap.id, {
+                id: docSnap.id,
+                name: data.name,
+                members: data.members || [],
+                memberIds: data.memberIds || [],
+                ownerId: data.ownerId,
+                visibility: data.visibility,
+                createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
+             } as GroupType);
+        });
+        
+        if (userGroupIds.length === 0) {
+          setRelevantActivityLogs([]);
+          setIsLoading(false);
+          return;
+        }
+
+        // 2. For each group, fetch its activity logs
+        const activityLogQueries = userGroupIds.map(groupId => {
+          const logsColRef = collection(db, 'groups', groupId, 'activityLog');
+          return getDocs(query(logsColRef, orderBy('timestamp', 'desc')));
+        });
+
+        const groupActivityLogSnapshots = await Promise.all(activityLogQueries);
+        
+        let fetchedLogs: EnrichedActivityLog[] = [];
+        groupActivityLogSnapshots.forEach((snapshot, index) => {
+          const groupId = userGroupIds[index];
+          const group = groupsDataMap.get(groupId);
+
+          snapshot.forEach(docSnap => {
+            const logData = docSnap.data() as Omit<ActivityLog, 'id' | 'timestamp'> & { timestamp: Timestamp | string };
+            const actor = group?.members.find(m => m.id === logData.userId);
+            
+            fetchedLogs.push({
+              id: docSnap.id,
+              ...logData,
+              timestamp: (logData.timestamp instanceof Timestamp ? logData.timestamp.toDate().toISOString() : logData.timestamp as string),
+              groupName: group?.name,
+              actorName: actor?.name,
+              actorAvatarUrl: actor?.avatarUrl
+            });
+          });
+        });
+
+        fetchedLogs.sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
+        setRelevantActivityLogs(fetchedLogs);
+
+      } catch (err) {
+        console.error("Error fetching activity logs:", err);
+        setError("Could not load activity feed. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchActivityLogs();
   }, [currentUser]);
 
-  if (!currentUser && !isLoading) {
+  if (!currentUser && !isLoading && !error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -85,12 +153,23 @@ export default function ActivityFeedPage() {
       </div>
     );
   }
+  
+  if (error) {
+     return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
+        <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
+        <h1 className="text-3xl font-bold mb-2">Error</h1>
+        <p className="text-lg text-muted-foreground mb-6">{error}</p>
+        <Button onClick={() => window.location.reload()}>Try Again</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Activity Feed</h1>
-        <p className="text-muted-foreground">Recent happenings in your groups.</p>
+        <p className="text-muted-foreground">Recent happenings in your groups from Firestore.</p>
       </div>
 
       {isLoading ? (
@@ -114,23 +193,21 @@ export default function ActivityFeedPage() {
           <CardContent className="p-0">
             <ul className="divide-y divide-border">
               {relevantActivityLogs.map((log) => {
-                const actor = mockUsers.find(u => u.id === log.userId);
-                const group = mockGroups.find(g => g.id === log.groupId);
                 return (
                   <li key={log.id} className="flex items-start gap-4 p-4 hover:bg-muted/50">
                     <Avatar className="h-10 w-10 mt-1 border">
-                      <AvatarImage src={actor?.avatarUrl} alt={actor?.name} />
-                      <AvatarFallback>{getInitials(actor?.name)}</AvatarFallback>
+                      <AvatarImage src={log.actorAvatarUrl || undefined} alt={log.actorName} />
+                      <AvatarFallback>{getInitials(log.actorName)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
                       <p className="text-sm">
-                        <span className="font-medium">{actor?.name || 'Unknown User'}</span>
-                        {log.description.startsWith(actor?.name || 'Unknown User') ? log.description.substring((actor?.name || 'Unknown User').length).trim() : log.description}
-                        {group && (
+                        <span className="font-medium">{log.actorName || 'Unknown User'}</span>
+                        {log.description.startsWith(log.actorName || 'Unknown User') ? log.description.substring((log.actorName || 'Unknown User').length).trim() : log.description}
+                        {log.groupName && log.groupId && (
                             <>
                              {' in group '}
-                             <Link href={`/groups/${group.id}`} className="text-primary hover:underline font-medium">
-                                {group.name}
+                             <Link href={`/groups/${log.groupId}`} className="text-primary hover:underline font-medium">
+                                {log.groupName}
                              </Link>
                             </>
                         )}
@@ -159,3 +236,5 @@ export default function ActivityFeedPage() {
     </div>
   );
 }
+
+    
