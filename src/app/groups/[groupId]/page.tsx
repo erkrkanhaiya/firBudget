@@ -8,7 +8,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { mockGroups, mockExpenses, mockUsers, mockActivityLog, mockBalancesGroup1 } from '@/data/mock'; // Using mock data
 import type { Group, Expense, User as UserType, ActivityLog, Balance } from '@/types';
@@ -244,6 +244,25 @@ export default function GroupDetailPage() {
     toast({ title: "PDF Generated", description: "Your group summary PDF has been downloaded." });
   };
 
+  const handleShareGroup = async () => {
+    if (!group || group.visibility !== 'public') return;
+    const groupUrl = `${window.location.origin}/groups/${groupId}`;
+    try {
+      await navigator.clipboard.writeText(groupUrl);
+      toast({
+        title: "Link Copied!",
+        description: "Group link copied to clipboard.",
+      });
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy link to clipboard.",
+        variant: "destructive",
+      });
+    }
+  };
+
   if (accessDenied) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4">
@@ -380,6 +399,11 @@ export default function GroupDetailPage() {
              <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 sm:flex-none">
                 <Download className="mr-2 h-4 w-4" /> Download PDF
             </Button>
+            {group.visibility === 'public' && (
+                <Button variant="outline" onClick={handleShareGroup} className="flex-1 sm:flex-none">
+                    <Share2 className="mr-2 h-4 w-4" /> Share Group
+                </Button>
+            )}
           </div>
         </div>
 
@@ -566,3 +590,4 @@ export default function GroupDetailPage() {
     </div>
   );
 }
+
