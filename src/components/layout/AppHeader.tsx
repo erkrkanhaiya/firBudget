@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle, Sun, Moon, Languages, Check, DollarSign } from 'lucide-react';
+import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle, Sun, Moon, Languages, Check } from 'lucide-react';
 import { AppLogo } from '@/components/AppLogo';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -22,8 +22,8 @@ import { Badge } from '@/components/ui/badge';
 import React, { useState } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage, Language } from '@/contexts/LanguageContext';
-import { useCurrency } from '@/contexts/CurrencyContext';
-import type { Currency } from '@/types';
+// Removed useCurrency and Currency type as they are no longer used here
+// Removed DollarSign icon
 
 // Mock notifications data
 const mockNotifications = [
@@ -44,7 +44,7 @@ export function AppHeader() {
   const { currentUser, logout } = useUser();
   const { theme, toggleTheme, isThemeInitialized } = useTheme();
   const { language, setLanguage: setAppLanguage, isLanguageInitialized: isLangInitialized, translate } = useLanguage();
-  const { currency, setCurrency, isCurrencyInitialized } = useCurrency();
+  // Removed currency related hooks and state
   const router = useRouter();
   const [notifications, setNotifications] = useState(mockNotifications);
 
@@ -113,28 +113,7 @@ export function AppHeader() {
             </DropdownMenu>
         )}
         
-        {isCurrencyInitialized && (
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full" title={translate({en: "Change currency", hi: "मुद्रा बदलें"})}>
-                    <DollarSign className="h-5 w-5" />
-                    <span className="sr-only">{translate({en: "Change currency", hi: "मुद्रा बदलें"})}</span>
-                </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{translate({en: "Select Currency", hi: "मुद्रा चुनें"})}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setCurrency('USD')} disabled={currency === 'USD'}>
-                    USD ($)
-                    {currency === 'USD' && <Check className="ml-auto h-4 w-4" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setCurrency('INR')} disabled={currency === 'INR'}>
-                    INR (₹)
-                    {currency === 'INR' && <Check className="ml-auto h-4 w-4" />}
-                </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        )}
+        {/* Currency Dropdown Removed */}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
