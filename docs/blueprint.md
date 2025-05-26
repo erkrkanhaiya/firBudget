@@ -1,4 +1,4 @@
-# **App Name**: BalanceBeam
+# **App Name**: HisabHoga
 
 ## Core Features:
 

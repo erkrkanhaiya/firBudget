@@ -20,7 +20,7 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     // This effect runs only on the client
-    const storedLanguage = localStorage.getItem("balancebeam-language") as Language | null;
+    const storedLanguage = localStorage.getItem("HisabHoga-language") as Language | null;
     let initialLanguage: Language = "en"; // Default to English
 
     if (storedLanguage && (storedLanguage === "en" || storedLanguage === "hi")) {
@@ -35,7 +35,7 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
     if (typeof window !== 'undefined') {
-        localStorage.setItem("balancebeam-language", lang);
+        localStorage.setItem("HisabHoga-language", lang);
     }
   }, []);
 

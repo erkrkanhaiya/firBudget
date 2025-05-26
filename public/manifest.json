@@ -1,7 +1,7 @@
 
 {
-  "name": "BalanceBeam - Smart Expense Sharing",
-  "short_name": "BalanceBeam",
+  "name": "HisabHoga - Smart Expense Sharing",
+  "short_name": "HisabHoga",
   "description": "Effortlessly manage shared expenses with friends and groups.",
   "start_url": "/dashboard",
   "display": "standalone",

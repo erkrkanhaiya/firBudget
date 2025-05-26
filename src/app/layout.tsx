@@ -10,7 +10,7 @@ import { NotificationProvider } from '@/contexts/NotificationContext'; // Import
 import { PageWrapper } from '@/components/layout/PageWrapper';
 
 export const metadata: Metadata = {
-  title: 'BalanceBeam - Smart Expense Sharing',
+  title: 'HisabHoga - Smart Expense Sharing',
   description: 'Effortlessly manage shared expenses with friends and groups.',
   manifest: '/manifest.json', // Link to the manifest file
 };
