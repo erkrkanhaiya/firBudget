@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, CreditCard, Users, CalendarDays, DollarSign as DollarSignIcon, ArrowRight } from 'lucide-react'; // Renamed DollarSign to avoid conflict
+import { AlertTriangle, CreditCard, Users, CalendarDays, DollarSign as DollarSignIcon, ArrowRight } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
 import { mockExpenses, mockUsers, mockGroups } from '@/data/mock';
@@ -12,6 +12,8 @@ import type { Expense, User as UserType, Group } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useCurrency } from '@/contexts/CurrencyContext';
+import { Skeleton } from '@/components/ui/skeleton';
+import React, { useState, useEffect } from 'react';
 
 const getInitials = (name: string | undefined) => {
   if (!name) return "U";
@@ -25,8 +27,27 @@ const getInitials = (name: string | undefined) => {
 export default function MyExpensesPage() {
   const { currentUser } = useUser();
   const { getCurrencySymbol } = useCurrency();
+  const [isLoading, setIsLoading] = useState(true);
+  const [userInvolvedExpenses, setUserInvolvedExpenses] = useState<Expense[]>([]);
 
-  if (!currentUser) {
+  useEffect(() => {
+    if (currentUser) {
+      // Simulate data fetching
+      const timer = setTimeout(() => {
+        const filteredExpenses = mockExpenses.filter(expense =>
+          expense.paidByUserId === currentUser.id ||
+          expense.participants.some(p => p.userId === currentUser.id)
+        ).sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+        setUserInvolvedExpenses(filteredExpenses);
+        setIsLoading(false);
+      }, 750); // 0.75 second delay
+      return () => clearTimeout(timer);
+    } else {
+      setIsLoading(false);
+    }
+  }, [currentUser]);
+
+  if (!currentUser && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -39,11 +60,6 @@ export default function MyExpensesPage() {
     );
   }
 
-  const userInvolvedExpenses = mockExpenses.filter(expense =>
-    expense.paidByUserId === currentUser.id ||
-    expense.participants.some(p => p.userId === currentUser.id)
-  ).sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
-
   return (
     <div className="space-y-8">
       <div>
@@ -51,12 +67,31 @@ export default function MyExpensesPage() {
         <p className="text-muted-foreground">A summary of all expenses you're involved in.</p>
       </div>
 
-      {userInvolvedExpenses.length > 0 ? (
+      {isLoading ? (
+        <div className="space-y-6">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={index} className="overflow-hidden">
+              <CardHeader className="flex flex-row items-start bg-muted/50 gap-4 p-4">
+                <Skeleton className="h-12 w-12 rounded-full border" />
+                <div className="grid gap-1 flex-1">
+                  <Skeleton className="h-6 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-4 w-1/3" />
+                </div>
+                <div className="text-right space-y-1">
+                   <Skeleton className="h-7 w-20 ml-auto" />
+                   <Skeleton className="h-5 w-24 ml-auto" />
+                </div>
+              </CardHeader>
+            </Card>
+          ))}
+        </div>
+      ) : userInvolvedExpenses.length > 0 ? (
         <div className="space-y-6">
           {userInvolvedExpenses.map((expense) => {
             const payer = mockUsers.find(u => u.id === expense.paidByUserId);
             const group = mockGroups.find(g => g.id === expense.groupId);
-            const currentUserParticipantInfo = expense.participants.find(p => p.userId === currentUser.id);
+            const currentUserParticipantInfo = expense.participants.find(p => p.userId === currentUser!.id);
 
             return (
               <Card key={expense.id} className="overflow-hidden">
@@ -70,7 +105,7 @@ export default function MyExpensesPage() {
                       {expense.description}
                     </CardTitle>
                     <CardDescription className="text-xs">
-                      Paid by {payer?.id === currentUser.id ? "You" : payer?.name || 'Unknown User'} on {format(parseISO(expense.date), "MMMM d, yyyy")}
+                      Paid by {payer?.id === currentUser!.id ? "You" : payer?.name || 'Unknown User'} on {format(parseISO(expense.date), "MMMM d, yyyy")}
                     </CardDescription>
                      {group && (
                         <p className="text-xs text-muted-foreground">
@@ -83,15 +118,14 @@ export default function MyExpensesPage() {
                         <span className="mr-1 text-muted-foreground">{getCurrencySymbol()}</span>
                         {expense.amount.toFixed(2)}
                     </div>
-                    {currentUserParticipantInfo && expense.paidByUserId !== currentUser.id && (
+                    {currentUserParticipantInfo && expense.paidByUserId !== currentUser!.id && (
                         <Badge variant="outline" className="mt-1 text-xs">Your share: {getCurrencySymbol()}{currentUserParticipantInfo.amountOwed.toFixed(2)}</Badge>
                     )}
-                    {expense.paidByUserId === currentUser.id && expense.participants.length > 1 && (
+                    {expense.paidByUserId === currentUser!.id && expense.participants.length > 1 && (
                          <Badge variant="secondary" className="mt-1 text-xs">You paid</Badge>
                     )}
                   </div>
                 </CardHeader>
-                {/* Can add CardContent for more details if needed, e.g., participant list */}
               </Card>
             );
           })}

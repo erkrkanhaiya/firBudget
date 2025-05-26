@@ -9,11 +9,34 @@ import { PlusCircle, Users, ArrowRight, AlertTriangle, Eye, Lock } from 'lucide-
 import { mockGroups } from '@/data/mock'; // Using mock data
 import { useUser } from '@/contexts/UserContext';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import React, { useState, useEffect } from 'react';
 
 export default function GroupsPage() {
   const { currentUser } = useUser();
+  const [isLoading, setIsLoading] = useState(true);
+  const [visibleGroups, setVisibleGroups] = useState<typeof mockGroups>([]);
 
-  if (!currentUser) {
+  useEffect(() => {
+    if (currentUser) {
+      // Simulate data fetching
+      const timer = setTimeout(() => {
+        const filteredGroups = mockGroups.filter(group =>
+          group.visibility === 'public' ||
+          (group.visibility === 'private' && group.members.some(member => member.id === currentUser.id))
+        );
+        setVisibleGroups(filteredGroups);
+        setIsLoading(false);
+      }, 750); // 0.75 second delay
+      return () => clearTimeout(timer);
+    } else {
+      // If no current user, might still need to set loading to false if that's the final state
+      // or handle redirection logic which might already exist or be handled by currentUser check below
+      setIsLoading(false); 
+    }
+  }, [currentUser]);
+
+  if (!currentUser && !isLoading) { // Show access denied only if not loading and no user
      return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -26,14 +49,6 @@ export default function GroupsPage() {
     );
   }
 
-  // Filter groups:
-  // - Public groups are always visible
-  // - Private groups are visible only if the current user is a member
-  const visibleGroups = mockGroups.filter(group => 
-    group.visibility === 'public' || 
-    (group.visibility === 'private' && group.members.some(member => member.id === currentUser.id))
-  );
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -41,26 +56,46 @@ export default function GroupsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Groups</h1>
           <p className="text-muted-foreground">Manage and discover shared expense groups.</p>
         </div>
-        <Button asChild size="lg">
+        <Button asChild size="lg" disabled={!currentUser}>
           <Link href="/groups/create">
             <PlusCircle className="mr-2 h-5 w-5" /> Create New Group
           </Link>
         </Button>
       </div>
 
-      {visibleGroups.length > 0 ? (
+      {isLoading ? (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Card key={index} className="flex flex-col">
+              <CardHeader>
+                <Skeleton className="aspect-video w-full mb-4 rounded-md" />
+                <Skeleton className="h-6 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-full" />
+                 <Skeleton className="h-4 w-1/2" />
+              </CardHeader>
+              <CardContent className="flex-grow space-y-2">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-5 w-1/4" />
+              </CardContent>
+              <CardFooter>
+                <Skeleton className="h-10 w-full" />
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      ) : visibleGroups.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {visibleGroups.map((group) => {
-            const isMember = group.members.some(member => member.id === currentUser.id);
+            const isMember = currentUser && group.members.some(member => member.id === currentUser.id);
             return (
               <Card key={group.id} className="flex flex-col">
                 <CardHeader>
                   {group.photoUrl && (
                     <div className="relative aspect-video w-full mb-4 rounded-md overflow-hidden">
-                      <Image 
-                        src={group.photoUrl} 
-                        alt={group.name} 
-                        layout="fill" 
+                      <Image
+                        src={group.photoUrl}
+                        alt={group.name}
+                        layout="fill"
                         objectFit="cover"
                         data-ai-hint={group.dataAiHint || "group image"}
                       />
@@ -84,8 +119,8 @@ export default function GroupsPage() {
                             <Lock className="h-3 w-3" /> Private
                         </Badge>
                     )}
-                    {isMember && group.ownerId === currentUser.id && <Badge variant="secondary">Admin</Badge>}
-                    {isMember && group.ownerId !== currentUser.id && <Badge variant="outline">Member</Badge>}
+                    {isMember && group.ownerId === currentUser!.id && <Badge variant="secondary">Admin</Badge>}
+                    {isMember && group.ownerId !== currentUser!.id && <Badge variant="outline">Member</Badge>}
                   </div>
                 </CardContent>
                 <CardFooter>

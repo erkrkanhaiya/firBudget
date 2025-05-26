@@ -11,6 +11,7 @@ import { mockActivityLog, mockUsers, mockGroups } from '@/data/mock';
 import type { ActivityLog, User as UserType } from '@/types';
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const getInitials = (name: string | undefined) => {
   if (!name) return "U";
@@ -31,17 +32,15 @@ const ClientFormattedDate: React.FC<ClientFormattedDateProps> = ({ timestamp, fo
 
   useEffect(() => {
     try {
-      // Ensure this runs only on the client
       const date = parseISO(timestamp);
       setFormattedDate(format(date, formatString));
     } catch (error) {
       console.error("Error formatting date:", error);
-      setFormattedDate("Invalid date"); // Fallback for invalid timestamps
+      setFormattedDate("Invalid date");
     }
   }, [timestamp, formatString]);
 
   if (formattedDate === null) {
-    // Render a placeholder or null during server render and initial client render
     return <span className="text-xs text-muted-foreground">Loading date...</span>;
   }
 
@@ -51,8 +50,30 @@ const ClientFormattedDate: React.FC<ClientFormattedDateProps> = ({ timestamp, fo
 
 export default function ActivityFeedPage() {
   const { currentUser } = useUser();
+  const [isLoading, setIsLoading] = useState(true);
+  const [relevantActivityLogs, setRelevantActivityLogs] = useState<ActivityLog[]>([]);
 
-  if (!currentUser) {
+  useEffect(() => {
+    if (currentUser) {
+      // Simulate data fetching
+      const timer = setTimeout(() => {
+        const userGroupIds = mockGroups
+          .filter(group => group.members.some(member => member.id === currentUser.id))
+          .map(group => group.id);
+
+        const filteredLogs = mockActivityLog
+          .filter(log => userGroupIds.includes(log.groupId))
+          .sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
+        setRelevantActivityLogs(filteredLogs);
+        setIsLoading(false);
+      }, 750); // 0.75 second delay
+      return () => clearTimeout(timer);
+    } else {
+      setIsLoading(false);
+    }
+  }, [currentUser]);
+
+  if (!currentUser && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -65,16 +86,6 @@ export default function ActivityFeedPage() {
     );
   }
 
-  // Get IDs of groups the current user is a member of
-  const userGroupIds = mockGroups
-    .filter(group => group.members.some(member => member.id === currentUser.id))
-    .map(group => group.id);
-
-  // Filter activity logs to only include those from the user's groups
-  const relevantActivityLogs = mockActivityLog
-    .filter(log => userGroupIds.includes(log.groupId))
-    .sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
-
   return (
     <div className="space-y-8">
       <div>
@@ -82,7 +93,23 @@ export default function ActivityFeedPage() {
         <p className="text-muted-foreground">Recent happenings in your groups.</p>
       </div>
 
-      {relevantActivityLogs.length > 0 ? (
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-0">
+            <ul className="divide-y divide-border">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <li key={index} className="flex items-start gap-4 p-4">
+                  <Skeleton className="h-10 w-10 rounded-full mt-1 border" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-4 w-4/5" />
+                    <Skeleton className="h-3 w-1/4" />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : relevantActivityLogs.length > 0 ? (
         <Card>
           <CardContent className="p-0">
             <ul className="divide-y divide-border">
@@ -101,7 +128,7 @@ export default function ActivityFeedPage() {
                         {log.description.startsWith(actor?.name || 'Unknown User') ? log.description.substring((actor?.name || 'Unknown User').length).trim() : log.description}
                         {group && (
                             <>
-                             {' in group '} 
+                             {' in group '}
                              <Link href={`/groups/${group.id}`} className="text-primary hover:underline font-medium">
                                 {group.name}
                              </Link>
