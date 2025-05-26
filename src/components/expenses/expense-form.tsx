@@ -26,11 +26,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Trash2 } from "lucide-react";
-import { mockUsers, currentUser, mockGroups } from "@/lib/mock-data";
+import { mockUsers, mockGroups } from "@/lib/mock-data"; // currentUser removed
 import type { User } from "@/types";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context"; // Import useAuth
 
 const NO_GROUP_SENTINEL_VALUE = "___NO_GROUP_SENTINEL___";
 
@@ -38,14 +38,14 @@ const expenseFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   totalAmount: z.coerce.number().positive("Amount must be positive"),
   paidByUserId: z.string().min(1, "Payer is required"),
-  groupId: z.string().optional(), // This will store the sentinel value if "No Group" is chosen
+  groupId: z.string().optional(), 
   splitType: z.enum(["equal", "unequal"], {
     required_error: "You need to select a split type.",
   }),
   participants: z.array(
     z.object({
       userId: z.string(),
-      name: z.string(), // For display
+      name: z.string(), 
       selected: z.boolean(),
       amountOwed: z.coerce.number().optional(),
     })
@@ -55,68 +55,123 @@ const expenseFormSchema = z.object({
     const sumOfAmounts = data.participants
       .filter(p => p.selected)
       .reduce((sum, p) => sum + (p.amountOwed || 0), 0);
-    // Allow for small floating point discrepancies
     return Math.abs(sumOfAmounts - data.totalAmount) < 0.01;
   }
   return true;
 }, {
   message: "Sum of unequal splits must equal total amount",
-  path: ["totalAmount"], // Or path: ["participants"] to show error near participant amounts
+  path: ["totalAmount"], 
 });
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
-const defaultValues: Partial<ExpenseFormValues> = {
-  title: "",
-  totalAmount: 0,
-  paidByUserId: currentUser.id,
-  // groupId is implicitly undefined here, which is correct for the placeholder to show
-  splitType: "equal",
-  participants: mockUsers.map(u => ({ userId: u.id, name: u.name, selected: u.id === currentUser.id, amountOwed: 0 })),
-};
-
 export function ExpenseForm() {
   const { toast } = useToast();
-  const form = useForm<ExpenseFormValues>({
-    resolver: zodResolver(expenseFormSchema),
-    defaultValues,
-    mode: "onChange", // Validate on change for better UX
+  const { user: authUser, loading: authLoading } = useAuth(); // Get authenticated user
+
+  // Prepare default values, ensuring paidByUserId is set once authUser is available
+  const getDefaultValues = (userId?: string): Partial<ExpenseFormValues> => ({
+    title: "",
+    totalAmount: 0,
+    paidByUserId: userId || "", // Set to empty if no user, will be updated by useEffect
+    splitType: "equal",
+    participants: mockUsers.map(u => ({ 
+      userId: u.id, 
+      name: u.name, 
+      // Select the authenticated user by default if their ID matches one in mockUsers
+      // Or, if we want to always select the current firebase user even if not in mockUsers:
+      // selected: u.id === userId,
+      // For now, we will base selection on mockUsers and authUser.uid matching.
+      // This part may need refinement based on how participants are managed (Firebase users vs. mockUsers).
+      selected: userId ? u.id === userId : false, // Simplified for now, might need better mapping if authUser.uid is not in mockUsers
+      amountOwed: 0 
+    })),
   });
 
-  const { fields, update } = useFieldArray({
+
+  const form = useForm<ExpenseFormValues>({
+    resolver: zodResolver(expenseFormSchema),
+    defaultValues: getDefaultValues(), // Initial default values
+    mode: "onChange",
+  });
+
+  useEffect(() => {
+    if (authUser && !authLoading) {
+      // Reset form with authUser.uid as default for paidByUserId and selected participant
+      // This assumes authUser.uid can be found within mockUsers for initial selection.
+      // If not, the participant selection logic would need adjustment.
+      // For now, we find a mock user that matches the authUser's ID for selection.
+      // A more robust solution would be to merge/manage a list of users from Firebase and local contacts.
+      
+      // Let's assume the first mock user is the authenticated user for simplicity in this mock setup.
+      // In a real app, you'd use authUser.uid.
+      const defaultPayerId = authUser.uid; // Use actual authUser.uid
+      
+      form.reset(getDefaultValues(defaultPayerId));
+      
+      // Manually update participants to select the authenticated user
+      // This is a bit complex due to mockUsers vs authUser.
+      // A simple approach: if authUser matches a mockUser name, select them.
+      // Or, ensure paidByUserId is selectable and defaults to the authUser.
+      
+      // Update `paidByUserId` field specifically if it's not already set by reset.
+      if (form.getValues("paidByUserId") !== defaultPayerId) {
+        form.setValue("paidByUserId", defaultPayerId);
+      }
+
+      // Update participants array to ensure the current user is selected
+      const updatedParticipants = mockUsers.map(u => ({
+        userId: u.id,
+        name: u.name,
+        selected: u.id === defaultPayerId, // This might not work if defaultPayerId (UID) is not in mockUsers
+        amountOwed: 0
+      }));
+      // To make it work with Firebase UID, we might need a different approach for participants
+      // For now, this will select the user if their UID is in mockUsers
+      form.setValue("participants", updatedParticipants, { shouldValidate: true });
+
+    }
+  }, [authUser, authLoading, form.reset, form.getValues, form.setValue, form]);
+
+
+  const { fields } = useFieldArray({ // 'update' removed as it's not used
     control: form.control,
     name: "participants",
   });
 
   const splitType = form.watch("splitType");
   const totalAmount = form.watch("totalAmount");
-  const selectedParticipants = form.watch("participants").filter(p => p.selected);
+  const selectedParticipantsCount = form.watch("participants").filter(p => p.selected).length;
+
 
   useEffect(() => {
-    if (splitType === "equal" && selectedParticipants.length > 0 && totalAmount > 0) {
-      const amountPerParticipant = totalAmount / selectedParticipants.length;
+    if (splitType === "equal" && selectedParticipantsCount > 0 && totalAmount > 0) {
+      const amountPerParticipant = totalAmount / selectedParticipantsCount;
       const updatedParticipants = form.getValues("participants").map(p => ({
         ...p,
         amountOwed: p.selected ? parseFloat(amountPerParticipant.toFixed(2)) : 0,
       }));
       form.setValue("participants", updatedParticipants, { shouldValidate: true });
-    } else if (splitType === "equal" && (selectedParticipants.length === 0 || totalAmount <= 0)) {
-      // Reset amounts if no participants or no total amount for equal split
+    } else if (splitType === "equal" && (selectedParticipantsCount === 0 || totalAmount <= 0)) {
       const updatedParticipants = form.getValues("participants").map(p => ({ ...p, amountOwed: 0 }));
       form.setValue("participants", updatedParticipants, { shouldValidate: true });
     }
-  }, [splitType, totalAmount, selectedParticipants.length, form]);
+  }, [splitType, totalAmount, selectedParticipantsCount, form]);
 
 
   function onSubmit(data: ExpenseFormValues) {
+    if (!authUser) {
+      toast({ title: "Error", description: "You must be logged in to add an expense.", variant: "destructive" });
+      return;
+    }
+
     const finalParticipants = data.participants
       .filter(p => p.selected)
       .map(p => ({
         userId: p.userId,
-        amountOwed: p.amountOwed || 0, // Ensure amountOwed is a number
+        amountOwed: p.amountOwed || 0, 
       }));
 
-    // Validate sum if unequal again before submission (refine might not catch all edge cases with dynamic updates)
     if (data.splitType === 'unequal') {
       const sumOfAmounts = finalParticipants.reduce((sum, p) => sum + p.amountOwed, 0);
       if (Math.abs(sumOfAmounts - data.totalAmount) >= 0.01) {
@@ -129,14 +184,27 @@ export function ExpenseForm() {
 
     console.log("Expense data:", {
       ...data,
-      groupId: processedGroupId, // Use the processed value
+      paidByUserId: authUser.uid, // Ensure the actual authenticated user's ID is used
+      groupId: processedGroupId,
       participants: finalParticipants,
     });
     toast({
       title: "Expense Added",
       description: `${data.title} for $${data.totalAmount.toFixed(2)} has been recorded.`,
     });
-    form.reset(defaultValues); // Reset form after submission
+    form.reset(getDefaultValues(authUser.uid)); 
+  }
+  
+  // Create a list of users for the "Paid By" dropdown.
+  // This should include the authenticated user, even if not in mockUsers.
+  const payerOptions: User[] = [...mockUsers];
+  if (authUser && !mockUsers.find(u => u.id === authUser.uid)) {
+    payerOptions.unshift({ id: authUser.uid, name: authUser.displayName || authUser.email || "You", avatarUrl: authUser.photoURL || undefined });
+  }
+
+
+  if (authLoading) {
+    return <p>Loading form...</p>; // Or a spinner
   }
 
   return (
@@ -181,16 +249,16 @@ export function ExpenseForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Paid By</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value || ""}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select who paid" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {mockUsers.map((user) => (
+                      {payerOptions.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
-                          {user.name}
+                          {user.name} {user.id === authUser?.uid && "(You)"}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -208,7 +276,7 @@ export function ExpenseForm() {
                   <FormLabel>Group (Optional)</FormLabel>
                   <Select 
                     onValueChange={field.onChange} 
-                    value={field.value === undefined ? "" : field.value} // Handle undefined for placeholder
+                    value={field.value === undefined ? "" : field.value} 
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -264,11 +332,11 @@ export function ExpenseForm() {
             
             <FormItem>
               <FormLabel>Participants</FormLabel>
-              <FormDescription>Select who was involved in this expense.</FormDescription>
+              <FormDescription>Select who was involved in this expense (including yourself if applicable).</FormDescription>
               <div className="space-y-3 pt-2">
-                {fields.map((field, index) => (
+                {fields.map((item, index) => ( // Renamed field to item to avoid conflict
                   <FormField
-                    key={field.id}
+                    key={item.id} // Use item.id for key
                     control={form.control}
                     name={`participants.${index}.selected`}
                     render={({ field: checkboxField }) => (
@@ -283,17 +351,17 @@ export function ExpenseForm() {
                               
                               const currentSplitType = form.getValues("splitType");
                               const currentTotalAmount = form.getValues("totalAmount");
-                              const currentSelectedParticipants = participants.filter(p => p.selected);
+                              const currentSelectedParticipantsCount = participants.filter(p => p.selected).length;
 
-                              if (currentSplitType === "equal" && currentSelectedParticipants.length > 0 && currentTotalAmount > 0) {
-                                const amount = currentTotalAmount / currentSelectedParticipants.length;
+                              if (currentSplitType === "equal" && currentSelectedParticipantsCount > 0 && currentTotalAmount > 0) {
+                                const amount = currentTotalAmount / currentSelectedParticipantsCount;
                                 participants.forEach(p => {
                                   if (p.selected) p.amountOwed = parseFloat(amount.toFixed(2));
                                   else p.amountOwed = 0;
                                 });
                               } else if (!checked) { 
                                 participants[index].amountOwed = 0;
-                              } else if (currentSplitType === "equal" && (currentSelectedParticipants.length === 0 || currentTotalAmount <= 0)) {
+                              } else if (currentSplitType === "equal" && (currentSelectedParticipantsCount === 0 || currentTotalAmount <= 0)) {
                                 participants.forEach(p => p.amountOwed = 0);
                               }
                               form.setValue("participants", participants, { shouldValidate: true });
@@ -303,6 +371,7 @@ export function ExpenseForm() {
                         <div className="space-y-1 leading-none w-full">
                           <FormLabel className="font-normal">
                             {form.getValues(`participants.${index}.name`)}
+                             {form.getValues(`participants.${index}.userId`) === authUser?.uid && " (You)"}
                           </FormLabel>
                           {splitType === 'unequal' && checkboxField.value && (
                             <FormField
@@ -333,16 +402,13 @@ export function ExpenseForm() {
                   />
                 ))}
               </div>
-              <FormMessage /> {/* For participants array level errors */}
+              <FormMessage />
             </FormItem>
             
-            <Button type="submit" className="w-full sm:w-auto">Add Expense</Button>
+            <Button type="submit" className="w-full sm:w-auto" disabled={authLoading || !authUser}>Add Expense</Button>
           </form>
         </Form>
       </CardContent>
     </Card>
   );
 }
-
-
-    

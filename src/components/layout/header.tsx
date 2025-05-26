@@ -2,10 +2,13 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Bell, Settings } from 'lucide-react';
-import { currentUser } from '@/lib/mock-data';
+import { useAuth } from '@/contexts/auth-context';
 
 export function Header() {
-  const getInitials = (name: string) => {
+  const { user } = useAuth();
+
+  const getInitials = (name?: string | null) => {
+    if (!name) return "?";
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
   
@@ -24,10 +27,12 @@ export function Header() {
         <Button variant="ghost" size="icon" aria-label="Settings">
           <Settings className="h-5 w-5" />
         </Button>
-        <Avatar className="h-9 w-9">
-          <AvatarImage src={currentUser.avatarUrl} alt={currentUser.name} data-ai-hint="user profile" />
-          <AvatarFallback>{getInitials(currentUser.name)}</AvatarFallback>
-        </Avatar>
+        {user && (
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={user.photoURL || undefined} alt={user.displayName || "User"} data-ai-hint="user profile" />
+            <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+          </Avatar>
+        )}
       </div>
     </header>
   );

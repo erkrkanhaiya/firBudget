@@ -1,3 +1,4 @@
+// src/app/page.tsx (DashboardPage)
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -7,27 +8,32 @@ import { PlusCircle, ArrowRightLeft } from "lucide-react";
 import Link from "next/link";
 import { DebtCard } from "@/components/dashboard/debt-card";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
-import { mockExpenses, currentUser, calculateCurrentUserDebts } from "@/lib/mock-data";
+import { mockExpenses, mockUsers, calculateCurrentUserDebts } from "@/lib/mock-data"; // calculateCurrentUserDebts might need auth user
 import type { Debt } from "@/types";
+import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 
 export default function DashboardPage() {
+  const { user } = useAuth(); // Get authenticated user
   const [userDebts, setUserDebts] = useState<{ owedToUser: Debt[], userOwes: Debt[] }>({ owedToUser: [], userOwes: [] });
   const [totalOwedToUser, setTotalOwedToUser] = useState(0);
   const [totalUserOwes, setTotalUserOwes] = useState(0);
 
   useEffect(() => {
-    const debts = calculateCurrentUserDebts(currentUser.id);
-    setUserDebts(debts);
-    setTotalOwedToUser(debts.owedToUser.reduce((sum, debt) => sum + debt.amount, 0));
-    setTotalUserOwes(debts.userOwes.reduce((sum, debt) => sum + debt.amount, 0));
-  }, []);
+    // Note: calculateCurrentUserDebts currently uses mockData's currentUser.
+    // This will need to be refactored to use the actual authenticated user's ID (user.uid)
+    // and potentially fetch real data instead of mockDebts.
+    // For now, we'll keep it as is for UI demonstration with mock data.
+    if (user) { // Ensure user is loaded before calculating debts
+      // Ideally, replace 'user1' (mock currentUser.id) with user.uid when mock data is replaced
+      const debts = calculateCurrentUserDebts(mockUsers[0].id); // Still using mock user for debt calculation
+      setUserDebts(debts);
+      setTotalOwedToUser(debts.owedToUser.reduce((sum, debt) => sum + debt.amount, 0));
+      setTotalUserOwes(debts.userOwes.reduce((sum, debt) => sum + debt.amount, 0));
+    }
+  }, [user]); // Add user to dependency array
 
   const handleSettleDebt = (debtId: string) => {
-    // In a real app, this would trigger a settlement process
-    // For now, we can log it or update mock data if persistent state is managed
     console.log(`Attempting to settle debt ID: ${debtId}`);
-    // Potentially redirect to /settle-up page with pre-filled data
-    // router.push(`/settle-up?debtId=${debtId}`);
   };
 
   return (
@@ -35,7 +41,8 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back, {currentUser.name}!</p>
+          {/* Use authenticated user's name */}
+          <p className="text-muted-foreground">Welcome back, {user?.displayName || 'User'}!</p>
         </div>
         <div className="flex gap-2">
           <Button asChild>
