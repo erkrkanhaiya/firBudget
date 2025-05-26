@@ -10,6 +10,7 @@ import { useUser } from '@/contexts/UserContext';
 import { mockActivityLog, mockUsers, mockGroups } from '@/data/mock';
 import type { ActivityLog, User as UserType } from '@/types';
 import { format, parseISO } from 'date-fns';
+import React, { useState, useEffect } from 'react';
 
 const getInitials = (name: string | undefined) => {
   if (!name) return "U";
@@ -19,6 +20,34 @@ const getInitials = (name: string | undefined) => {
   }
   return name.substring(0, 2).toUpperCase();
 };
+
+interface ClientFormattedDateProps {
+  timestamp: string;
+  formatString?: string;
+}
+
+const ClientFormattedDate: React.FC<ClientFormattedDateProps> = ({ timestamp, formatString = "MMMM d, yyyy 'at' h:mm a" }) => {
+  const [formattedDate, setFormattedDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      // Ensure this runs only on the client
+      const date = parseISO(timestamp);
+      setFormattedDate(format(date, formatString));
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      setFormattedDate("Invalid date"); // Fallback for invalid timestamps
+    }
+  }, [timestamp, formatString]);
+
+  if (formattedDate === null) {
+    // Render a placeholder or null during server render and initial client render
+    return <span className="text-xs text-muted-foreground">Loading date...</span>;
+  }
+
+  return <>{formattedDate}</>;
+};
+
 
 export default function ActivityFeedPage() {
   const { currentUser } = useUser();
@@ -80,7 +109,7 @@ export default function ActivityFeedPage() {
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {format(parseISO(log.timestamp), "MMMM d, yyyy 'at' h:mm a")}
+                        <ClientFormattedDate timestamp={log.timestamp} />
                       </p>
                     </div>
                   </li>
