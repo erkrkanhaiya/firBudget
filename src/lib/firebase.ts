@@ -7,13 +7,13 @@ import { getAuth } from "firebase/auth";
 // TODO: Add your own Firebase SDK Configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  measurementId: "YOUR_MEASUREMENT_ID" // Optional
+  apiKey: "AIzaSyCNEklORNvPRUdAKHGdD4o7gPM8uQoeJqA",
+  authDomain: "sharesync-79.firebaseapp.com",
+  projectId: "sharesync-79",
+  storageBucket: "sharesync-79.firebasestorage.app",
+  messagingSenderId: "671455925326",
+  appId: "1:671455925326:web:3fa80f2bad88a6eb3f1f1f",
+  measurementId: "G-C9PVNR9EZZ"
 };
 
 // Initialize Firebase

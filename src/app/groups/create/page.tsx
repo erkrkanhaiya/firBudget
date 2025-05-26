@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react'; // Added useEffect
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -11,41 +11,88 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus, Lock, Unlock, Contact, Loader2 } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
-import { mockUsers } from '@/data/mock'; 
+// import { mockUsers } from '@/data/mock'; // Keep for potential contact suggestions if needed, but primary member selection is dynamic
 import { useToast } from "@/hooks/use-toast";
 import type { User, GroupVisibility, Group } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import NextImage from 'next/image'; // Renamed to avoid conflict with ImageIcon
+import NextImage from 'next/image';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { db } from '@/lib/firebase'; // Firebase setup
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where } from 'firebase/firestore';
+
+// Helper to get initials
+const getInitials = (name: string | null | undefined): string => {
+  if (!name) return 'U';
+  const names = name.split(' ');
+  if (names.length > 1) {
+    return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+};
 
 export default function CreateGroupPage() {
   const router = useRouter();
-  const { currentUser } = useUser();
+  const { currentUser, isLoadingAuth } = useUser();
   const { toast } = useToast();
 
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
   const [groupPhoto, setGroupPhoto] = useState<File | null>(null);
   const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
-  const [selectedMembers, setSelectedMembers] = useState<User[]>(currentUser ? [currentUser] : []);
+  const [selectedMembers, setSelectedMembers] = useState<User[]>([]); // Start with empty, add current user in useEffect
   const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
   const [isImporting, setIsImporting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [allPotentialMembers, setAllPotentialMembers] = useState<User[]>([]); // For contact suggestion
 
-  if (!currentUser) {
-    return (
+  // Add current user to selectedMembers once currentUser is available
+  useEffect(() => {
+    if (currentUser && !selectedMembers.some(m => m.id === currentUser.id)) {
+      setSelectedMembers([currentUser]);
+    }
+  }, [currentUser, selectedMembers]);
+
+  // Fetch a list of users for the "Add Members" section (mock for now)
+  // In a real app, you'd fetch users from your database or a search API
+  useEffect(() => {
+    const fetchUsers = async () => {
+      // This is just a placeholder. Replace with actual user fetching logic if needed.
+      // For now, using a static list of mock users.
+      // const mockSystemUsers = mockUsers.filter(u => u.id !== currentUser?.id); // Exclude current user if already added
+      // setAllPotentialMembers(mockSystemUsers);
+      // For a real scenario with Firestore, you might query users collection:
+      // const usersSnapshot = await getDocs(collection(db, "users"));
+      // const usersList = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+      // setAllPotentialMembers(usersList.filter(u => u.id !== currentUser?.id));
+    };
+    fetchUsers();
+  }, [currentUser]);
+
+
+  if (isLoadingAuth) {
+     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
         <Loader2 className="w-16 h-16 text-primary animate-spin mb-4" />
-        <p className="text-lg text-muted-foreground">Loading user data or redirecting to login...</p>
+        <p className="text-lg text-muted-foreground">Loading user data...</p>
       </div>
     )
+  }
+
+  if (!currentUser) {
+    // This should ideally be caught by a layout guard or middleware in a real app
+    // For now, redirecting if user context isn't loaded (implies not logged in)
+    router.push('/login');
+    return ( // Render something minimal while redirecting
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
+        <p className="text-lg text-muted-foreground">Redirecting to login...</p>
+      </div>
+    );
   }
 
   const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
+      // TODO: Add file size and type validation
       setGroupPhoto(file);
       setGroupPhotoPreview(URL.createObjectURL(file));
     }
@@ -72,19 +119,22 @@ export default function CreateGroupPage() {
 
     setIsImporting(true);
     try {
-      const contacts = await (navigator as any).contacts.select(['name', 'email'], { multiple: true });
+      const contacts = await (navigator as any).contacts.select(['name', 'email', 'tel', 'icon'], { multiple: true });
       if (contacts.length > 0) {
-        const newMembers: User[] = contacts.map((contact: any) => ({
-          id: contact.email?.[0] || `contact-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        const newMembers: User[] = contacts.map((contact: any, index: number) => ({
+          // Use email as ID if available, otherwise a temporary ID.
+          // In a real app, you'd check if these users already exist by email.
+          id: contact.email?.[0] || `imported-${Date.now()}-${index}`, 
           name: contact.name?.[0] || 'Unknown Contact',
-          email: contact.email?.[0] || '',
-          avatarUrl: undefined, 
+          email: contact.email?.[0] || null,
+          avatarUrl: contact.icon?.[0] ? URL.createObjectURL(contact.icon[0]) : undefined,
         }));
 
         setSelectedMembers(prevSelected => {
           const updatedMembers = [...prevSelected];
           newMembers.forEach(newMember => {
-            if (newMember.id !== currentUser.id && !updatedMembers.some(m => m.id === newMember.id)) {
+            // Add if not current user and not already selected (check by ID or email if ID is temp)
+            if (newMember.id !== currentUser.id && !updatedMembers.some(m => m.id === newMember.id || (m.email && newMember.email && m.email === newMember.email))) {
               updatedMembers.push(newMember);
             }
           });
@@ -92,14 +142,11 @@ export default function CreateGroupPage() {
         });
 
         toast({
-          title: "Contacts Imported",
-          description: `${newMembers.length} contact(s) processed. Please review selected members.`,
+          title: "Contacts Processed",
+          description: `${newMembers.length} contact(s) processed. Review selected members.`,
         });
       } else {
-        toast({
-          title: "No Contacts Selected",
-          variant: "default",
-        });
+        toast({ title: "No Contacts Selected" });
       }
     } catch (error) {
       console.error("Error importing contacts:", error);
@@ -116,31 +163,49 @@ export default function CreateGroupPage() {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!groupName.trim()) {
-      toast({ title: "Group name required", description: "Please enter a name for your group.", variant: "destructive" });
+      toast({ title: "Group name required", variant: "destructive" });
       return;
     }
-    if (!currentUser) {
-      toast({ title: "Error", description: "User not found. Please log in again.", variant: "destructive" });
+    if (!currentUser) { // Should be redundant due to check above, but good practice
+      toast({ title: "User not authenticated", variant: "destructive" });
+      return;
+    }
+    if (selectedMembers.length === 0) {
+      toast({ title: "Add Members", description: "A group must have at least one member (you).", variant: "destructive" });
       return;
     }
 
     setIsSubmitting(true);
 
-    // In a real app, you'd upload groupPhoto to Firebase Storage and get the URL
-    const photoURL = groupPhotoPreview; // For now, use preview or a placeholder logic
+    let photoURLToSave = '';
+    if (groupPhoto && groupPhotoPreview) {
+      // In a real app: Upload groupPhoto to Firebase Storage, get download URL
+      // For now, using placeholder/preview or you can implement Firebase Storage upload here
+      // e.g., const storageRef = ref(storage, `group-photos/${groupId}/${groupPhoto.name}`);
+      //      await uploadBytes(storageRef, groupPhoto);
+      //      photoURLToSave = await getDownloadURL(storageRef);
+      photoURLToSave = groupPhotoPreview; // Using preview as placeholder
+    }
+
+    // Ensure member IDs are unique strings
+    const memberIds = selectedMembers.map(m => m.id);
+    const uniqueMemberIds = Array.from(new Set(memberIds));
 
     const groupDataToSave = {
       name: groupName,
       description: groupDescription,
-      photoUrl: photoURL || '', // Store actual URL from Firebase Storage in real app
-      dataAiHint: '', // Can be added later
+      photoUrl: photoURLToSave,
+      dataAiHint: '', 
       ownerId: currentUser.id,
-      // Store member IDs for querying, or full User objects if small and denormalization is acceptable.
-      // For simplicity here, storing User-like objects with id, name, email.
-      // In a robust system, typically store member IDs and fetch details as needed, or denormalize carefully.
-      members: selectedMembers.map(m => ({ id: m.id, name: m.name, email: m.email, avatarUrl: m.avatarUrl || '' })),
+      members: selectedMembers.map(m => ({ // Store member display info
+        id: m.id, 
+        name: m.name, 
+        email: m.email, 
+        avatarUrl: m.avatarUrl || '' 
+      })),
+      memberIds: uniqueMemberIds, // Store array of member IDs for querying
       visibility: groupVisibility,
-      createdAt: serverTimestamp(), // Firestore server-side timestamp
+      createdAt: serverTimestamp() as Timestamp, // Use Firestore server timestamp
     };
 
     try {
@@ -154,7 +219,7 @@ export default function CreateGroupPage() {
       console.error("Error creating group:", error);
       toast({
         title: "Error Creating Group",
-        description: (error as Error).message || "Could not save group to database.",
+        description: (error instanceof Error ? error.message : "Could not save group to database."),
         variant: "destructive",
       });
     } finally {
@@ -162,20 +227,6 @@ export default function CreateGroupPage() {
     }
   };
   
-  const getInitials = (name: string | undefined) => {
-    if (!name) return 'U';
-    const names = name.split(' ');
-    if (names.length > 1) {
-      return names[0][0] + names[names.length - 1][0];
-    }
-    return name.substring(0, 2).toUpperCase();
-  };
-
-  const allPotentialMembers = [...mockUsers];
-  if (currentUser && !mockUsers.find(u => u.id === currentUser.id)) {
-    allPotentialMembers.unshift(currentUser); 
-  }
-
   return (
     <div className="max-w-2xl mx-auto">
       <Button variant="outline" size="sm" asChild className="mb-4">
@@ -273,30 +324,45 @@ export default function CreateGroupPage() {
               </div>
               <Card className="mt-1">
                 <CardContent className="p-4 max-h-60 overflow-y-auto space-y-2">
-                  {allPotentialMembers.map(user => (
+                 {/* Display current user (admin) first and disabled */}
+                  {currentUser && (
+                     <div key={currentUser.id} className="flex items-center justify-between p-2 rounded-md bg-muted cursor-not-allowed">
+                        <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                            <AvatarImage src={currentUser.avatarUrl || undefined} alt={currentUser.name || ''} />
+                            <AvatarFallback>{getInitials(currentUser.name)}</AvatarFallback>
+                            </Avatar>
+                            <span>{currentUser.name} (You - Admin)</span>
+                        </div>
+                        <Users className="h-5 w-5 text-primary" />
+                    </div>
+                  )}
+                  {/* Display other potential members from a fetched list (placeholder logic for now) */}
+                  {allPotentialMembers.filter(u => u.id !== currentUser?.id).map(user => (
                     <div key={user.id} 
-                         className={`flex items-center justify-between p-2 rounded-md ${user.id === currentUser.id ? 'bg-muted cursor-not-allowed' : (isSubmitting ? 'cursor-not-allowed opacity-70' : 'hover:bg-accent cursor-pointer')}`}
+                         className={`flex items-center justify-between p-2 rounded-md ${isSubmitting ? 'cursor-not-allowed opacity-70' : 'hover:bg-accent cursor-pointer'}`}
                          onClick={() => !isSubmitting && toggleMemberSelection(user)}>
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={user.avatarUrl} alt={user.name} />
+                          <AvatarImage src={user.avatarUrl || undefined} alt={user.name || ''} />
                           <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                         </Avatar>
-                        <span>{user.name} {user.id === currentUser.id && "(You - Admin)"}</span>
+                        <span>{user.name}</span>
                       </div>
                       {selectedMembers.find(m => m.id === user.id) ? 
                         <Users className="h-5 w-5 text-primary" /> :
-                        (user.id !== currentUser.id && <UserPlus className="h-5 w-5 text-muted-foreground" />)
+                        <UserPlus className="h-5 w-5 text-muted-foreground" />
                       }
                     </div>
                   ))}
-                  {selectedMembers.filter(sm => !allPotentialMembers.some(pm => pm.id === sm.id) && sm.id !== currentUser.id).map(user => (
+                   {/* Display newly imported/selected members who are not the current user */}
+                  {selectedMembers.filter(sm => sm.id !== currentUser?.id && !allPotentialMembers.some(pm => pm.id === sm.id)).map(user => (
                      <div key={user.id} 
                           className={`flex items-center justify-between p-2 rounded-md bg-accent/50 ${isSubmitting ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
                           onClick={() => !isSubmitting && toggleMemberSelection(user)}>
                        <div className="flex items-center gap-3">
                          <Avatar className="h-8 w-8">
-                           <AvatarImage src={user.avatarUrl} alt={user.name} />
+                           <AvatarImage src={user.avatarUrl || undefined} alt={user.name || ''} />
                            <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                          </Avatar>
                          <div className="flex flex-col">
@@ -309,7 +375,9 @@ export default function CreateGroupPage() {
                   ))}
                 </CardContent>
               </Card>
-              <p className="text-xs text-muted-foreground mt-1">Selected members: {selectedMembers.map(m => m.name).join(', ') || 'None (besides you)'}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Selected members: {selectedMembers.map(m => m.name).join(', ') || 'None (besides you)'}
+              </p>
             </div>
           </CardContent>
           <CardFooter className="border-t px-6 py-4">

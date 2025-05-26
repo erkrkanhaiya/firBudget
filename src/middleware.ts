@@ -1,42 +1,30 @@
+
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// This is a conceptual middleware.
-// In a real app, you'd check for a valid session token (e.g., from a cookie).
-// For this demo, it doesn't actually check authentication state as that's client-side.
-// A proper auth solution would involve httpOnly cookies or server-side session management.
+// This middleware is currently conceptual and doesn't enforce strict auth checks
+// because Firebase client-side auth is handled differently.
+// True server-side protection would require Firebase Session Cookies or ID token verification.
 
-const PROTECTED_ROUTES = ['/dashboard', '/groups', '/profile', '/expenses', '/activity'];
-const AUTH_ROUTES = ['/login', '/signup']; // Example, signup not implemented
+// const PROTECTED_ROUTES = ['/dashboard', '/groups', '/profile', '/expenses', '/activity'];
+// const AUTH_ROUTES = ['/login', '/signup']; 
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // This is a simplified check. In a real app, verify an actual auth token.
-  // For now, we're assuming if they go to login, they are not "authenticated" for this purpose.
-  const isAuthenticated = request.cookies.has('auth-token-placeholder'); // Placeholder
+  // Client-side UserContext and Firebase onAuthStateChanged will handle most redirect logic
+  // based on authentication state. This middleware can be kept simple or used for other purposes
+  // like localization redirects or A/B testing in a more advanced setup.
 
-  if (PROTECTED_ROUTES.some(route => pathname.startsWith(route))) {
-    if (!isAuthenticated && pathname !== '/login') { // Allow access to login page itself
-      // If trying to access a protected route without being "authenticated", redirect to login.
-      // But since our auth is client-side mocked, this won't effectively protect server-rendered content.
-      // This is more of a navigation hint for client-side routing.
-      // For actual protection, you'd handle this server-side or with proper session cookies.
-      // return NextResponse.redirect(new URL('/login', request.url));
-    }
-  }
-
-  if (AUTH_ROUTES.some(route => pathname.startsWith(route))) {
-    if (isAuthenticated) {
-      // If "authenticated" and trying to access login/signup, redirect to dashboard.
-      // return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
-  }
+  // Example: If you wanted to redirect all root access to /dashboard if a certain cookie exists
+  // (though not the Firebase auth token directly):
+  // if (pathname === '/' && request.cookies.has('some-app-preference-cookie')) {
+  //   return NextResponse.redirect(new URL('/dashboard', request.url));
+  // }
 
   return NextResponse.next();
 }
 
-// See "Matching Paths" below to learn more
 export const config = {
   matcher: [
     /*
@@ -45,7 +33,9 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - manifest.json (PWA manifest)
+     * - icons/ (PWA icons)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|icons/).*)',
   ],
 };

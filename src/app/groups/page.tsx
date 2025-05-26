@@ -10,86 +10,97 @@ import { useUser } from '@/contexts/UserContext';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import React, { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase'; // Firebase setup
+import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, Timestamp, or } from 'firebase/firestore';
 import type { Group as GroupType } from '@/types'; // Ensure Group type is imported
 
 export default function GroupsPage() {
-  const { currentUser } = useUser();
-  const [isLoading, setIsLoading] = useState(true);
+  const { currentUser, isLoadingAuth } = useUser();
+  const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const [visibleGroups, setVisibleGroups] = useState<GroupType[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchGroups = async () => {
+      if (isLoadingAuth) return; // Wait for auth state to be determined
+
       if (!currentUser) {
-        setIsLoading(false);
-        // No need to fetch if user is not logged in, access denied message will show
+        setIsLoadingGroups(false);
+        // No need to fetch if user is not logged in; page will show access denied.
         return;
       }
-      setIsLoading(true);
+
+      setIsLoadingGroups(true);
       setError(null);
       try {
         const groupsCollectionRef = collection(db, 'groups');
         
-        // Query for public groups OR private groups where the current user is a member
-        // Firestore 'array-contains' can check for membership.
-        // For complex OR queries on different fields, you might need multiple queries and merge client-side,
-        // or structure data to support it (e.g., a field combining visibility and member IDs).
-        // For simplicity, we'll fetch public groups and user's private groups separately if needed,
-        // or adjust data model (e.g. add a 'viewableBy' array field).
-        // Current approach: fetch all groups and filter client-side based on visibility and membership.
-        // This is not ideal for large datasets but works for smaller ones.
-        // A more scalable approach would use specific queries.
-
-        const qPublic = query(groupsCollectionRef, where("visibility", "==", "public"));
-        const qPrivateMember = query(groupsCollectionRef, 
+        // Query for public groups OR private groups where the current user is a member.
+        // Firestore allows 'array-contains' for checking membership in an array of IDs.
+        const publicGroupsQuery = query(groupsCollectionRef, where("visibility", "==", "public"));
+        const privateMemberGroupsQuery = query(groupsCollectionRef, 
           where("visibility", "==", "private"),
-          where("members", "array-contains", currentUser.id) // Assumes members array stores user IDs
+          where("memberIds", "array-contains", currentUser.id)
         );
-        
-        // Due to Firestore limitations (can't do OR on different fields like this easily),
-        // we fetch all and filter, or do two queries and merge.
-        // For this example, let's fetch all documents and filter client-side for simplicity,
-        // acknowledging this isn't optimal for very large collections.
-        
-        const querySnapshot = await getDocs(groupsCollectionRef);
-        const groupsData: GroupType[] = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          // Convert Firestore Timestamp to ISO string for consistency with existing type
-          const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt;
-          
-          // Assuming members are stored as an array of user IDs or objects with an id property
-          const membersArray = Array.isArray(data.members) ? data.members.map(member => typeof member === 'string' ? { id: member } : member) : [];
 
-          groupsData.push({ 
+        const [publicSnapshot, privateMemberSnapshot] = await Promise.all([
+          getDocs(publicGroupsQuery),
+          getDocs(privateMemberGroupsQuery)
+        ]);
+
+        const groupsMap = new Map<string, GroupType>();
+
+        publicSnapshot.forEach((doc) => {
+          const data = doc.data();
+          const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(data.createdAt).toISOString();
+          groupsMap.set(doc.id, { 
             id: doc.id, 
             ...data,
-            members: membersArray, // Ensure members is an array of User-like objects (with at least id)
-            createdAt: createdAt 
+            members: data.members || [], // Ensure members array exists
+            memberIds: data.memberIds || [], // Ensure memberIds array exists
+            createdAt
           } as GroupType);
         });
 
-        const filtered = groupsData.filter(group =>
-          group.visibility === 'public' ||
-          (group.visibility === 'private' && group.members.some(member => member.id === currentUser.id))
-        );
+        privateMemberSnapshot.forEach((doc) => {
+          if (!groupsMap.has(doc.id)) { // Avoid duplicates if a group is somehow public AND user is member
+            const data = doc.data();
+            const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(data.createdAt).toISOString();
+            groupsMap.set(doc.id, { 
+              id: doc.id, 
+              ...data,
+              members: data.members || [],
+              memberIds: data.memberIds || [],
+              createdAt
+            } as GroupType);
+          }
+        });
         
-        setVisibleGroups(filtered);
+        const sortedGroups = Array.from(groupsMap.values()).sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        setVisibleGroups(sortedGroups);
 
       } catch (err) {
         console.error("Error fetching groups:", err);
         setError("Failed to load groups. Please try again.");
       } finally {
-        setIsLoading(false);
+        setIsLoadingGroups(false);
       }
     };
 
     fetchGroups();
-  }, [currentUser]);
+  }, [currentUser, isLoadingAuth]);
 
-  if (!currentUser && !isLoading) {
+  if (isLoadingAuth) {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!currentUser) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -109,7 +120,7 @@ export default function GroupsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Groups</h1>
           <p className="text-muted-foreground">Manage and discover shared expense groups.</p>
         </div>
-        <Button asChild size="lg" disabled={!currentUser || isLoading}>
+        <Button asChild size="lg" disabled={!currentUser}>
           <Link href="/groups/create">
             <PlusCircle className="mr-2 h-5 w-5" /> Create New Group
           </Link>
@@ -126,7 +137,7 @@ export default function GroupsPage() {
         </Card>
       )}
 
-      {isLoading ? (
+      {isLoadingGroups ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <Card key={index} className="flex flex-col">
@@ -149,21 +160,26 @@ export default function GroupsPage() {
       ) : !error && visibleGroups.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {visibleGroups.map((group) => {
-            const isMember = currentUser && group.members.some(member => member.id === currentUser.id);
+            const isMember = currentUser && group.memberIds.includes(currentUser.id);
             return (
               <Card key={group.id} className="flex flex-col">
                 <CardHeader>
-                  {group.photoUrl && (
+                  {group.photoUrl ? (
                     <div className="relative aspect-video w-full mb-4 rounded-md overflow-hidden">
                       <Image
                         src={group.photoUrl}
                         alt={group.name}
-                        fill // Use fill instead of layout="fill" objectFit="cover"
+                        fill
                         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                         className="object-cover"
                         data-ai-hint={group.dataAiHint || "group image"}
+                        priority={false} // Set to true for above-the-fold images if any
                       />
                     </div>
+                  ) : (
+                     <div className="relative aspect-video w-full mb-4 rounded-md overflow-hidden bg-muted flex items-center justify-center">
+                        <Users className="h-16 w-16 text-muted-foreground" />
+                     </div>
                   )}
                   <CardTitle className="text-xl">{group.name}</CardTitle>
                   <CardDescription className="truncate h-10">{group.description || 'No description provided.'}</CardDescription>
@@ -171,7 +187,7 @@ export default function GroupsPage() {
                 <CardContent className="flex-grow space-y-2">
                   <div className="flex items-center text-sm text-muted-foreground">
                     <Users className="mr-2 h-4 w-4" />
-                    <span>{group.members.length} member{group.members.length === 1 ? '' : 's'}</span>
+                    <span>{group.memberIds.length} member{group.memberIds.length === 1 ? '' : 's'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {group.visibility === 'public' ? (
@@ -183,7 +199,7 @@ export default function GroupsPage() {
                         <Lock className="h-3 w-3" /> Private
                       </Badge>
                     )}
-                    {isMember && group.ownerId === currentUser!.id && <Badge variant="secondary">Admin</Badge>}
+                    {isMember && group.ownerId === currentUser!.id && <Badge variant="default" className="bg-primary/80">Admin</Badge>}
                     {isMember && group.ownerId !== currentUser!.id && <Badge variant="outline">Member</Badge>}
                   </div>
                 </CardContent>
@@ -204,9 +220,9 @@ export default function GroupsPage() {
           <Card className="col-span-full">
             <CardContent className="p-10 text-center">
               <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No groups available.</h3>
+              <h3 className="text-xl font-semibold mb-2">No groups found.</h3>
               <p className="text-muted-foreground mb-4">
-                Create a group or explore public groups once they are available.
+                Create a group, or check back later if you're expecting an invitation. Public groups will also appear here.
               </p>
               <Button asChild>
                 <Link href="/groups/create">

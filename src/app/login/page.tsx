@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -6,15 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogIn } from 'lucide-react';
+import { LogIn, Loader2 } from 'lucide-react'; // Added Loader2
 import { useUser } from '@/contexts/UserContext';
-import { mockUser } from '@/data/mock'; // Using mockUser for demo login
 import { AppLogo } from '@/components/AppLogo';
 import { useToast } from '@/hooks/use-toast';
+import { FirebaseError } from 'firebase/app'; // Import FirebaseError for better error handling
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useUser();
+  const { login } = useUser(); // login function now returns a promise and handles Firebase auth
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,26 +25,41 @@ export default function LoginPage() {
     event.preventDefault();
     setIsLoading(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // In a real app, you'd validate credentials against a backend.
-    // For this demo, we'll "log in" the mockUser if email matches.
-    if (email === mockUser.email) {
-      login(mockUser);
+    try {
+      const firebaseUser = await login(email, password); // Call the context's login function
       toast({
         title: "Login Successful",
-        description: `Welcome back, ${mockUser.name}!`,
+        description: `Welcome back, ${firebaseUser.displayName || firebaseUser.email}!`,
       });
-      router.push('/dashboard');
-    } else {
+      router.push('/dashboard'); // Redirect to dashboard on successful login
+    } catch (error) {
+      let errorMessage = "An unknown error occurred. Please try again.";
+      if (error instanceof FirebaseError) {
+        switch (error.code) {
+          case 'auth/user-not-found':
+          case 'auth/wrong-password':
+          case 'auth/invalid-credential':
+            errorMessage = "Invalid email or password.";
+            break;
+          case 'auth/invalid-email':
+            errorMessage = "Please enter a valid email address.";
+            break;
+          default:
+            errorMessage = "Login failed. Please try again.";
+            break;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      console.error("Login error:", error);
       toast({
         title: "Login Failed",
-        description: "Invalid email or password. (Hint: use alex.johnson@example.com)",
+        description: errorMessage,
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (
@@ -67,6 +83,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
                 disabled={isLoading}
               />
             </div>
@@ -79,12 +96,13 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
                 disabled={isLoading}
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-foreground"></div>
+                <Loader2 className="animate-spin h-5 w-5" /> // Use Loader2
               ) : (
                 <>
                   <LogIn className="mr-2 h-4 w-4" /> Log In
@@ -93,7 +111,6 @@ export default function LoginPage() {
             </Button>
           </form>
         </CardContent>
-        {/* Optional: Add links for "Forgot Password?" or "Sign Up" here */}
       </Card>
     </div>
   );
