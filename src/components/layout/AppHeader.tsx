@@ -19,14 +19,15 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-// Mock notifications data - kept as static examples
-const mockNotifications = [
+// Mock notifications data - kept as static examples but will be managed in state
+const initialMockNotifications = [
   { id: '1', type: 'info', title: 'New Expense Feature', message: 'You can now add expenses to your groups!', time: '2h ago', read: false, href: '/groups' },
   { id: '2', type: 'alert', title: 'Invite Friends', message: 'Remember to invite your friends to collaborate.', time: '1d ago', read: false, href: '/groups/create' },
   { id: '3', type: 'success', title: 'Welcome to BalanceBeam!', message: 'Start by creating a group or joining one.', time: '3d ago', read: true, href: '/dashboard' },
+  { id: '4', type: 'info', title: 'Profile Update', message: 'You can update your profile picture now.', time: '5h ago', read: false, href: '/profile'},
 ];
 
 
@@ -40,8 +41,7 @@ export function AppHeader() {
   const { currentUser, logout } = useUser();
   const { translate } = useLanguage();
   const router = useRouter();
-  // Notifications are now static examples
-  const notifications = mockNotifications; 
+  const [notifications, setNotifications] = useState(initialMockNotifications);
 
   const handleLogout = async () => {
     await logout(); 
@@ -58,14 +58,23 @@ export function AppHeader() {
     return "U";
   };
 
-  // Unread count is removed as notifications are static examples
-  // const unreadNotificationsCount = notifications.filter(n => !n.read).length;
+  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
-  const handleNotificationClick = (href?: string) => {
-    // Mark as read functionality is removed for static example
+  const handleNotificationClick = (notificationId: string, href?: string) => {
+    setNotifications(prevNotifications =>
+      prevNotifications.map(n =>
+        n.id === notificationId ? { ...n, read: true } : n
+      )
+    );
     if (href) {
       router.push(href);
     }
+  };
+
+  const handleMarkAllAsRead = () => {
+    setNotifications(prevNotifications =>
+      prevNotifications.map(n => ({ ...n, read: true }))
+    );
   };
 
   return (
@@ -82,10 +91,9 @@ export function AppHeader() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full relative">
               <Bell className="h-5 w-5" />
-              {/* Static badge example, or remove if not desired for mock data */}
-              {notifications.some(n => !n.read) && ( 
+              {unreadNotificationsCount > 0 && ( 
                 <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 p-0 justify-center text-xs">
-                  {notifications.filter(n => !n.read).length}
+                  {unreadNotificationsCount}
                 </Badge>
               )}
               <span className="sr-only">Toggle notifications</span>
@@ -93,8 +101,12 @@ export function AppHeader() {
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-80 sm:w-96" align="end">
             <DropdownMenuLabel className="flex justify-between items-center">
-              <span>Notifications (Examples)</span>
-              {/* Mark all as read button removed */}
+              <span>Notifications</span>
+              {unreadNotificationsCount > 0 && (
+                <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={handleMarkAllAsRead}>
+                  Mark all as read
+                </Button>
+              )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {notifications.length > 0 ? (
@@ -102,23 +114,24 @@ export function AppHeader() {
                 {notifications.map((notification) => (
                   <DropdownMenuItem 
                     key={notification.id} 
-                    className={`cursor-pointer flex items-start gap-3 p-3`}
-                    onClick={() => handleNotificationClick(notification.href)}
-                    // Styling for read/unread removed as it's static
+                    className={`cursor-pointer flex items-start gap-3 p-3 ${!notification.read ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/50'}`}
+                    onClick={() => handleNotificationClick(notification.id, notification.href)}
                   >
                     <NotificationIcon type={notification.type} />
                     <div className="flex-1">
-                      <p className={`text-sm font-medium text-foreground`}>{notification.title}</p>
-                      <p className={`text-xs text-foreground/80`}>{notification.message}</p>
+                      <p className={`text-sm font-medium ${!notification.read ? 'text-primary-foreground group-[.bg-primary/5]:text-primary group-[.bg-primary/10]:text-primary' : 'text-foreground'}`}>{notification.title}</p>
+                      <p className={`text-xs ${!notification.read ? 'text-primary-foreground/80 group-[.bg-primary/5]:text-primary/80 group-[.bg-primary/10]:text-primary/80' : 'text-foreground/80'}`}>{notification.message}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{notification.time}</p>
                     </div>
-                    {/* Read indicator dot removed */}
+                    {!notification.read && (
+                        <div className="h-2.5 w-2.5 bg-primary rounded-full self-center ml-2 shrink-0"></div>
+                    )}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuGroup>
             ) : (
               <div className="p-4 text-center text-sm text-muted-foreground">
-                No example notifications.
+                No notifications.
               </div>
             )}
             <DropdownMenuSeparator />
@@ -184,5 +197,3 @@ export function AppHeader() {
     </header>
   );
 }
-
-    
