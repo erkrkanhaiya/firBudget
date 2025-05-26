@@ -43,12 +43,12 @@ export function AppHeader() {
   const router = useRouter();
   const [notifications, setNotifications] = useState(mockNotifications);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout(); // Wait for Firebase logout to complete
     router.push('/login'); 
   };
   
-  const getInitials = (name: string | undefined) => {
+  const getInitials = (name: string | undefined | null) => {
     if (!name) return 'U';
     const names = name.split(' ');
     if (names.length > 1) {
@@ -138,7 +138,7 @@ export function AppHeader() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                 <Avatar className="h-9 w-9">
-                  <AvatarImage src={currentUser.avatarUrl} alt={currentUser.name} />
+                  <AvatarImage src={currentUser.avatarUrl || undefined} alt={currentUser.name || ''} />
                   <AvatarFallback>{getInitials(currentUser.name)}</AvatarFallback>
                 </Avatar>
               </Button>
