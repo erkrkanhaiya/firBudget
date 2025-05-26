@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, PlusCircle, DollarSign, Users, CalendarDays, User, Info } from 'lucide-react';
+import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { mockGroups, mockUsers } from '@/data/mock';
 import type { Group, User as UserType, ExpenseParticipant } from '@/types';
@@ -20,6 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 export default function AddExpensePage() {
   const params = useParams();
@@ -27,6 +28,7 @@ export default function AddExpensePage() {
   const { currentUser } = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
+  const { getCurrencySymbol } = useCurrency();
 
   const [group, setGroup] = useState<Group | null>(null);
   const [description, setDescription] = useState('');
@@ -112,20 +114,18 @@ export default function AddExpensePage() {
     setSplitEqually(checked);
     if (!checked) { // Switched to custom split
         const initialAmounts: Record<string, string> = {};
-        const numParticipants = selectedParticipantIds.length;
-        const totalAmount = parseFloat(amount) || 0;
-        const prefillAmount = numParticipants > 0 ? (totalAmount / numParticipants).toFixed(2) : '0.00';
+        // const numParticipants = selectedParticipantIds.length;
+        // const totalAmount = parseFloat(amount) || 0;
+        // const prefillAmount = numParticipants > 0 ? (totalAmount / numParticipants).toFixed(2) : '0.00';
 
         selectedParticipantIds.forEach(pid => {
-            // You can choose to prefill with equal share, 0, or keep existing if any
-            initialAmounts[pid] = ''; // Let's start with empty for user input
+            initialAmounts[pid] = ''; 
         });
         setCustomSplitAmounts(initialAmounts);
     }
   };
 
   const handleCustomSplitAmountChange = (userId: string, value: string) => {
-    // Allow only numbers and at most two decimal places
     if (/^\d*(\.\d{0,2})?$/.test(value) || value === '') {
         setCustomSplitAmounts(prev => ({
             ...prev,
@@ -181,7 +181,7 @@ export default function AddExpensePage() {
       if (currentTotalCustomSplit !== totalExpenseAmount) {
         toast({
           title: "Custom Split Mismatch",
-          description: `The sum of custom shares ($${currentTotalCustomSplit.toFixed(2)}) must equal the total expense amount ($${totalExpenseAmount.toFixed(2)}). Remaining: $${(totalExpenseAmount - currentTotalCustomSplit).toFixed(2)}`,
+          description: `The sum of custom shares (${getCurrencySymbol()}${currentTotalCustomSplit.toFixed(2)}) must equal the total expense amount (${getCurrencySymbol()}${totalExpenseAmount.toFixed(2)}). Remaining: ${getCurrencySymbol()}${(totalExpenseAmount - currentTotalCustomSplit).toFixed(2)}`,
           variant: "destructive",
         });
         setIsSubmitting(false);
@@ -202,7 +202,7 @@ export default function AddExpensePage() {
 
     toast({
       title: "Expense Added!",
-      description: `Expense "${description}" for $${numericAmount.toFixed(2)} has been added.`,
+      description: `Expense "${description}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been added.`,
     });
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -239,7 +239,7 @@ export default function AddExpensePage() {
               <div>
                 <Label htmlFor="amount">Amount*</Label>
                 <div className="relative">
-                  <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{getCurrencySymbol()}</span>
                   <Input
                     id="amount"
                     type="number"
@@ -336,7 +336,7 @@ export default function AddExpensePage() {
                         {member?.name} {member?.id === currentUser.id && "(You)"}
                       </Label>
                       <div className="relative col-span-2">
-                         <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                         <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{getCurrencySymbol()}</span>
                          <Input
                             id={`custom-amount-${participantId}`}
                             type="number"
@@ -358,10 +358,10 @@ export default function AddExpensePage() {
                         {remainingToAllocate === 0 && sumOfCustomShares === (parseFloat(amount) || 0) ? "Amounts Match Total" : "Amounts Review"}
                     </AlertTitle>
                     <AlertDescription className="text-xs space-y-0.5">
-                        <p>Total Expense: ${ (parseFloat(amount) || 0).toFixed(2) }</p>
-                        <p>Sum of Shares: ${sumOfCustomShares.toFixed(2)}</p>
+                        <p>Total Expense: {getCurrencySymbol()}{ (parseFloat(amount) || 0).toFixed(2) }</p>
+                        <p>Sum of Shares: {getCurrencySymbol()}{sumOfCustomShares.toFixed(2)}</p>
                         <p className={remainingToAllocate !== 0 ? 'text-destructive font-semibold' : ''}>
-                           Remaining to Allocate: ${remainingToAllocate.toFixed(2)}
+                           Remaining to Allocate: {getCurrencySymbol()}{remainingToAllocate.toFixed(2)}
                         </p>
                     </AlertDescription>
                 </Alert>
@@ -384,4 +384,3 @@ export default function AddExpensePage() {
     </div>
   );
 }
-

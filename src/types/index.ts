@@ -11,6 +11,7 @@ export interface Group {
   name: string;
   description?: string;
   photoUrl?: string;
+  dataAiHint?: string;
   members: User[]; // Store full user objects or just IDs and fetch details as needed
   ownerId: string;
   createdAt: string;
@@ -39,7 +40,7 @@ export interface Payment {
   paidToUserId: string;
   amount: number;
   date: string; // ISO string format
-  method: 'cash' | 'upi' | 'bank' | 'other'; // Example methods
+  method: 'cash' | 'upi' | 'bank_transfer' | 'paypal' | 'venmo' | 'other'; // Example methods
   notes?: string;
   createdAt: string;
 }
@@ -62,3 +63,5 @@ export interface Balance {
   owedBy: { [key: string]: number }; // Key: userId, Value: amount they owe you
   netBalance: number; // Positive if owed to, negative if owes overall in group
 }
+
+export type Currency = 'USD' | 'INR';

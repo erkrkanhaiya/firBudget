@@ -9,10 +9,12 @@ import { useUser } from '@/contexts/UserContext';
 import { mockGroups, mockExpenses } from '@/data/mock'; 
 import Image from 'next/image';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 export default function DashboardPage() {
   const { currentUser } = useUser();
   const { translate } = useLanguage();
+  const { getCurrencySymbol } = useCurrency();
 
   if (!currentUser) {
     return (
@@ -86,7 +88,7 @@ export default function DashboardPage() {
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">$25.50</div>
+            <div className="text-2xl font-bold text-green-600">{getCurrencySymbol()}25.50</div>
             <p className="text-xs text-muted-foreground">
               {translate({ en: "Net amount others owe you across all groups", hi: "सभी समूहों में दूसरों द्वारा आपको दिया जाने वाला कुल शुद्ध राशि" })}
             </p>
@@ -108,7 +110,7 @@ export default function DashboardPage() {
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">$10.00</div>
+            <div className="text-2xl font-bold text-red-600">{getCurrencySymbol()}10.00</div>
             <p className="text-xs text-muted-foreground">
               {translate({ en: "Net amount you owe others across all groups", hi: "सभी समूहों में आपके द्वारा दूसरों को दिया जाने वाला कुल शुद्ध राशि" })}
             </p>
@@ -136,7 +138,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium">Maria added "Dinner" to Europe Trip</p>
                   <p className="text-xs text-muted-foreground">2 hours ago</p>
                 </div>
-                <span className="ml-auto text-sm font-semibold">$25.00</span>
+                <span className="ml-auto text-sm font-semibold">{getCurrencySymbol()}25.00</span>
               </CardContent>
             </Card>
           ))}

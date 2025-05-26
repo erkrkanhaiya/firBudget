@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, FormEvent } from 'react';
@@ -8,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, DollarSign, Send, CalendarDays, User } from 'lucide-react';
+import { ArrowLeft, DollarSign as DollarSignIcon, Send, CalendarDays, User } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { mockGroups, mockUsers, mockBalancesGroup1 } from '@/data/mock';
 import type { Group, User as UserType, Balance } from '@/types';
@@ -16,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 export default function SettleUpPage() {
   const params = useParams();
@@ -23,6 +25,7 @@ export default function SettleUpPage() {
   const { currentUser } = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
+  const { getCurrencySymbol } = useCurrency();
 
   const [group, setGroup] = useState<Group | null>(null);
   const [balances, setBalances] = useState<Balance[]>([]);
@@ -101,7 +104,7 @@ export default function SettleUpPage() {
 
     toast({
       title: "Payment Recorded!",
-      description: `Payment of $${parseFloat(amount).toFixed(2)} from ${group.members.find(m=>m.id===payerId)?.name} to ${group.members.find(m=>m.id===payeeId)?.name} has been recorded.`,
+      description: `Payment of ${getCurrencySymbol()}${parseFloat(amount).toFixed(2)} from ${group.members.find(m=>m.id===payerId)?.name} to ${group.members.find(m=>m.id===payeeId)?.name} has been recorded.`,
     });
     router.push(`/groups/${groupId}?tab=balances`);
   };
@@ -157,7 +160,7 @@ export default function SettleUpPage() {
                 <div>
                     <Label htmlFor="amount">Amount*</Label>
                     <div className="relative">
-                    <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{getCurrencySymbol()}</span>
                     <Input
                         id="amount"
                         type="number"

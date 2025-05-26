@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -7,7 +8,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity, PlusCircle, Edit, Trash2, UserPlus, DollarSign } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { mockGroups, mockExpenses, mockUsers, mockActivityLog, mockBalancesGroup1, mockUser } from '@/data/mock'; // Using mock data
 import type { Group, Expense, User as UserType, ActivityLog, Balance } from '@/types';
@@ -25,6 +26,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 export default function GroupDetailPage() {
   const params = useParams();
@@ -32,6 +34,7 @@ export default function GroupDetailPage() {
   const { currentUser } = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
+  const { getCurrencySymbol } = useCurrency();
 
   const [group, setGroup] = useState<Group | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -163,7 +166,7 @@ export default function GroupDetailPage() {
             </Button>
             <Button variant="outline" asChild className="flex-1 sm:flex-none">
               <Link href={`/groups/${groupId}/settle-up`}>
-                <DollarSign className="mr-2 h-4 w-4" /> Settle Up
+                <DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up
               </Link>
             </Button>
           </div>
@@ -195,10 +198,10 @@ export default function GroupDetailPage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-semibold">${expense.amount.toFixed(2)}</p>
+                        <p className="text-lg font-semibold">{getCurrencySymbol()}{expense.amount.toFixed(2)}</p>
                         {/* Add logic to show user's share if applicable */}
                         {expense.participants.find(p => p.userId === currentUser.id) && (
-                           <p className="text-xs text-blue-600">Your share: ${expense.participants.find(p=>p.userId === currentUser.id)?.amountOwed.toFixed(2)}</p>
+                           <p className="text-xs text-blue-600">Your share: {getCurrencySymbol()}{expense.participants.find(p=>p.userId === currentUser.id)?.amountOwed.toFixed(2)}</p>
                         )}
                       </div>
                     </li>
@@ -243,7 +246,7 @@ export default function GroupDetailPage() {
                                 </Avatar>
                                 <span className="font-medium">{user.name}'s Balance:</span>
                                 <span className={`font-semibold ${balance.netBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                    ${Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0 ? "is owed" : balance.netBalance < 0 ? "owes" : "is settled"}
+                                    {getCurrencySymbol()}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0 ? "is owed" : balance.netBalance < 0 ? "owes" : "is settled"}
                                 </span>
                             </div>
                             {owedToList.length > 0 && (
@@ -251,7 +254,7 @@ export default function GroupDetailPage() {
                                     <p className="text-red-600">Owes:</p>
                                     <ul className="list-disc list-inside ml-2">
                                         {owedToList.map(item => (
-                                            <li key={item.user!.id}>{`$${item.amount.toFixed(2)} to ${item.user!.name}`}</li>
+                                            <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} to ${item.user!.name}`}</li>
                                         ))}
                                     </ul>
                                 </div>
@@ -261,7 +264,7 @@ export default function GroupDetailPage() {
                                     <p className="text-green-600">Is owed by:</p>
                                     <ul className="list-disc list-inside ml-2">
                                         {owedByList.map(item => (
-                                            <li key={item.user!.id}>{`$${item.amount.toFixed(2)} from ${item.user!.name}`}</li>
+                                            <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} from ${item.user!.name}`}</li>
                                         ))}
                                     </ul>
                                 </div>

@@ -4,13 +4,14 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, CreditCard, Users, CalendarDays, DollarSign, ArrowRight } from 'lucide-react';
+import { AlertTriangle, CreditCard, Users, CalendarDays, DollarSign as DollarSignIcon, ArrowRight } from 'lucide-react'; // Renamed DollarSign to avoid conflict
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
 import { mockExpenses, mockUsers, mockGroups } from '@/data/mock';
 import type { Expense, User as UserType, Group } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 const getInitials = (name: string | undefined) => {
   if (!name) return "U";
@@ -23,6 +24,7 @@ const getInitials = (name: string | undefined) => {
 
 export default function MyExpensesPage() {
   const { currentUser } = useUser();
+  const { getCurrencySymbol } = useCurrency();
 
   if (!currentUser) {
     return (
@@ -78,11 +80,11 @@ export default function MyExpensesPage() {
                   </div>
                   <div className="text-right">
                      <div className="text-xl font-bold flex items-center">
-                        <DollarSign className="h-5 w-5 mr-1 text-muted-foreground" />
+                        <span className="mr-1 text-muted-foreground">{getCurrencySymbol()}</span>
                         {expense.amount.toFixed(2)}
                     </div>
                     {currentUserParticipantInfo && expense.paidByUserId !== currentUser.id && (
-                        <Badge variant="outline" className="mt-1 text-xs">Your share: ${currentUserParticipantInfo.amountOwed.toFixed(2)}</Badge>
+                        <Badge variant="outline" className="mt-1 text-xs">Your share: {getCurrencySymbol()}{currentUserParticipantInfo.amountOwed.toFixed(2)}</Badge>
                     )}
                     {expense.paidByUserId === currentUser.id && expense.participants.length > 1 && (
                          <Badge variant="secondary" className="mt-1 text-xs">You paid</Badge>
