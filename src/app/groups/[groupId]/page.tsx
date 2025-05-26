@@ -8,7 +8,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2 } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIcon, MessageCircle, Facebook, Twitter, Mail } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { mockGroups, mockExpenses, mockUsers, mockActivityLog, mockBalancesGroup1 } from '@/data/mock'; // Using mock data
 import type { Group, Expense, User as UserType, ActivityLog, Balance } from '@/types';
@@ -25,6 +25,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from '@/hooks/use-toast';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import jsPDF from 'jspdf';
@@ -48,12 +56,13 @@ export default function GroupDetailPage() {
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [isWebShareSupported, setIsWebShareSupported] = useState(false);
 
 
   useEffect(() => {
     const foundGroup = mockGroups.find(g => g.id === groupId);
     if (foundGroup) {
-      if (!currentUser) { // Should be caught by outer layout, but good to double check
+      if (!currentUser) { 
         router.push('/login');
         return;
       }
@@ -63,7 +72,6 @@ export default function GroupDetailPage() {
       if (foundGroup.visibility === 'private' && !isMember) {
         toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
         setAccessDenied(true);
-        // router.push('/groups'); // Optionally redirect immediately
         return;
       }
       
@@ -80,10 +88,15 @@ export default function GroupDetailPage() {
 
     } else {
       toast({ title: "Group not found", variant: "destructive" });
-      setAccessDenied(true); // Treat as access denied if group not found
-      // router.push('/groups'); // Optionally redirect
+      setAccessDenied(true); 
     }
   }, [groupId, router, currentUser, toast]);
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      setIsWebShareSupported(true);
+    }
+  }, []);
 
   const calculateGroupBalances = (currentGroup: Group, groupExpenses: Expense[], allUsers: UserType[]): Balance[] => {
     if (!currentGroup) return [];
@@ -113,7 +126,6 @@ export default function GroupDetailPage() {
 
   const handleDownloadPdf = () => {
     if (!group || !currentUser) return;
-    // Access check for PDF download (already implicitly handled by page access for private, public allows all logged-in)
     const doc = new jsPDF() as jsPDFWithAutoTable;
     const currencySymbol = getCurrencySymbol();
     let yPos = 20;
@@ -244,24 +256,77 @@ export default function GroupDetailPage() {
     toast({ title: "PDF Generated", description: "Your group summary PDF has been downloaded." });
   };
 
-  const handleShareGroup = async () => {
-    if (!group || group.visibility !== 'public') return;
-    const groupUrl = `${window.location.origin}/groups/${groupId}`;
+  // Share handlers
+  const groupUrl = typeof window !== 'undefined' ? `${window.location.origin}/groups/${groupId}` : '';
+  const shareMessageDefault = `Check out this group on BalanceBeam: "${group?.name || 'a group'}"`;
+  const shareTitle = group?.name || 'BalanceBeam Group';
+
+  const handleNativeShare = async () => {
+    if (!group) return;
+    const shareData = {
+      title: shareTitle,
+      text: `${shareMessageDefault}\n${groupUrl}`,
+      url: groupUrl,
+    };
     try {
-      await navigator.clipboard.writeText(groupUrl);
-      toast({
-        title: "Link Copied!",
-        description: "Group link copied to clipboard.",
-      });
+      // Check if canShare is supported and if it can share the data
+      if (navigator.share && typeof navigator.canShare === 'function' && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+        // Native share handles its own success/cancel UI, so toast might be redundant or optional
+        // toast({ title: "Shared successfully!" }); 
+      } else if (navigator.share) { // Fallback if canShare is not available but share is
+        await navigator.share(shareData);
+        // toast({ title: "Shared successfully!" });
+      } else {
+        toast({ title: "Web Share Not Supported", description: "Cannot share using system dialog.", variant: "destructive" });
+      }
     } catch (err) {
-      console.error('Failed to copy: ', err);
-      toast({
-        title: "Copy Failed",
-        description: "Could not copy link to clipboard.",
-        variant: "destructive",
-      });
+      console.error("Failed to share natively: ", err);
+      if ((err as DOMException).name !== 'AbortError') { // Don't show error if user cancels
+        toast({ title: "Sharing Failed", description: "Could not share using system dialog.", variant: "destructive" });
+      }
     }
   };
+
+  const handleCopyLink = async () => {
+    if (!group) return;
+    try {
+      await navigator.clipboard.writeText(groupUrl);
+      toast({ title: "Link Copied!", description: "Group link copied to clipboard." });
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+      toast({ title: "Copy Failed", description: "Could not copy link to clipboard.", variant: "destructive" });
+    }
+  };
+
+  const handleShareWhatsApp = () => {
+    if (!group) return;
+    const message = `${shareMessageDefault}\n${groupUrl}`;
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleShareFacebook = () => {
+    if (!group) return;
+    const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(groupUrl)}`;
+    window.open(facebookUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleShareTwitter = () => {
+    if (!group) return;
+    const text = `${shareMessageDefault}`; // Twitter usually appends the URL itself
+    const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(groupUrl)}&text=${encodeURIComponent(text)}`;
+    window.open(twitterUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleShareEmail = () => {
+    if (!group) return;
+    const subject = `Check out this BalanceBeam group: ${group.name}`;
+    const body = `${shareMessageDefault}\n${groupUrl}`;
+    const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoUrl; // Using location.href for mailto
+  };
+
 
   if (accessDenied) {
     return (
@@ -279,7 +344,7 @@ export default function GroupDetailPage() {
   }
 
   if (!currentUser) {
-    return <p>Loading user...</p>; // Should be handled by layout or earlier checks
+    return <p>Loading user...</p>; 
   }
   
   if (!group) {
@@ -296,7 +361,7 @@ export default function GroupDetailPage() {
   };
 
   const isMember = group.members.some(m => m.id === currentUser.id);
-  const isOwner = group.ownerId === currentUser.id; // Owner must be a member
+  const isOwner = group.ownerId === currentUser.id; 
 
   const handleDeleteGroup = () => {
     console.log("Deleting group:", group.id);
@@ -341,7 +406,7 @@ export default function GroupDetailPage() {
               {!isMember && group.visibility === 'public' && <Badge variant="outline" className="mt-2">Viewing as Non-Member</Badge>}
             </div>
           </div>
-          {isOwner && ( // Only owner can edit/delete
+          {isOwner && ( 
             <div className="flex gap-2 mt-4 md:mt-0">
               <Button variant="outline" size="sm" disabled> 
                 <Edit className="mr-2 h-4 w-4" /> Edit Group
@@ -382,7 +447,7 @@ export default function GroupDetailPage() {
             <TabsTrigger value="activity"><Activity className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
           </TabsList>
            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            {isMember && ( // Only members can add expenses or settle up
+            {isMember && ( 
               <>
                 <Button asChild className="flex-1 sm:flex-none">
                   <Link href={`/groups/${groupId}/add-expense`}>
@@ -400,9 +465,37 @@ export default function GroupDetailPage() {
                 <Download className="mr-2 h-4 w-4" /> Download PDF
             </Button>
             {group.visibility === 'public' && (
-                <Button variant="outline" onClick={handleShareGroup} className="flex-1 sm:flex-none">
-                    <Share2 className="mr-2 h-4 w-4" /> Share Group
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="flex-1 sm:flex-none">
+                      <Share2 className="mr-2 h-4 w-4" /> Share Group
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {isWebShareSupported && (
+                      <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer">
+                        <Share2 className="mr-2 h-4 w-4" /> Share via System
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer">
+                      <LinkIcon className="mr-2 h-4 w-4" /> Copy Link
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer">
+                      <MessageCircle className="mr-2 h-4 w-4" /> Share on WhatsApp
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer">
+                      <Facebook className="mr-2 h-4 w-4" /> Share on Facebook
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer">
+                      <Twitter className="mr-2 h-4 w-4" /> Share on Twitter
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer">
+                      <Mail className="mr-2 h-4 w-4" /> Share via Email
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
             )}
           </div>
         </div>
@@ -465,12 +558,12 @@ export default function GroupDetailPage() {
                     const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({
                         user: mockUsers.find(u => u.id === owedToId),
                         amount
-                    })).filter(item => item.user && item.amount > 0.005); // Filter small amounts to avoid floating point noise
+                    })).filter(item => item.user && item.amount > 0.005); 
                     
                     const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({
                         user: mockUsers.find(u => u.id === owedById),
                         amount
-                    })).filter(item => item.user && item.amount > 0.005); // Filter small amounts
+                    })).filter(item => item.user && item.amount > 0.005); 
 
                     return (
                         <li key={balance.userId} className="p-3 border rounded-md">
@@ -504,7 +597,7 @@ export default function GroupDetailPage() {
                                     </ul>
                                 </div>
                             )}
-                             {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( // Check if settled
+                             {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( 
                                  <p className="pl-4 text-sm text-muted-foreground">All settled up!</p>
                              )}
                         </li>
