@@ -11,19 +11,29 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info } from 'lucide-react';
+import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info, Loader2 } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
-import { mockGroups, mockUsers, mockExpenses, mockActivityLog } from '@/data/mock';
-import type { Group, User as UserType, ExpenseParticipant, Expense } from '@/types';
+import type { Group, User as UserType, ExpenseParticipant, Expense, ActivityLog } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
 
-// Define the type for expenses stored in localStorage
-type StoredExpenseData = Omit<Expense, 'id' | 'createdAt'> & { tempId: string };
+interface StoredExpenseData {
+  groupId: string;
+  description: string;
+  amount: number;
+  paidByUserId: string;
+  date: string; // ISO string
+  participants: ExpenseParticipant[];
+  tempId: string; // For UI identification before sync
+  // Store necessary info to reconstruct actor for activity log if needed
+  actorNameForLog: string | null; 
+}
 
 export default function AddExpensePage() {
   const params = useParams();
@@ -45,15 +55,14 @@ export default function AddExpensePage() {
   const [sumOfCustomShares, setSumOfCustomShares] = useState<number>(0);
   const [remainingToAllocate, setRemainingToAllocate] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingGroup, setIsLoadingGroup] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    const updateOnlineStatus = () => {
-      setIsOnline(navigator.onLine);
-    };
+    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
-    updateOnlineStatus(); // Initial check
+    updateOnlineStatus();
     return () => {
       window.removeEventListener('online', updateOnlineStatus);
       window.removeEventListener('offline', updateOnlineStatus);
@@ -61,28 +70,52 @@ export default function AddExpensePage() {
   }, []);
 
   useEffect(() => {
-    const foundGroup = mockGroups.find(g => g.id === groupId);
-    if (foundGroup) {
-      if (!currentUser || !foundGroup.members.find(m => m.id === currentUser.id)) {
-         toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
-        router.push('/groups');
+    const fetchGroup = async () => {
+      if (!currentUser || !groupId) {
+        setIsLoadingGroup(false);
+        if (!currentUser) router.push('/login');
         return;
       }
-      setGroup(foundGroup);
-      const memberIds = foundGroup.members.map(m => m.id);
-      setSelectedParticipantIds(memberIds);
-      if (currentUser) {
-        setPaidByUserId(currentUser.id);
-      }
-      const initialCustomAmounts: Record<string, string> = {};
-      memberIds.forEach(id => { initialCustomAmounts[id] = ''; });
-      setCustomSplitAmounts(initialCustomAmounts);
+      setIsLoadingGroup(true);
+      try {
+        const groupDocRef = doc(db, 'groups', groupId);
+        const groupDocSnap = await getDoc(groupDocRef);
+        if (groupDocSnap.exists()) {
+          const groupData = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp };
+          const fetchedGroup: Group = {
+            id: groupDocSnap.id,
+            ...groupData,
+            members: groupData.members || [],
+            memberIds: groupData.memberIds || [],
+            createdAt: groupData.createdAt.toDate().toISOString(),
+          };
 
-    } else {
-      toast({ title: "Group not found", variant: "destructive" });
-      router.push('/groups');
-    }
-  }, [groupId, router, currentUser, toast]);
+          if (!fetchedGroup.memberIds.includes(currentUser.id)) {
+            toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
+            router.push('/groups');
+            return;
+          }
+          setGroup(fetchedGroup);
+          const memberIds = fetchedGroup.members.map(m => m.id);
+          setSelectedParticipantIds(memberIds);
+          setPaidByUserId(currentUser.id);
+          const initialCustomAmounts: Record<string, string> = {};
+          memberIds.forEach(id => { initialCustomAmounts[id] = ''; });
+          setCustomSplitAmounts(initialCustomAmounts);
+        } else {
+          toast({ title: "Group not found", variant: "destructive" });
+          router.push('/groups');
+        }
+      } catch (error) {
+        console.error("Error fetching group:", error);
+        toast({ title: "Error", description: "Could not load group details.", variant: "destructive" });
+        router.push('/groups');
+      } finally {
+        setIsLoadingGroup(false);
+      }
+    };
+    fetchGroup();
+  }, [groupId, currentUser, router, toast]);
 
   useEffect(() => {
     if (!splitEqually) {
@@ -99,61 +132,76 @@ export default function AddExpensePage() {
     }
   }, [customSplitAmounts, amount, selectedParticipantIds, splitEqually]);
 
-  // Effect to "sync" pending expenses when online
   useEffect(() => {
-    if (isOnline && group && currentUser) {
-      const pendingExpensesData = localStorage.getItem('pendingExpenses');
-      if (pendingExpensesData) {
+    const syncPendingExpenses = async () => {
+      if (isOnline && group && currentUser) {
+        const pendingExpensesData = localStorage.getItem('pendingExpenses');
+        if (!pendingExpensesData) return;
+
         const allPendingStoredExpenses: StoredExpenseData[] = JSON.parse(pendingExpensesData);
         const expensesToSyncForThisGroup = allPendingStoredExpenses.filter(exp => exp.groupId === groupId);
 
         if (expensesToSyncForThisGroup.length > 0) {
-          expensesToSyncForThisGroup.forEach(storedExp => {
-            const newExpense: Expense = {
-              id: `exp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          const batch = writeBatch(db);
+          let syncedCount = 0;
+
+          for (const storedExp of expensesToSyncForThisGroup) {
+            const expenseColRef = collection(db, 'groups', storedExp.groupId, 'expenses');
+            const newExpenseDocRef = doc(expenseColRef); // Auto-generate ID
+            
+            const expenseForFirestore: Omit<Expense, 'id' | 'createdAt'> = {
               groupId: storedExp.groupId,
               description: storedExp.description,
               amount: storedExp.amount,
               paidByUserId: storedExp.paidByUserId,
-              date: storedExp.date, // This is already an ISO string
+              date: storedExp.date, // Already ISO string
               participants: storedExp.participants,
-              createdAt: new Date().toISOString(),
             };
-            mockExpenses.push(newExpense); // Add to mock data (session only)
+            batch.set(newExpenseDocRef, { ...expenseForFirestore, createdAt: serverTimestamp() });
 
-            const actor = mockUsers.find(u => u.id === newExpense.paidByUserId) || currentUser;
-            mockActivityLog.push({
-              id: `act-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-              groupId: newExpense.groupId,
-              userId: actor.id,
+            const activityLogColRef = collection(db, 'groups', storedExp.groupId, 'activityLog');
+            const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
+              groupId: storedExp.groupId,
+              userId: storedExp.paidByUserId, // Actor is the payer
               actionType: 'expense_added',
-              timestamp: new Date().toISOString(),
-              description: `${actor.name} added expense: ${newExpense.description} (synced from offline)`,
-              relatedExpenseId: newExpense.id,
-            });
-          });
-
-          const remainingOverallPendingExpenses = allPendingStoredExpenses.filter(exp => exp.groupId !== groupId);
-          if (remainingOverallPendingExpenses.length > 0) {
-            localStorage.setItem('pendingExpenses', JSON.stringify(remainingOverallPendingExpenses));
-          } else {
-            localStorage.removeItem('pendingExpenses');
+              description: `${storedExp.actorNameForLog || 'User'} added expense: ${storedExp.description} (synced from offline)`,
+              relatedExpenseId: newExpenseDocRef.id, // Link to the new expense ID
+            };
+            batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
+            syncedCount++;
           }
-          
-          toast({
-            title: "Back Online!",
-            description: `${expensesToSyncForThisGroup.length} pending expense(s) for this group have been submitted.`,
-          });
-          // Consider router.refresh() if changes aren't immediately visible on other pages,
-          // but direct mutation of mockData usually works for session-long demos.
+
+          try {
+            await batch.commit();
+            const remainingOverallPendingExpenses = allPendingStoredExpenses.filter(exp => exp.groupId !== groupId);
+            if (remainingOverallPendingExpenses.length > 0) {
+              localStorage.setItem('pendingExpenses', JSON.stringify(remainingOverallPendingExpenses));
+            } else {
+              localStorage.removeItem('pendingExpenses');
+            }
+            toast({
+              title: "Back Online!",
+              description: `${syncedCount} pending expense(s) for this group have been submitted to Firestore.`,
+            });
+             router.refresh(); // To reflect synced data on group page
+          } catch (error) {
+            console.error("Error syncing expenses to Firestore:", error);
+            toast({ title: "Sync Error", description: "Some offline expenses could not be synced.", variant: "destructive" });
+          }
         }
       }
-    }
+    };
+    syncPendingExpenses();
   }, [isOnline, group, currentUser, groupId, toast, router]);
 
 
-  if (!currentUser || !group) {
-    return <p>Loading...</p>;
+  if (isLoadingGroup || !currentUser || !group) {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-4 text-muted-foreground">Loading group details...</p>
+      </div>
+    );
   }
   
   const handleParticipantChange = (userId: string, isChecked: boolean) => {
@@ -166,7 +214,7 @@ export default function AddExpensePage() {
             setCustomSplitAmounts(currentAmounts => {
                 const updatedAmounts = { ...currentAmounts };
                 if (!isChecked && userId in updatedAmounts) { 
-                    delete updatedAmounts[userId];
+                    updatedAmounts[userId] = ''; // Clear amount if deselected
                 } else if (isChecked && !(userId in updatedAmounts)) { 
                     updatedAmounts[userId] = ''; 
                 }
@@ -240,7 +288,7 @@ export default function AddExpensePage() {
       currentTotalCustomSplit = parseFloat(currentTotalCustomSplit.toFixed(2));
       const totalExpenseAmount = parseFloat(numericAmount.toFixed(2));
 
-      if (currentTotalCustomSplit !== totalExpenseAmount) {
+      if (Math.abs(currentTotalCustomSplit - totalExpenseAmount) > 0.005) { // Allow for small floating point discrepancies
         toast({
           title: "Custom Split Mismatch",
           description: `The sum of custom shares (${getCurrencySymbol()}${currentTotalCustomSplit.toFixed(2)}) must equal the total expense amount (${getCurrencySymbol()}${totalExpenseAmount.toFixed(2)}). Remaining: ${getCurrencySymbol()}${(totalExpenseAmount - currentTotalCustomSplit).toFixed(2)}`,
@@ -250,62 +298,72 @@ export default function AddExpensePage() {
         return;
       }
     }
+    
+    const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
 
-    const expenseDataForSubmission: StoredExpenseData = {
+    const expenseDataForStorage: StoredExpenseData = {
       groupId,
-      description,
+      description: description.trim(),
       amount: numericAmount,
       paidByUserId,
       date: expenseDate.toISOString(),
       participants: expenseParticipants,
-      // splitEqually // Not part of Expense type, but could be useful for storage if needed
-      tempId: `pending-${Date.now()}` // For potential use if directly adding to UI before sync
+      tempId: `pending-${Date.now()}`,
+      actorNameForLog: actor?.name || 'User'
     };
 
     if (!isOnline) {
       const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
-      pending.push(expenseDataForSubmission);
+      pending.push(expenseDataForStorage);
       localStorage.setItem('pendingExpenses', JSON.stringify(pending));
-      toast({ title: "Offline", description: "Expense saved locally. Will submit when online." });
+      toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
       setIsSubmitting(false);
       router.push(`/groups/${groupId}`);
       return;
     }
 
-    // ---- ONLINE SUBMISSION (Mock) ----
-    const newExpense: Expense = {
-      id: `exp-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      groupId: expenseDataForSubmission.groupId,
-      description: expenseDataForSubmission.description,
-      amount: expenseDataForSubmission.amount,
-      paidByUserId: expenseDataForSubmission.paidByUserId,
-      date: expenseDataForSubmission.date,
-      participants: expenseDataForSubmission.participants,
-      createdAt: new Date().toISOString(),
-    };
-    mockExpenses.push(newExpense);
+    // ---- ONLINE SUBMISSION to FIRESTORE ----
+    try {
+      const expenseColRef = collection(db, 'groups', groupId, 'expenses');
+      const newExpenseDocRef = doc(expenseColRef); // Auto-generate ID for the new expense
 
-    const actor = mockUsers.find(u => u.id === newExpense.paidByUserId) || currentUser;
-    if (actor) {
-      mockActivityLog.push({
-        id: `act-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        groupId: newExpense.groupId,
-        userId: actor.id,
+      const expenseForFirestore: Omit<Expense, 'id' | 'createdAt'> = {
+        groupId: expenseDataForStorage.groupId,
+        description: expenseDataForStorage.description,
+        amount: expenseDataForStorage.amount,
+        paidByUserId: expenseDataForStorage.paidByUserId,
+        date: expenseDataForStorage.date, // ISO string
+        participants: expenseDataForStorage.participants,
+      };
+      
+      const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
+      const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
+        groupId: expenseDataForStorage.groupId,
+        userId: expenseDataForStorage.paidByUserId, // Actor is the payer
         actionType: 'expense_added',
-        timestamp: new Date().toISOString(),
-        description: `${actor.name} added expense: ${newExpense.description}`,
-        relatedExpenseId: newExpense.id,
-      });
-    }
-    // ---- END ONLINE SUBMISSION (Mock) ----
+        description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
+        relatedExpenseId: newExpenseDocRef.id, // Link to the new expense ID
+      };
+      
+      const batch = writeBatch(db);
+      batch.set(newExpenseDocRef, { ...expenseForFirestore, createdAt: serverTimestamp() });
+      batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
+      
+      await batch.commit();
 
-    toast({
-      title: "Expense Added!",
-      description: `Expense "${description}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been added.`,
-    });
-    await new Promise(resolve => setTimeout(resolve, 300)); // Simulate API delay
-    setIsSubmitting(false);
-    router.push(`/groups/${groupId}`);
+      toast({
+        title: "Expense Added to Firestore!",
+        description: `Expense "${description}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been added.`,
+      });
+      await new Promise(resolve => setTimeout(resolve, 300)); // UI nicety
+      router.push(`/groups/${groupId}?refresh=${Date.now()}`); // Add refresh query param to trigger data reload on group page
+
+    } catch (error) {
+        console.error("Error adding expense to Firestore:", error);
+        toast({ title: "Firestore Error", description: "Could not save expense. Please try again.", variant: "destructive" });
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   return (
@@ -371,7 +429,7 @@ export default function AddExpensePage() {
                         selected={expenseDate}
                         onSelect={setExpenseDate}
                         initialFocus
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || !expenseDate} // Ensure date is not cleared accidently
                         />
                     </PopoverContent>
                 </Popover>
@@ -450,15 +508,15 @@ export default function AddExpensePage() {
                     </div>
                   );
                 })}
-                <Alert variant={remainingToAllocate === 0 ? "default" : "destructive"} className="mt-4">
+                <Alert variant={Math.abs(remainingToAllocate) < 0.005 ? "default" : "destructive"} className="mt-4">
                     <Info className="h-4 w-4" />
                     <AlertTitle>
-                        {remainingToAllocate === 0 && sumOfCustomShares === (parseFloat(amount) || 0) ? "Amounts Match Total" : "Amounts Review"}
+                        {Math.abs(remainingToAllocate) < 0.005 && sumOfCustomShares === (parseFloat(amount) || 0) ? "Amounts Match Total" : "Amounts Review"}
                     </AlertTitle>
                     <AlertDescription className="text-xs space-y-0.5">
                         <p>Total Expense: {getCurrencySymbol()}{ (parseFloat(amount) || 0).toFixed(2) }</p>
                         <p>Sum of Shares: {getCurrencySymbol()}{sumOfCustomShares.toFixed(2)}</p>
-                        <p className={remainingToAllocate !== 0 ? 'text-destructive font-semibold' : ''}>
+                        <p className={Math.abs(remainingToAllocate) >= 0.005 ? 'text-destructive font-semibold' : ''}>
                            Remaining to Allocate: {getCurrencySymbol()}{remainingToAllocate.toFixed(2)}
                         </p>
                     </AlertDescription>
@@ -468,9 +526,9 @@ export default function AddExpensePage() {
 
           </CardContent>
           <CardFooter className="border-t px-6 py-4">
-            <Button type="submit" className="ml-auto" disabled={isSubmitting || (!splitEqually && remainingToAllocate !== 0)}>
+            <Button type="submit" className="ml-auto" disabled={isSubmitting || (!splitEqually && Math.abs(remainingToAllocate) >= 0.005)}>
               {isSubmitting ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground mr-2"></div>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <PlusCircle className="mr-2 h-4 w-4" />
               )}

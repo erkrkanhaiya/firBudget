@@ -1,15 +1,15 @@
+
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIcon, MessageCircle, Facebook, Twitter, Mail, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { mockExpenses, mockUsers, mockActivityLog } from '@/data/mock'; // Still using mock for expenses/activity/users
 import type { Group, Expense, User as UserType, ActivityLog, Balance } from '@/types';
 import { useUser } from '@/contexts/UserContext';
 import { format, parseISO } from 'date-fns';
@@ -37,88 +37,130 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Badge } from '@/components/ui/badge';
-import { db } from '@/lib/firebase'; // Import Firebase db
-import { doc, getDoc, Timestamp, deleteDoc, collection, writeBatch } from 'firebase/firestore'; // Import Firestore functions
+import { db } from '@/lib/firebase'; 
+import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction } from 'firebase/firestore';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDFWithAutoTable;
 }
 
+// Helper to get initials - can be moved to utils later
+const getInitials = (name: string | undefined | null) => {
+  if (!name) return "U";
+  const names = name.split(' ');
+  if (names.length > 1 && names[0] && names[names.length - 1]) {
+    return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+  }
+  if (name.length > 0) return name.substring(0, 2).toUpperCase();
+  return "U";
+};
+
+
 export default function GroupDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { currentUser }_ = useUser();
+  const searchParams = useSearchParams(); // To detect refresh requests
+  const { currentUser } = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
 
   const [group, setGroup] = useState<Group | null>(null);
-  const [expenses, setExpenses] = useState<Expense[]>([]); // Still from mock
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]); // Still from mock
-  const [balances, setBalances] = useState<Balance[]>([]); // Calculated from mock expenses
+  const [firestoreExpenses, setFirestoreExpenses] = useState<Expense[]>([]);
+  const [firestoreActivityLogs, setFirestoreActivityLogs] = useState<ActivityLog[]>([]);
+  const [balances, setBalances] = useState<Balance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [isWebShareSupported, setIsWebShareSupported] = useState(false);
+  
+  const memberDetailsMap = useMemo(() => {
+    if (!group || !group.members) return new Map<string, UserType>();
+    const map = new Map<string, UserType>();
+    group.members.forEach(member => map.set(member.id, member));
+    return map;
+  }, [group]);
 
+  const fetchGroupData = useCallback(async () => {
+    if (!currentUser || !groupId) {
+      setIsLoading(false);
+      if(!currentUser) router.push('/login');
+      return;
+    }
+    setIsLoading(true);
+    setAccessDenied(false);
+
+    try {
+      const groupDocRef = doc(db, 'groups', groupId);
+      const groupDocSnap = await getDoc(groupDocRef);
+
+      if (groupDocSnap.exists()) {
+        const groupData = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp };
+        const fetchedGroup: Group = {
+          id: groupDocSnap.id,
+          ...groupData,
+          members: groupData.members || [],
+          memberIds: groupData.memberIds || [],
+          createdAt: groupData.createdAt.toDate().toISOString(),
+        };
+
+        const isMember = fetchedGroup.memberIds.includes(currentUser.id);
+        if (fetchedGroup.visibility === 'private' && !isMember) {
+          toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
+          setAccessDenied(true);
+          setIsLoading(false);
+          return;
+        }
+        setGroup(fetchedGroup);
+
+        // Fetch expenses
+        const expensesColRef = collection(db, 'groups', groupId, 'expenses');
+        const expensesQuery = query(expensesColRef, orderBy('date', 'desc'));
+        const expensesSnapshot = await getDocs(expensesQuery);
+        const fetchedExpenses = expensesSnapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            return { 
+                id: docSnap.id, 
+                ...data,
+                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
+                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt as string)
+            } as Expense;
+        });
+        setFirestoreExpenses(fetchedExpenses);
+
+        // Fetch activity logs
+        const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
+        const activityLogQuery = query(activityLogColRef, orderBy('timestamp', 'desc'));
+        const activityLogSnapshot = await getDocs(activityLogQuery);
+        const fetchedActivityLogs = activityLogSnapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            return { 
+                id: docSnap.id, 
+                ...data,
+                timestamp: (data.timestamp instanceof Timestamp ? data.timestamp.toDate().toISOString() : data.timestamp as string)
+            } as ActivityLog;
+        });
+        setFirestoreActivityLogs(fetchedActivityLogs);
+        
+        // Calculate balances (must happen after expenses are fetched)
+        const calculatedBalances = calculateGroupBalances(fetchedGroup, fetchedExpenses, fetchedGroup.members);
+        setBalances(calculatedBalances);
+
+      } else {
+        toast({ title: "Group not found", description: "The group you are looking for does not exist.", variant: "destructive" });
+        setAccessDenied(true);
+      }
+    } catch (error) {
+      console.error("Error fetching group data:", error);
+      toast({ title: "Error", description: "Could not fetch group details.", variant: "destructive" });
+      setAccessDenied(true);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [groupId, currentUser, router, toast]);
 
   useEffect(() => {
-    const fetchGroupDetails = async () => {
-      if (!currentUser || !groupId) {
-        setIsLoading(false);
-        if(!currentUser) router.push('/login'); // Redirect if not logged in and trying to access
-        return;
-      }
-
-      setIsLoading(true);
-      setAccessDenied(false);
-
-      try {
-        const groupDocRef = doc(db, 'groups', groupId);
-        const groupDocSnap = await getDoc(groupDocRef);
-
-        if (groupDocSnap.exists()) {
-          const groupData = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp };
-          const fetchedGroup: Group = {
-            id: groupDocSnap.id,
-            ...groupData,
-            members: groupData.members || [], // Ensure members is an array
-            memberIds: groupData.memberIds || [], // Ensure memberIds is an array
-            createdAt: groupData.createdAt.toDate().toISOString(),
-          };
-
-          const isMember = fetchedGroup.memberIds.includes(currentUser.id);
-
-          if (fetchedGroup.visibility === 'private' && !isMember) {
-            toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
-            setAccessDenied(true);
-            setIsLoading(false);
-            return;
-          }
-          
-          setGroup(fetchedGroup);
-          // For now, expenses and activity logs are still from mock data, filtered by the fetched group's ID.
-          // This can be updated later to fetch from Firestore subcollections if needed.
-          setExpenses(mockExpenses.filter(e => e.groupId === fetchedGroup.id).sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()));
-          setActivityLogs(mockActivityLog.filter(a => a.groupId === fetchedGroup.id).sort((a,b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()));
-          
-          const calculatedBalances = calculateGroupBalances(fetchedGroup, mockExpenses.filter(e => e.groupId === fetchedGroup.id), mockUsers);
-          setBalances(calculatedBalances);
-
-        } else {
-          toast({ title: "Group not found", description: "The group you are looking for does not exist.", variant: "destructive" });
-          setAccessDenied(true);
-        }
-      } catch (error) {
-        console.error("Error fetching group details:", error);
-        toast({ title: "Error", description: "Could not fetch group details.", variant: "destructive" });
-        setAccessDenied(true);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchGroupDetails();
-  }, [groupId, currentUser, router, toast]);
+    fetchGroupData();
+  }, [fetchGroupData, searchParams]); // Re-fetch if searchParams (like refresh) changes
 
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.share) {
@@ -126,37 +168,43 @@ export default function GroupDetailPage() {
     }
   }, []);
 
-  const calculateGroupBalances = (currentGroup: Group | null, groupExpenses: Expense[], allUsers: UserType[]): Balance[] => {
-    if (!currentGroup) return [];
+  const calculateGroupBalances = (currentGroup: Group | null, groupExpenses: Expense[], groupMembers: UserType[]): Balance[] => {
+    if (!currentGroup || groupMembers.length === 0) return [];
     const memberBalances: Record<string, { owes: Record<string, number>, owedBy: Record<string, number>, netBalance: number }> = {};
-    currentGroup.memberIds.forEach(memberId => { // Use memberIds from the group
-        memberBalances[memberId] = { owes: {}, owedBy: {}, netBalance: 0 };
+    
+    groupMembers.forEach(member => { // Initialize for all listed members
+        memberBalances[member.id] = { owes: {}, owedBy: {}, netBalance: 0 };
     });
 
     groupExpenses.forEach(expense => {
         const payerId = expense.paidByUserId;
-        const participants = expense.participants;
-        if (participants.length === 0) return;
+        if (!memberBalances[payerId] && groupMembers.find(m => m.id === payerId)) { // Ensure payer exists in members
+             memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
+        }
 
-        participants.forEach(participant => {
+        expense.participants.forEach(participant => {
             const debtorId = participant.userId;
             const amountOwedByDebtor = participant.amountOwed;
 
             if (debtorId === payerId) return; 
             
-            if(!memberBalances[debtorId]) memberBalances[debtorId] = { owes: {}, owedBy: {}, netBalance: 0 };
-            if(!memberBalances[payerId]) memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
-
-            memberBalances[debtorId].owes[payerId] = (memberBalances[debtorId].owes[payerId] || 0) + amountOwedByDebtor;
-            memberBalances[debtorId].netBalance -= amountOwedByDebtor;
-            memberBalances[payerId].owedBy[debtorId] = (memberBalances[payerId].owedBy[debtorId] || 0) + amountOwedByDebtor;
-            memberBalances[payerId].netBalance += amountOwedByDebtor;
+            if(!memberBalances[debtorId] && groupMembers.find(m => m.id === debtorId)) {
+                memberBalances[debtorId] = { owes: {}, owedBy: {}, netBalance: 0 };
+            }
+            
+            // Ensure both debtor and payer are part of the group's member list before processing
+            if (memberBalances[debtorId] && memberBalances[payerId]) {
+                memberBalances[debtorId].owes[payerId] = (memberBalances[debtorId].owes[payerId] || 0) + amountOwedByDebtor;
+                memberBalances[debtorId].netBalance -= amountOwedByDebtor;
+                memberBalances[payerId].owedBy[debtorId] = (memberBalances[payerId].owedBy[debtorId] || 0) + amountOwedByDebtor;
+                memberBalances[payerId].netBalance += amountOwedByDebtor;
+            }
         });
     });
     return Object.entries(memberBalances).map(([userId, balanceData]) => ({
         userId,
         ...balanceData
-    }));
+    })).filter(b => groupMembers.some(m => m.id === b.userId)); // Only return balances for actual group members
   };
 
   const handleDownloadPdf = () => {
@@ -192,23 +240,22 @@ export default function GroupDetailPage() {
     doc.text("Group Members", 14, yPos);
     yPos += 8;
     doc.setFontSize(11);
-    group.members.forEach(member => { // Use group.members which are User-like objects
-      const userDetail = mockUsers.find(u => u.id === member.id); // Get full detail if needed, or use member.name directly
-      doc.text(`- ${member.name || userDetail?.name} (${member.email || userDetail?.email})${member.id === group.ownerId ? ' (Admin)' : ''}`, 16, yPos);
+    group.members.forEach(member => {
+      doc.text(`- ${member.name || 'N/A'} (${member.email || 'N/A'})${member.id === group.ownerId ? ' (Admin)' : ''}`, 16, yPos);
       yPos += 6;
     });
     yPos += 4; 
 
-    if (expenses.length > 0) {
+    if (firestoreExpenses.length > 0) {
       doc.setFontSize(14);
       doc.text("Expenses", 14, yPos);
       yPos += 2; 
-      const expenseData = expenses.map(exp => {
-        const payer = mockUsers.find(u => u.id === exp.paidByUserId);
+      const expenseData = firestoreExpenses.map(exp => {
+        const payer = memberDetailsMap.get(exp.paidByUserId);
         return [
           format(parseISO(exp.date), "MMM d, yyyy"),
           exp.description,
-          payer?.name || 'Unknown',
+          payer?.name || exp.paidByUserId.substring(0,6), // Fallback to ID if name not found
           `${currencySymbol}${exp.amount.toFixed(2)}`
         ];
       });
@@ -234,17 +281,17 @@ export default function GroupDetailPage() {
       doc.setFontSize(11);
       const balanceSummary: string[][] = [];
       balances.forEach(balance => {
-        const user = mockUsers.find(u => u.id === balance.userId); // Balances are keyed by userId
+        const user = memberDetailsMap.get(balance.userId);
         if (!user) return;
         let balanceText = "";
-        if (balance.netBalance > 0) {
+        if (balance.netBalance > 0.005) { // Use threshold
           balanceText = `Is Owed: ${currencySymbol}${balance.netBalance.toFixed(2)}`;
-        } else if (balance.netBalance < 0) {
+        } else if (balance.netBalance < -0.005) { // Use threshold
           balanceText = `Owes: ${currencySymbol}${Math.abs(balance.netBalance).toFixed(2)}`;
         } else {
           balanceText = "Settled Up";
         }
-        balanceSummary.push([user.name, balanceText]);
+        balanceSummary.push([user.name || balance.userId.substring(0,6), balanceText]);
       });
        doc.autoTable({
         startY: yPos,
@@ -258,16 +305,16 @@ export default function GroupDetailPage() {
 
       let detailedOwesText = "";
       balances.forEach(balance => {
-        const user = mockUsers.find(u => u.id === balance.userId);
+        const user = memberDetailsMap.get(balance.userId);
         if (!user) return;
         const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({
-            user: mockUsers.find(u => u.id === owedToId),
+            user: memberDetailsMap.get(owedToId),
             amount
-        })).filter(item => item.user && item.amount > 0);
+        })).filter(item => item.user && item.amount > 0.005);
         if (owedToList.length > 0) {
-            detailedOwesText += `${user.name} owes:\n`;
+            detailedOwesText += `${user.name || balance.userId.substring(0,6)} owes:\n`;
             owedToList.forEach(item => {
-                 detailedOwesText += `  - ${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name}\n`;
+                 detailedOwesText += `  - ${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}\n`;
             });
             detailedOwesText += "\n";
         }
@@ -304,9 +351,7 @@ export default function GroupDetailPage() {
       url: groupUrl,
     };
     try {
-      if (navigator.share && typeof navigator.canShare === 'function' && navigator.canShare(shareData)) {
-        await navigator.share(shareData);
-      } else if (navigator.share) { 
+      if (navigator.share && (typeof navigator.canShare !== 'function' || navigator.canShare(shareData))) {
         await navigator.share(shareData);
       } else {
         toast({ title: "Web Share Not Supported", description: "Cannot share using system dialog.", variant: "destructive" });
@@ -330,59 +375,41 @@ export default function GroupDetailPage() {
     }
   };
 
-  const handleShareWhatsApp = () => {
-    if (!group) return;
-    const message = `${shareMessageDefault}\n${groupUrl}`;
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleShareFacebook = () => {
-    if (!group) return;
-    const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(groupUrl)}`;
-    window.open(facebookUrl, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleShareTwitter = () => {
-    if (!group) return;
-    const text = `${shareMessageDefault}`; 
-    const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(groupUrl)}&text=${encodeURIComponent(text)}`;
-    window.open(twitterUrl, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleShareEmail = () => {
-    if (!group) return;
-    const subject = `Check out this BalanceBeam group: ${group.name}`;
-    const body = `${shareMessageDefault}\n${groupUrl}`;
-    const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoUrl; 
-  };
+  const handleShareWhatsApp = () => { if (!group) return; const message = `${shareMessageDefault}\n${groupUrl}`; const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`; window.open(whatsappUrl, '_blank', 'noopener,noreferrer'); };
+  const handleShareFacebook = () => { if (!group) return; const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(groupUrl)}`; window.open(facebookUrl, '_blank', 'noopener,noreferrer'); };
+  const handleShareTwitter = () => { if (!group) return; const text = `${shareMessageDefault}`; const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(groupUrl)}&text=${encodeURIComponent(text)}`; window.open(twitterUrl, '_blank', 'noopener,noreferrer'); };
+  const handleShareEmail = () => { if (!group) return; const subject = `Check out this BalanceBeam group: ${group.name}`; const body = `${shareMessageDefault}\n${groupUrl}`; const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; window.location.href = mailtoUrl; };
 
   const handleDeleteGroup = async () => {
     if (!group || !currentUser || group.ownerId !== currentUser.id) {
       toast({ title: "Error", description: "You do not have permission to delete this group.", variant: "destructive"});
       return;
     }
-    // In a real app, consider subcollection cleanup (expenses, activity) or use Firebase Functions for that.
-    // For now, just delete the group document.
     try {
-      const groupDocRef = doc(db, 'groups', groupId);
-      await deleteDoc(groupDocRef);
-      toast({ title: "Group Deleted", description: `Group "${group.name}" has been deleted.`});
+      // Transaction to delete group and its subcollections (expenses, activityLog)
+      await runTransaction(db, async (transaction) => {
+        const groupDocRef = doc(db, 'groups', groupId);
+        
+        // Delete expenses subcollection
+        const expensesColRef = collection(db, 'groups', groupId, 'expenses');
+        const expensesSnapshot = await getDocs(query(expensesColRef)); // No need to pass transaction to getDocs
+        expensesSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
+
+        // Delete activityLog subcollection
+        const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
+        const activityLogSnapshot = await getDocs(query(activityLogColRef)); // No need to pass transaction to getDocs
+        activityLogSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
+        
+        // Delete the group document itself
+        transaction.delete(groupDocRef);
+      });
+
+      toast({ title: "Group Deleted", description: `Group "${group.name}" and all its data have been deleted from Firestore.`});
       router.push('/groups');
     } catch (error) {
-      console.error("Error deleting group:", error);
-      toast({ title: "Error", description: "Could not delete group.", variant: "destructive"});
+      console.error("Error deleting group and its subcollections:", error);
+      toast({ title: "Error", description: "Could not delete group. Subcollections might still exist.", variant: "destructive"});
     }
-  };
-
-  const getInitials = (name: string | undefined | null) => {
-    if (!name) return "U";
-    const names = name.split(' ');
-    if (names.length > 1) {
-      return (names[0][0] + names[names.length - 1][0]).toUpperCase();
-    }
-    return name.substring(0, 2).toUpperCase();
   };
 
   if (isLoading) {
@@ -408,7 +435,7 @@ export default function GroupDetailPage() {
     );
   }
 
-  if (!currentUser) { // Should be caught by isLoading or accessDenied if group requires auth
+  if (!currentUser) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -419,8 +446,8 @@ export default function GroupDetailPage() {
     );
   }
   
-  if (!group) { // Should be covered by isLoading or accessDenied
-    return <p>Loading group details...</p>; // Fallback, though ideally accessDenied or loader handles it
+  if (!group) {
+    return <p>Loading group details...</p>; 
   }
   
   const isMember = group.memberIds.includes(currentUser.id);
@@ -481,7 +508,7 @@ export default function GroupDetailPage() {
                     <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                     <AlertDialogDescription>
                       This action cannot be undone. This will permanently delete the group
-                      "{group.name}" and all its associated data from Firestore. Related expenses and activities (if stored in subcollections) may need manual cleanup or a Firebase Function.
+                      "{group.name}" and all its associated data (expenses, activity logs) from Firestore.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -503,7 +530,7 @@ export default function GroupDetailPage() {
             <TabsTrigger value="expenses"><CreditCard className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
             <TabsTrigger value="balances"><ListChecks className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Balances</TabsTrigger>
             <TabsTrigger value="members"><Users className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Members</TabsTrigger>
-            <TabsTrigger value="activity"><Activity className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
+            <TabsTrigger value="activity"><ActivityIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
           </TabsList>
            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             {isMember && ( 
@@ -523,7 +550,7 @@ export default function GroupDetailPage() {
              <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 sm:flex-none">
                 <Download className="mr-2 h-4 w-4" /> Download PDF
             </Button>
-            {group.visibility === 'public' && (
+            {(group.visibility === 'public' || isMember) && ( // Allow sharing for members of private groups too
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="flex-1 sm:flex-none">
@@ -539,7 +566,7 @@ export default function GroupDetailPage() {
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer">
-                      <LinkIcon className="mr-2 h-4 w-4" /> Copy Link
+                      <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer">
                       <MessageCircle className="mr-2 h-4 w-4" /> Share on WhatsApp
@@ -563,25 +590,25 @@ export default function GroupDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Expenses</CardTitle>
-              <CardDescription>All expenses recorded in this group. (Currently from mock data)</CardDescription>
+              <CardDescription>All expenses recorded in this group from Firestore.</CardDescription>
             </CardHeader>
             <CardContent>
-              {expenses.length > 0 ? (
+              {firestoreExpenses.length > 0 ? (
                 <ul className="space-y-4">
-                  {expenses.map(expense => {
-                    const payer = mockUsers.find(u => u.id === expense.paidByUserId);
+                  {firestoreExpenses.map(expense => {
+                    const payer = memberDetailsMap.get(expense.paidByUserId);
                     const currentUserShare = expense.participants.find(p => p.userId === currentUser.id);
                     return (
                     <li key={expense.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-10 w-10">
-                            <AvatarImage src={payer?.avatarUrl} />
+                            <AvatarImage src={payer?.avatarUrl || undefined} />
                             <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback>
                         </Avatar>
                         <div>
                             <p className="font-medium">{expense.description}</p>
                             <p className="text-sm text-muted-foreground">
-                                Paid by {payer?.name || 'Unknown'} on {format(parseISO(expense.date), "MMM d, yyyy")}
+                                Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")}
                             </p>
                         </div>
                       </div>
@@ -595,7 +622,7 @@ export default function GroupDetailPage() {
                   )})}
                 </ul>
               ) : (
-                <p className="text-muted-foreground text-center py-4">No expenses recorded yet in mock data for this group.</p>
+                <p className="text-muted-foreground text-center py-4">No expenses recorded yet in Firestore for this group.</p>
               )}
             </CardContent>
           </Card>
@@ -605,22 +632,22 @@ export default function GroupDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Balances</CardTitle>
-              <CardDescription>Who owes whom in this group. (Calculated from mock expenses)</CardDescription>
+              <CardDescription>Who owes whom in this group, calculated from Firestore expenses.</CardDescription>
             </CardHeader>
             <CardContent>
               {balances.length > 0 ? (
                 <ul className="space-y-3">
                   {balances.map(balance => {
-                    const user = mockUsers.find(u => u.id === balance.userId); // Find user from mockUsers
+                    const user = memberDetailsMap.get(balance.userId);
                     if (!user) return null;
 
                     const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({
-                        user: mockUsers.find(u => u.id === owedToId),
+                        user: memberDetailsMap.get(owedToId),
                         amount
                     })).filter(item => item.user && item.amount > 0.005); 
                     
                     const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({
-                        user: mockUsers.find(u => u.id === owedById),
+                        user: memberDetailsMap.get(owedById),
                         amount
                     })).filter(item => item.user && item.amount > 0.005); 
 
@@ -628,10 +655,10 @@ export default function GroupDetailPage() {
                         <li key={balance.userId} className="p-3 border rounded-md">
                             <div className="flex items-center gap-2 mb-2">
                                 <Avatar className="h-8 w-8">
-                                    <AvatarImage src={user.avatarUrl} />
+                                    <AvatarImage src={user.avatarUrl || undefined} />
                                     <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                                 </Avatar>
-                                <span className="font-medium">{user.name}'s Balance:</span>
+                                <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Balance:</span>
                                 <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600' : balance.netBalance < -0.005 ? 'text-red-600' : 'text-muted-foreground'}`}>
                                     {getCurrencySymbol()}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed" : balance.netBalance < -0.005 ? "owes" : "is settled"}
                                 </span>
@@ -641,7 +668,7 @@ export default function GroupDetailPage() {
                                     <p className="text-red-600">Owes:</p>
                                     <ul className="list-disc list-inside ml-2">
                                         {owedToList.map(item => (
-                                            <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} to ${item.user!.name}`}</li>
+                                            <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
                                         ))}
                                     </ul>
                                 </div>
@@ -651,7 +678,7 @@ export default function GroupDetailPage() {
                                     <p className="text-green-600">Is owed by:</p>
                                     <ul className="list-disc list-inside ml-2">
                                         {owedByList.map(item => (
-                                            <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} from ${item.user!.name}`}</li>
+                                            <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} from ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
                                         ))}
                                     </ul>
                                 </div>
@@ -664,7 +691,7 @@ export default function GroupDetailPage() {
                   })}
                 </ul>
               ) : (
-                 <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses yet in mock data.</p>
+                 <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses yet in Firestore.</p>
               )}
             </CardContent>
           </Card>
@@ -675,13 +702,13 @@ export default function GroupDetailPage() {
             <CardHeader className="flex flex-row justify-between items-center">
                 <div>
                     <CardTitle>Members ({group.members.length})</CardTitle>
-                    <CardDescription>People participating in this group.</CardDescription>
+                    <CardDescription>People participating in this group (from Firestore).</CardDescription>
                 </div>
                 {isOwner && <Button variant="outline" size="sm" disabled><UserPlus className="mr-2 h-4 w-4"/>Add Member</Button>}
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
-                {group.members.map(member => ( // group.members contains User-like objects
+                {group.members.map(member => ( 
                   <li key={member.id} className="flex items-center justify-between p-2 border rounded-md">
                     <div className="flex items-center gap-3">
                         <Avatar>
@@ -689,8 +716,8 @@ export default function GroupDetailPage() {
                             <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
                         </Avatar>
                         <div>
-                            <p className="font-medium">{member.name}</p>
-                            <p className="text-xs text-muted-foreground">{member.email}</p>
+                            <p className="font-medium">{member.name || member.id.substring(0,10)}</p>
+                            <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p>
                         </div>
                     </div>
                     <div>
@@ -712,28 +739,33 @@ export default function GroupDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Activity Log</CardTitle>
-              <CardDescription>Recent actions within this group. (Currently from mock data)</CardDescription>
+              <CardDescription>Recent actions within this group from Firestore.</CardDescription>
             </CardHeader>
             <CardContent>
-              {activityLogs.length > 0 ? (
+              {firestoreActivityLogs.length > 0 ? (
                 <ul className="space-y-4">
-                  {activityLogs.map(log => {
-                    const actor = mockUsers.find(u => u.id === log.userId);
+                  {firestoreActivityLogs.map(log => {
+                    const actor = memberDetailsMap.get(log.userId);
                     return (
                     <li key={log.id} className="flex items-start gap-3 text-sm p-2 border rounded-md">
                         <Avatar className="h-8 w-8 mt-1">
-                            <AvatarImage src={actor?.avatarUrl} />
+                            <AvatarImage src={actor?.avatarUrl || undefined} />
                             <AvatarFallback>{getInitials(actor?.name)}</AvatarFallback>
                         </Avatar>
                         <div>
-                            <p><span className="font-medium">{actor?.name || 'Unknown User'}</span> {log.description.replace(actor?.name || 'Unknown User', '').trim()}</p>
+                             <p>
+                                <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span>
+                                {log.description.includes(actor?.name || 'User') 
+                                    ? log.description.substring((actor?.name || 'User').length).trim() 
+                                    : log.description}
+                            </p>
                             <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p>
                         </div>
                     </li>
                   )})}
                 </ul>
               ) : (
-                 <p className="text-muted-foreground text-center py-4">No activity recorded yet in mock data for this group.</p>
+                 <p className="text-muted-foreground text-center py-4">No activity recorded yet in Firestore for this group.</p>
               )}
             </CardContent>
           </Card>
@@ -742,3 +774,4 @@ export default function GroupDetailPage() {
     </div>
   );
 }
+
