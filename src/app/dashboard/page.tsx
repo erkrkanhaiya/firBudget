@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PlusCircle, Users, ArrowRight, BarChart3, AlertTriangle, ShoppingCart, ListChecks, Activity as ActivityIcon, Loader2, Zap } from 'lucide-react';
+import { PlusCircle, Users, ArrowRight, BarChart3, AlertTriangle, ListChecks, Activity as ActivityIcon, Loader2, Zap } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import Image from 'next/image';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -20,6 +20,16 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { format, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useNotification } from '@/contexts/NotificationContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
 
 // Helper function to get initials
 const getInitials = (name: string | undefined | null) => {
@@ -81,6 +91,7 @@ export default function DashboardPage() {
   const [quickExpenseDescription, setQuickExpenseDescription] = useState('');
   const [quickExpenseAmount, setQuickExpenseAmount] = useState('');
   const [isSubmittingQuickExpense, setIsSubmittingQuickExpense] = useState(false);
+  const [isQuickAddDialogOpen, setIsQuickAddDialogOpen] = useState(false);
 
 
   useEffect(() => {
@@ -261,6 +272,7 @@ export default function DashboardPage() {
       });
       setQuickExpenseDescription('');
       setQuickExpenseAmount('');
+      setIsQuickAddDialogOpen(false); // Close dialog on success
     } catch (error) {
       console.error("Error quick adding expense:", error);
       toast({ title: "Error", description: "Could not add quick expense.", variant: "destructive" });
@@ -304,12 +316,78 @@ export default function DashboardPage() {
             })}
           </p>
         </div>
-        <Button asChild size="lg" disabled={!currentUser}>
-          <Link href="/groups/create">
-            <PlusCircle className="mr-2 h-5 w-5" /> 
-            {translate({ en: "Create New Group", hi: "नया समूह बनाएं" })}
-          </Link>
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          {currentUser && lastActiveGroup && (
+            <Dialog open={isQuickAddDialogOpen} onOpenChange={setIsQuickAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="lg" className="w-full sm:w-auto" disabled={!lastActiveGroup}>
+                  <Zap className="mr-2 h-5 w-5 text-primary" /> 
+                  Quick Add Expense
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Quick Add Expense to "{lastActiveGroup?.name}"</DialogTitle>
+                  <DialogDescription>
+                    Payer: You | Date: Today | Splits equally with all {lastActiveGroup?.members.length} members.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleQuickAddExpense} className="space-y-4 py-4">
+                  <div>
+                    <Label htmlFor="quickExpenseDescriptionDialog">Description*</Label>
+                    <Input
+                      id="quickExpenseDescriptionDialog"
+                      value={quickExpenseDescription}
+                      onChange={(e) => setQuickExpenseDescription(e.target.value)}
+                      placeholder="e.g., Coffee, Lunch"
+                      required
+                      disabled={isSubmittingQuickExpense}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="quickExpenseAmountDialog">Amount*</Label>
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{getCurrencySymbol()}</span>
+                      <Input
+                        id="quickExpenseAmountDialog"
+                        type="number"
+                        value={quickExpenseAmount}
+                        onChange={(e) => setQuickExpenseAmount(e.target.value)}
+                        placeholder="0.00"
+                        className="pl-8"
+                        required
+                        step="0.01"
+                        min="0.01"
+                        disabled={isSubmittingQuickExpense}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button type="button" variant="outline" disabled={isSubmittingQuickExpense}>
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button type="submit" disabled={isSubmittingQuickExpense || !quickExpenseDescription || !quickExpenseAmount}>
+                      {isSubmittingQuickExpense ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                      )}
+                      {isSubmittingQuickExpense ? "Adding..." : "Add Expense"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+          <Button asChild size="lg" disabled={!currentUser} className="w-full sm:w-auto">
+            <Link href="/groups/create">
+              <PlusCircle className="mr-2 h-5 w-5" /> 
+              {translate({ en: "Create New Group", hi: "नया समूह बनाएं" })}
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -380,63 +458,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {currentUser && lastActiveGroup && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-primary" />
-              Quick Add Expense to "{lastActiveGroup.name}"
-            </CardTitle>
-            <CardDescription>
-              Payer: You | Date: Today | Splits equally with all {lastActiveGroup.members.length} members.
-            </CardDescription>
-          </CardHeader>
-          <form onSubmit={handleQuickAddExpense}>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="quickExpenseDescription">Description*</Label>
-                <Input
-                  id="quickExpenseDescription"
-                  value={quickExpenseDescription}
-                  onChange={(e) => setQuickExpenseDescription(e.target.value)}
-                  placeholder="e.g., Coffee, Lunch"
-                  required
-                  disabled={isSubmittingQuickExpense}
-                />
-              </div>
-              <div>
-                <Label htmlFor="quickExpenseAmount">Amount*</Label>
-                <div className="relative">
-                  <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{getCurrencySymbol()}</span>
-                  <Input
-                    id="quickExpenseAmount"
-                    type="number"
-                    value={quickExpenseAmount}
-                    onChange={(e) => setQuickExpenseAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="pl-8"
-                    required
-                    step="0.01"
-                    min="0.01"
-                    disabled={isSubmittingQuickExpense}
-                  />
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" className="ml-auto" disabled={isSubmittingQuickExpense || !quickExpenseDescription || !quickExpenseAmount}>
-                {isSubmittingQuickExpense ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                )}
-                {isSubmittingQuickExpense ? "Adding..." : "Quick Add"}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-      )}
-
       <div>
         <h2 className="text-2xl font-semibold mb-4">
           {translate({ en: "Recent Activity Highlights", hi: "हाल की गतिविधि की मुख्य बातें" })}
@@ -504,4 +525,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
