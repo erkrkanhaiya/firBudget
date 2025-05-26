@@ -4,18 +4,22 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { PlusCircle, Users, ArrowRight, BarChart3, AlertTriangle, ShoppingCart, ListChecks, Activity as ActivityIcon, Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { PlusCircle, Users, ArrowRight, BarChart3, AlertTriangle, ShoppingCart, ListChecks, Activity as ActivityIcon, Loader2, Zap } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import Image from 'next/image';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, FormEvent } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, Timestamp, orderBy, limit } from 'firebase/firestore';
-import type { Group as GroupType, ActivityLog, User as UserType } from '@/types';
+import { collection, query, where, getDocs, Timestamp, orderBy, limit, addDoc, serverTimestamp, writeBatch, doc } from 'firebase/firestore';
+import type { Group as GroupType, ActivityLog, User as UserType, Expense, ExpenseParticipant } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { format, parseISO } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import { useNotification } from '@/contexts/NotificationContext';
 
 // Helper function to get initials
 const getInitials = (name: string | undefined | null) => {
@@ -65,23 +69,34 @@ export default function DashboardPage() {
   const { currentUser } = useUser();
   const { translate } = useLanguage();
   const { getCurrencySymbol } = useCurrency();
+  const { toast } = useToast();
+  const { addNotification } = useNotification();
+
   const [userGroupsCount, setUserGroupsCount] = useState<number | null>(null);
   const [isLoadingGroupsCount, setIsLoadingGroupsCount] = useState(true);
   const [recentActivities, setRecentActivities] = useState<EnrichedActivityLog[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(true);
+
+  const [lastActiveGroup, setLastActiveGroup] = useState<GroupType | null>(null);
+  const [quickExpenseDescription, setQuickExpenseDescription] = useState('');
+  const [quickExpenseAmount, setQuickExpenseAmount] = useState('');
+  const [isSubmittingQuickExpense, setIsSubmittingQuickExpense] = useState(false);
+
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       if (!currentUser) {
         setIsLoadingGroupsCount(false);
         setIsLoadingActivities(false);
+        setLastActiveGroup(null);
         return;
       }
       setIsLoadingGroupsCount(true);
       setIsLoadingActivities(true);
+      setLastActiveGroup(null);
 
       try {
-        // Fetch groups count
+        // Fetch groups
         const groupsQuery = query(
           collection(db, 'groups'),
           where('memberIds', 'array-contains', currentUser.id)
@@ -90,12 +105,11 @@ export default function DashboardPage() {
         setUserGroupsCount(groupsSnapshot.size);
         setIsLoadingGroupsCount(false);
 
-        // Fetch recent activities
-        const userGroupIds = groupsSnapshot.docs.map(doc => doc.id);
+        const userGroups: GroupType[] = [];
         const groupsDataMap = new Map<string, GroupType>();
         groupsSnapshot.docs.forEach(docSnap => {
              const data = docSnap.data();
-             groupsDataMap.set(docSnap.id, {
+             const group = {
                 id: docSnap.id,
                 name: data.name,
                 members: data.members || [],
@@ -103,19 +117,24 @@ export default function DashboardPage() {
                 ownerId: data.ownerId,
                 visibility: data.visibility,
                 createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
-             } as GroupType);
+             } as GroupType;
+             groupsDataMap.set(docSnap.id, group);
+             userGroups.push(group);
         });
+        
+        // Fetch recent activities
+        const userGroupIds = Array.from(groupsDataMap.keys());
 
         if (userGroupIds.length === 0) {
           setRecentActivities([]);
           setIsLoadingActivities(false);
+          setLastActiveGroup(null);
           return;
         }
 
         let fetchedLogs: EnrichedActivityLog[] = [];
         const activityLogPromises = userGroupIds.map(groupId => {
           const logsColRef = collection(db, 'groups', groupId, 'activityLog');
-          // Fetch a few recent logs from each group
           return getDocs(query(logsColRef, orderBy('timestamp', 'desc'), limit(MAX_RECENT_ACTIVITIES)));
         });
 
@@ -135,26 +154,125 @@ export default function DashboardPage() {
               timestamp: (logData.timestamp instanceof Timestamp ? logData.timestamp.toDate().toISOString() : logData.timestamp as string),
               groupName: group?.name,
               actorName: actor?.name,
-              actorAvatarUrl: actor?.avatarUrl
+              actorAvatarUrl: actor?.avatarUrl,
+              groupId: group?.id // Ensure groupId is on the log for lastActiveGroup determination
             });
           });
         });
 
-        // Sort all collected logs by timestamp and take the top overall
         fetchedLogs.sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
         setRecentActivities(fetchedLogs.slice(0, MAX_RECENT_ACTIVITIES));
+        setIsLoadingActivities(false);
+
+        // Determine last active group
+        if (fetchedLogs.length > 0 && fetchedLogs[0].groupId) {
+            const activeGroupId = fetchedLogs[0].groupId;
+            const activeGroupDetails = groupsDataMap.get(activeGroupId);
+            if (activeGroupDetails) {
+                setLastActiveGroup(activeGroupDetails);
+            }
+        } else if (userGroups.length > 0) {
+            // Fallback to most recently created group
+            userGroups.sort((a,b) => parseISO(b.createdAt).getTime() - parseISO(a.createdAt).getTime());
+            setLastActiveGroup(userGroups[0]);
+        }
+
 
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
         setUserGroupsCount(0); 
         setRecentActivities([]);
+        setLastActiveGroup(null);
       } finally {
-        setIsLoadingGroupsCount(false); // Ensure this is set even on error
+        setIsLoadingGroupsCount(false); 
         setIsLoadingActivities(false);
       }
     };
     fetchDashboardData();
   }, [currentUser]);
+
+  const handleQuickAddExpense = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!currentUser || !lastActiveGroup || !quickExpenseDescription.trim() || !quickExpenseAmount.trim() || parseFloat(quickExpenseAmount) <= 0) {
+      toast({ title: "Invalid Input", description: "Please enter a valid description and amount.", variant: "destructive" });
+      return;
+    }
+    setIsSubmittingQuickExpense(true);
+
+    const numericAmount = parseFloat(quickExpenseAmount);
+    const participantsCount = lastActiveGroup.members.length;
+    if (participantsCount === 0) {
+        toast({ title: "Group Error", description: "Last active group has no members to split with.", variant: "destructive"});
+        setIsSubmittingQuickExpense(false);
+        return;
+    }
+    const share = parseFloat((numericAmount / participantsCount).toFixed(2));
+    const expenseParticipants: ExpenseParticipant[] = lastActiveGroup.members.map(member => ({
+        userId: member.id,
+        amountOwed: share,
+    }));
+
+    // Adjust last participant's share for potential rounding issues to ensure sum matches total
+    const sumOfShares = expenseParticipants.reduce((acc, p) => acc + p.amountOwed, 0);
+    if (sumOfShares !== numericAmount && expenseParticipants.length > 0) {
+        const diff = numericAmount - sumOfShares;
+        expenseParticipants[expenseParticipants.length - 1].amountOwed += diff;
+        expenseParticipants[expenseParticipants.length - 1].amountOwed = parseFloat(expenseParticipants[expenseParticipants.length - 1].amountOwed.toFixed(2));
+    }
+
+    const expenseForFirestore: Omit<Expense, 'id' | 'createdAt'> = {
+      groupId: lastActiveGroup.id,
+      description: quickExpenseDescription.trim(),
+      amount: numericAmount,
+      paidByUserId: currentUser.id,
+      date: new Date().toISOString(),
+      participants: expenseParticipants,
+    };
+
+    const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
+      groupId: lastActiveGroup.id,
+      userId: currentUser.id,
+      actionType: 'expense_added',
+      description: `${currentUser.name || 'User'} added expense: ${quickExpenseDescription.trim()} (quick add)`,
+    };
+    
+    try {
+      const batch = writeBatch(db);
+      const expenseColRef = collection(db, 'groups', lastActiveGroup.id, 'expenses');
+      const newExpenseDocRef = doc(expenseColRef); // Auto-generate ID
+      activityLogForFirestore.relatedExpenseId = newExpenseDocRef.id; // Link activity log to expense
+
+      batch.set(newExpenseDocRef, { ...expenseForFirestore, createdAt: serverTimestamp() });
+      
+      const activityLogColRef = collection(db, 'groups', lastActiveGroup.id, 'activityLog');
+      batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
+      
+      await batch.commit();
+
+      toast({
+        title: "Expense Added!",
+        description: `Quick expense "${quickExpenseDescription.trim()}" added to "${lastActiveGroup.name}".`,
+      });
+      addNotification({
+        title: "Quick Expense Added",
+        message: `Added "${quickExpenseDescription.trim()}" to group "${lastActiveGroup.name}".`,
+        type: "success",
+        href: `/groups/${lastActiveGroup.id}`,
+      });
+      setQuickExpenseDescription('');
+      setQuickExpenseAmount('');
+    } catch (error) {
+      console.error("Error quick adding expense:", error);
+      toast({ title: "Error", description: "Could not add quick expense.", variant: "destructive" });
+      addNotification({
+        title: "Quick Expense Failed",
+        message: `Could not add expense to "${lastActiveGroup.name}".`,
+        type: "destructive",
+      });
+    } finally {
+      setIsSubmittingQuickExpense(false);
+    }
+  };
 
   if (!currentUser && !isLoadingGroupsCount && !isLoadingActivities) {
     return (
@@ -262,6 +380,63 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      {currentUser && lastActiveGroup && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-primary" />
+              Quick Add Expense to "{lastActiveGroup.name}"
+            </CardTitle>
+            <CardDescription>
+              Payer: You | Date: Today | Splits equally with all {lastActiveGroup.members.length} members.
+            </CardDescription>
+          </CardHeader>
+          <form onSubmit={handleQuickAddExpense}>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="quickExpenseDescription">Description*</Label>
+                <Input
+                  id="quickExpenseDescription"
+                  value={quickExpenseDescription}
+                  onChange={(e) => setQuickExpenseDescription(e.target.value)}
+                  placeholder="e.g., Coffee, Lunch"
+                  required
+                  disabled={isSubmittingQuickExpense}
+                />
+              </div>
+              <div>
+                <Label htmlFor="quickExpenseAmount">Amount*</Label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{getCurrencySymbol()}</span>
+                  <Input
+                    id="quickExpenseAmount"
+                    type="number"
+                    value={quickExpenseAmount}
+                    onChange={(e) => setQuickExpenseAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="pl-8"
+                    required
+                    step="0.01"
+                    min="0.01"
+                    disabled={isSubmittingQuickExpense}
+                  />
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button type="submit" className="ml-auto" disabled={isSubmittingQuickExpense || !quickExpenseDescription || !quickExpenseAmount}>
+                {isSubmittingQuickExpense ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                )}
+                {isSubmittingQuickExpense ? "Adding..." : "Quick Add"}
+              </Button>
+            </CardFooter>
+          </form>
+        </Card>
+      )}
+
       <div>
         <h2 className="text-2xl font-semibold mb-4">
           {translate({ en: "Recent Activity Highlights", hi: "हाल की गतिविधि की मुख्य बातें" })}
@@ -291,7 +466,6 @@ export default function DashboardPage() {
                   <div className="flex-1">
                     <p className="text-sm">
                       <span className="font-medium">{log.actorName || 'Unknown User'}</span>
-                      {/* Avoid repeating actor name if already in description */}
                       {log.description.startsWith(log.actorName || 'Unknown User') 
                         ? log.description.substring((log.actorName || 'Unknown User').length).trim() 
                         : ` ${log.description}`}
@@ -308,7 +482,6 @@ export default function DashboardPage() {
                        <ClientFormattedDate timestamp={log.timestamp} />
                     </p>
                   </div>
-                  {/* Optional: Add a small badge or icon based on log.actionType */}
                 </CardContent>
               </Card>
             ))
@@ -331,3 +504,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
