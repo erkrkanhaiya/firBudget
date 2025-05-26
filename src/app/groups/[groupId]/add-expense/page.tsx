@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, PlusCircle, DollarSign, Users, CalendarDays, User } from 'lucide-react';
+import { ArrowLeft, PlusCircle, DollarSign, Users, CalendarDays, User, Info } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { mockGroups, mockUsers } from '@/data/mock';
 import type { Group, User as UserType, ExpenseParticipant } from '@/types';
@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function AddExpensePage() {
   const params = useParams();
@@ -32,8 +33,14 @@ export default function AddExpensePage() {
   const [amount, setAmount] = useState<string>('');
   const [paidByUserId, setPaidByUserId] = useState<string>('');
   const [expenseDate, setExpenseDate] = useState<Date | undefined>(new Date());
-  const [participants, setParticipants] = useState<string[]>([]); // Array of user IDs
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [splitEqually, setSplitEqually] = useState(true);
+  const [customSplitAmounts, setCustomSplitAmounts] = useState<Record<string, string>>({});
+  
+  const [sumOfCustomShares, setSumOfCustomShares] = useState<number>(0);
+  const [remainingToAllocate, setRemainingToAllocate] = useState<number>(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
 
   useEffect(() => {
     const foundGroup = mockGroups.find(g => g.id === groupId);
@@ -44,65 +51,162 @@ export default function AddExpensePage() {
         return;
       }
       setGroup(foundGroup);
-      // Pre-select all members as participants and current user as payer
-      setParticipants(foundGroup.members.map(m => m.id));
+      const memberIds = foundGroup.members.map(m => m.id);
+      setSelectedParticipantIds(memberIds);
       if (currentUser) {
         setPaidByUserId(currentUser.id);
       }
+      // Initialize custom split amounts for all members if switching to custom split later
+      const initialCustomAmounts: Record<string, string> = {};
+      memberIds.forEach(id => { initialCustomAmounts[id] = ''; });
+      setCustomSplitAmounts(initialCustomAmounts);
+
     } else {
       toast({ title: "Group not found", variant: "destructive" });
       router.push('/groups');
     }
   }, [groupId, router, currentUser, toast]);
 
+  useEffect(() => {
+    if (!splitEqually) {
+        const currentTotalAmount = parseFloat(amount) || 0;
+        let sum = 0;
+        selectedParticipantIds.forEach(pId => {
+            sum += parseFloat(customSplitAmounts[pId]) || 0;
+        });
+        setSumOfCustomShares(parseFloat(sum.toFixed(2)));
+        setRemainingToAllocate(parseFloat((currentTotalAmount - sum).toFixed(2)));
+    } else {
+        setSumOfCustomShares(parseFloat(amount) || 0);
+        setRemainingToAllocate(0);
+    }
+  }, [customSplitAmounts, amount, selectedParticipantIds, splitEqually]);
+
+
   if (!currentUser || !group) {
     return <p>Loading...</p>;
   }
+  
+  const handleParticipantChange = (userId: string, isChecked: boolean) => {
+    setSelectedParticipantIds(prev => {
+        const newParticipants = isChecked 
+            ? [...prev, userId] 
+            : prev.filter(id => id !== userId);
 
-  const handleParticipantChange = (userId: string) => {
-    setParticipants(prev =>
-      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
-    );
+        if (!splitEqually) {
+            setCustomSplitAmounts(currentAmounts => {
+                const updatedAmounts = { ...currentAmounts };
+                if (!isChecked && userId in updatedAmounts) { // User was removed
+                    delete updatedAmounts[userId];
+                } else if (isChecked && !(userId in updatedAmounts)) { // User was added
+                    updatedAmounts[userId] = ''; // Initialize or keep if toggling
+                }
+                return updatedAmounts;
+            });
+        }
+        return newParticipants;
+    });
+  };
+  
+  const handleSplitEquallyChange = (checked: boolean) => {
+    setSplitEqually(checked);
+    if (!checked) { // Switched to custom split
+        const initialAmounts: Record<string, string> = {};
+        const numParticipants = selectedParticipantIds.length;
+        const totalAmount = parseFloat(amount) || 0;
+        const prefillAmount = numParticipants > 0 ? (totalAmount / numParticipants).toFixed(2) : '0.00';
+
+        selectedParticipantIds.forEach(pid => {
+            // You can choose to prefill with equal share, 0, or keep existing if any
+            initialAmounts[pid] = ''; // Let's start with empty for user input
+        });
+        setCustomSplitAmounts(initialAmounts);
+    }
   };
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!description.trim() || !amount || parseFloat(amount) <= 0 || !paidByUserId || participants.length === 0 || !expenseDate) {
-      toast({ title: "Missing Information", description: "Please fill all required fields and ensure amount is positive.", variant: "destructive" });
-      return;
+  const handleCustomSplitAmountChange = (userId: string, value: string) => {
+    // Allow only numbers and at most two decimal places
+    if (/^\d*(\.\d{0,2})?$/.test(value) || value === '') {
+        setCustomSplitAmounts(prev => ({
+            ...prev,
+            [userId]: value
+        }));
     }
+  };
 
-    if (!splitEqually) {
-      toast({
-        title: "Custom Split Not Implemented",
-        description: "The ability to split expenses unequally is not yet available. Please check 'Split equally' to add the expense.",
-        variant: "default",
-      });
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+
+    if (!description.trim() || !amount || parseFloat(amount) <= 0 || !paidByUserId || selectedParticipantIds.length === 0 || !expenseDate) {
+      toast({ title: "Missing Information", description: "Please fill all required fields, ensure amount is positive, and at least one participant is selected.", variant: "destructive" });
+      setIsSubmitting(false);
       return;
     }
 
     const numericAmount = parseFloat(amount);
-    const share = numericAmount / participants.length;
-    const expenseParticipants: ExpenseParticipant[] = participants.map(userId => ({
-      userId,
-      amountOwed: share,
-    }));
+    let expenseParticipants: ExpenseParticipant[];
+
+    if (splitEqually) {
+      const share = numericAmount / selectedParticipantIds.length;
+      expenseParticipants = selectedParticipantIds.map(userId => ({
+        userId,
+        amountOwed: parseFloat(share.toFixed(2)),
+      }));
+    } else {
+      // Custom split logic
+      let currentTotalCustomSplit = 0;
+      expenseParticipants = [];
+
+      for (const userId of selectedParticipantIds) {
+        const customAmountStr = customSplitAmounts[userId];
+        if (customAmountStr === undefined || customAmountStr.trim() === '') {
+            toast({ title: "Custom Split Error", description: `Please enter an amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
+            setIsSubmitting(false);
+            return;
+        }
+        const customAmount = parseFloat(customAmountStr);
+        if (isNaN(customAmount) || customAmount < 0) {
+          toast({ title: "Invalid Amount", description: `Please enter a valid, non-negative amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
+          setIsSubmitting(false);
+          return;
+        }
+        expenseParticipants.push({ userId, amountOwed: parseFloat(customAmount.toFixed(2)) });
+        currentTotalCustomSplit += customAmount;
+      }
+      
+      currentTotalCustomSplit = parseFloat(currentTotalCustomSplit.toFixed(2));
+      const totalExpenseAmount = parseFloat(numericAmount.toFixed(2));
+
+      if (currentTotalCustomSplit !== totalExpenseAmount) {
+        toast({
+          title: "Custom Split Mismatch",
+          description: `The sum of custom shares ($${currentTotalCustomSplit.toFixed(2)}) must equal the total expense amount ($${totalExpenseAmount.toFixed(2)}). Remaining: $${(totalExpenseAmount - currentTotalCustomSplit).toFixed(2)}`,
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+    }
 
     // In a real app, send this to an API
-    console.log({
+    console.log('Submitting expense:', {
       groupId,
       description,
       amount: numericAmount,
       paidByUserId,
       date: expenseDate.toISOString(),
       participants: expenseParticipants,
-      splitEqually: splitEqually, // Added for logging
+      splitEqually: splitEqually,
     });
 
     toast({
       title: "Expense Added!",
-      description: `Expense "${description}" for $${numericAmount.toFixed(2)} has been added and split equally.`,
+      description: `Expense "${description}" for $${numericAmount.toFixed(2)} has been added.`,
     });
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    setIsSubmitting(false);
     router.push(`/groups/${groupId}`);
   };
 
@@ -128,6 +232,7 @@ export default function AddExpensePage() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="e.g., Groceries, Dinner, Train tickets"
                 required
+                disabled={isSubmitting}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -144,6 +249,8 @@ export default function AddExpensePage() {
                     className="pl-8"
                     required
                     step="0.01"
+                    min="0.01"
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -154,6 +261,7 @@ export default function AddExpensePage() {
                         <Button
                         variant={"outline"}
                         className="w-full justify-start text-left font-normal"
+                        disabled={isSubmitting}
                         >
                         <CalendarDays className="mr-2 h-4 w-4" />
                         {expenseDate ? format(expenseDate, "PPP") : <span>Pick a date</span>}
@@ -165,6 +273,7 @@ export default function AddExpensePage() {
                         selected={expenseDate}
                         onSelect={setExpenseDate}
                         initialFocus
+                        disabled={isSubmitting}
                         />
                     </PopoverContent>
                 </Popover>
@@ -172,7 +281,7 @@ export default function AddExpensePage() {
             </div>
             <div>
               <Label htmlFor="paidBy">Paid by*</Label>
-              <Select value={paidByUserId} onValueChange={setPaidByUserId} required>
+              <Select value={paidByUserId} onValueChange={setPaidByUserId} required disabled={isSubmitting}>
                 <SelectTrigger id="paidBy">
                   <User className="mr-2 h-4 w-4 text-muted-foreground inline-block" /> <SelectValue placeholder="Select who paid" />
                 </SelectTrigger>
@@ -193,8 +302,9 @@ export default function AddExpensePage() {
                   <div key={member.id} className="flex items-center space-x-2">
                     <Checkbox
                       id={`participant-${member.id}`}
-                      checked={participants.includes(member.id)}
-                      onCheckedChange={() => handleParticipantChange(member.id)}
+                      checked={selectedParticipantIds.includes(member.id)}
+                      onCheckedChange={(checked) => handleParticipantChange(member.id, Boolean(checked))}
+                      disabled={isSubmitting}
                     />
                     <Label htmlFor={`participant-${member.id}`} className="font-normal cursor-pointer">
                       {member.name} {member.id === currentUser.id && "(You)"}
@@ -207,15 +317,66 @@ export default function AddExpensePage() {
                 <Checkbox
                   id="splitEqually"
                   checked={splitEqually}
-                  onCheckedChange={(checked) => setSplitEqually(Boolean(checked))}
+                  onCheckedChange={(checked) => handleSplitEquallyChange(Boolean(checked))}
+                  disabled={isSubmitting}
                 />
                 <Label htmlFor="splitEqually" className="font-normal">Split equally</Label>
             </div>
 
+            {!splitEqually && selectedParticipantIds.length > 0 && (
+              <Card className="p-4 space-y-4 bg-muted/50">
+                 <div className="flex justify-between items-baseline">
+                    <h4 className="font-medium">Custom Split by Amount</h4>
+                 </div>
+                {selectedParticipantIds.map(participantId => {
+                  const member = group.members.find(m => m.id === participantId);
+                  return (
+                    <div key={participantId} className="grid grid-cols-3 items-center gap-2">
+                      <Label htmlFor={`custom-amount-${participantId}`} className="col-span-1 truncate">
+                        {member?.name} {member?.id === currentUser.id && "(You)"}
+                      </Label>
+                      <div className="relative col-span-2">
+                         <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                         <Input
+                            id={`custom-amount-${participantId}`}
+                            type="number"
+                            value={customSplitAmounts[participantId] || ''}
+                            onChange={(e) => handleCustomSplitAmountChange(participantId, e.target.value)}
+                            placeholder="0.00"
+                            className="pl-8"
+                            step="0.01"
+                            min="0"
+                            disabled={isSubmitting}
+                         />
+                      </div>
+                    </div>
+                  );
+                })}
+                <Alert variant={remainingToAllocate === 0 ? "default" : "destructive"} className="mt-4">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>
+                        {remainingToAllocate === 0 && sumOfCustomShares === (parseFloat(amount) || 0) ? "Amounts Match Total" : "Amounts Review"}
+                    </AlertTitle>
+                    <AlertDescription className="text-xs space-y-0.5">
+                        <p>Total Expense: ${ (parseFloat(amount) || 0).toFixed(2) }</p>
+                        <p>Sum of Shares: ${sumOfCustomShares.toFixed(2)}</p>
+                        <p className={remainingToAllocate !== 0 ? 'text-destructive font-semibold' : ''}>
+                           Remaining to Allocate: ${remainingToAllocate.toFixed(2)}
+                        </p>
+                    </AlertDescription>
+                </Alert>
+              </Card>
+            )}
+
           </CardContent>
           <CardFooter className="border-t px-6 py-4">
-            <Button type="submit" className="ml-auto">
-              <PlusCircle className="mr-2 h-4 w-4" /> Add Expense
+            <Button type="submit" className="ml-auto" disabled={isSubmitting || (!splitEqually && remainingToAllocate !== 0)}>
+              {isSubmitting ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground mr-2"></div>
+              ) : (
+                <PlusCircle className="mr-2 h-4 w-4" />
+              )}
+              {isSubmitting ? "Adding..." : "Add Expense"}
             </Button>
           </CardFooter>
         </form>
@@ -223,3 +384,4 @@ export default function AddExpensePage() {
     </div>
   );
 }
+
