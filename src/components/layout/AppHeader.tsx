@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle, Sun, Moon } from 'lucide-react'; // Added Sun, Moon
+import { Bell, UserCircle, LogOut, Settings, LayoutDashboard, Info, AlertCircle, CheckCircle, Sun, Moon, Languages, Check } from 'lucide-react';
 import { AppLogo } from '@/components/AppLogo';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -20,7 +20,8 @@ import { useUser } from '@/contexts/UserContext';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import React, { useState } from 'react';
-import { useTheme } from '@/contexts/ThemeContext'; // Added useTheme
+import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage, Language } from '@/contexts/LanguageContext';
 
 // Mock notifications data
 const mockNotifications = [
@@ -39,7 +40,8 @@ const NotificationIcon = ({ type }: { type: string }) => {
 
 export function AppHeader() {
   const { currentUser, logout } = useUser();
-  const { theme, toggleTheme, isThemeInitialized } = useTheme(); // Consumed theme context
+  const { theme, toggleTheme, isThemeInitialized } = useTheme();
+  const { language, setLanguage, isLanguageInitialized: isLangInitialized, translate } = useLanguage();
   const router = useRouter();
   const [notifications, setNotifications] = useState(mockNotifications);
 
@@ -77,13 +79,37 @@ export function AppHeader() {
       <div className="hidden md:block">
          <AppLogo iconSize={24} textSize="text-xl" />
       </div>
-      <div className="flex w-full items-center justify-end gap-2 sm:gap-4">
+      <div className="flex w-full items-center justify-end gap-1 sm:gap-2">
         {isThemeInitialized && (
             <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-full" title="Toggle theme">
             {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             <span className="sr-only">Toggle theme</span>
             </Button>
         )}
+
+        {isLangInitialized && (
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full" title={translate({en: "Change language", hi: "भाषा बदलें"})}>
+                    <Languages className="h-5 w-5" />
+                    <span className="sr-only">{translate({en: "Change language", hi: "भाषा बदलें"})}</span>
+                </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                <DropdownMenuLabel>{translate({en: "Select Language", hi: "भाषा चुनें"})}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setLanguage('en')} disabled={language === 'en'}>
+                    English
+                    {language === 'en' && <Check className="ml-auto h-4 w-4" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setLanguage('hi')} disabled={language === 'hi'}>
+                    हिन्दी
+                    {language === 'hi' && <Check className="ml-auto h-4 w-4" />}
+                </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        )}
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full relative">
@@ -161,31 +187,31 @@ export function AppHeader() {
               <DropdownMenuItem asChild>
                 <Link href="/dashboard">
                   <LayoutDashboard className="mr-2 h-4 w-4" />
-                  <span>Dashboard</span>
+                  <span>{translate({en: "Dashboard", hi: "डैशबोर्ड"})}</span>
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/profile">
                   <UserCircle className="mr-2 h-4 w-4" />
-                  <span>Profile</span>
+                  <span>{translate({en: "Profile", hi: "प्रोफ़ाइल"})}</span>
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings">
                     <Settings className="mr-2 h-4 w-4" />
-                    <span>Settings</span>
+                    <span>{translate({en: "Settings", hi: "सेटिंग्स"})}</span>
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
-                <span>Log out</span>
+                <span>{translate({en: "Log out", hi: "लॉग आउट करें"})}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
            <Button asChild>
-            <Link href="/login">Login</Link>
+            <Link href="/login">{translate({en: "Login", hi: "लॉग इन करें"})}</Link>
           </Button>
         )}
       </div>

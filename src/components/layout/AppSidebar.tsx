@@ -1,8 +1,9 @@
+
 "use client";
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, UserCircle, Settings, CreditCard, Activity } from 'lucide-react';
+import { Home, Users, UserCircle, Settings, CreditCard, Activity, type LucideIcon } from 'lucide-react';
 import {
   Sidebar,
   SidebarHeader,
@@ -14,25 +15,30 @@ import {
 } from '@/components/ui/sidebar';
 import { AppLogo } from '@/components/AppLogo';
 import { Separator } from '@/components/ui/separator';
-import { Button } from '@/components/ui/button';
-import { useUser } from '@/contexts/UserContext';
+import { useLanguage, type Language } from '@/contexts/LanguageContext'; // Import useLanguage and Language type
 
-const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: Home },
-  { href: '/groups', label: 'Groups', icon: Users },
-  { href: '/expenses', label: 'My Expenses', icon: CreditCard },
-  { href: '/activity', label: 'Activity Feed', icon: Activity },
+type NavItem = {
+  href: string;
+  label: Record<Language, string>; // Label is now an object for translations
+  icon: LucideIcon;
+};
+
+const navItems: NavItem[] = [
+  { href: '/dashboard', label: { en: 'Dashboard', hi: 'डैशबोर्ड' }, icon: Home },
+  { href: '/groups', label: { en: 'Groups', hi: 'समूह' }, icon: Users },
+  { href: '/expenses', label: { en: 'My Expenses', hi: 'मेरे खर्च' }, icon: CreditCard },
+  { href: '/activity', label: { en: 'Activity Feed', hi: 'गतिविधि फ़ीड' }, icon: Activity },
 ];
 
-const bottomNavItems = [
- { href: '/profile', label: 'Profile', icon: UserCircle },
- { href: '/settings', label: 'Settings', icon: Settings },
+const bottomNavItems: NavItem[] = [
+ { href: '/profile', label: { en: 'Profile', hi: 'प्रोफ़ाइल' }, icon: UserCircle },
+ { href: '/settings', label: { en: 'Settings', hi: 'सेटिंग्स' }, icon: Settings },
 ];
 
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { currentUser } = useUser();
+  const { translate } = useLanguage();
 
   return (
     <Sidebar collapsible="icon" variant="sidebar" side="left">
@@ -49,11 +55,11 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   asChild
                   isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}
-                  tooltip={{ children: item.label, className: "ml-1" }}
+                  tooltip={{ children: translate(item.label), className: "ml-1" }}
                 >
                   <a>
                     <item.icon />
-                    <span>{item.label}</span>
+                    <span>{translate(item.label)}</span>
                   </a>
                 </SidebarMenuButton>
               </Link>
@@ -70,11 +76,11 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   asChild
                   isActive={pathname.startsWith(item.href)}
-                  tooltip={{ children: item.label, className: "ml-1" }}
+                  tooltip={{ children: translate(item.label), className: "ml-1" }}
                 >
                   <a>
                     <item.icon />
-                    <span>{item.label}</span>
+                    <span>{translate(item.label)}</span>
                   </a>
                 </SidebarMenuButton>
               </Link>
