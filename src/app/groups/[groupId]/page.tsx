@@ -79,18 +79,16 @@ export default function GroupDetailPage() {
       setExpenses(mockExpenses.filter(e => e.groupId === groupId).sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()));
       setActivityLogs(mockActivityLog.filter(a => a.groupId === groupId).sort((a,b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()));
       
-      if (groupId === 'group1') { 
-        setBalances(mockBalancesGroup1);
-      } else {
-        const calculatedBalances = calculateGroupBalances(foundGroup, mockExpenses.filter(e => e.groupId === groupId), mockUsers);
-        setBalances(calculatedBalances);
-      }
+      // Recalculate balances each time, as mockGroups might have been updated by edit page
+      const calculatedBalances = calculateGroupBalances(foundGroup, mockExpenses.filter(e => e.groupId === groupId), mockUsers);
+      setBalances(calculatedBalances);
+
 
     } else {
       toast({ title: "Group not found", variant: "destructive" });
       setAccessDenied(true); 
     }
-  }, [groupId, router, currentUser, toast]);
+  }, [groupId, router, currentUser, toast]); // Removed group from dependency array to allow re-fetch if mockGroups changes
 
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.share) {
@@ -269,20 +267,16 @@ export default function GroupDetailPage() {
       url: groupUrl,
     };
     try {
-      // Check if canShare is supported and if it can share the data
       if (navigator.share && typeof navigator.canShare === 'function' && navigator.canShare(shareData)) {
         await navigator.share(shareData);
-        // Native share handles its own success/cancel UI, so toast might be redundant or optional
-        // toast({ title: "Shared successfully!" }); 
-      } else if (navigator.share) { // Fallback if canShare is not available but share is
+      } else if (navigator.share) { 
         await navigator.share(shareData);
-        // toast({ title: "Shared successfully!" });
       } else {
         toast({ title: "Web Share Not Supported", description: "Cannot share using system dialog.", variant: "destructive" });
       }
     } catch (err) {
       console.error("Failed to share natively: ", err);
-      if ((err as DOMException).name !== 'AbortError') { // Don't show error if user cancels
+      if ((err as DOMException).name !== 'AbortError') { 
         toast({ title: "Sharing Failed", description: "Could not share using system dialog.", variant: "destructive" });
       }
     }
@@ -314,7 +308,7 @@ export default function GroupDetailPage() {
 
   const handleShareTwitter = () => {
     if (!group) return;
-    const text = `${shareMessageDefault}`; // Twitter usually appends the URL itself
+    const text = `${shareMessageDefault}`; 
     const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(groupUrl)}&text=${encodeURIComponent(text)}`;
     window.open(twitterUrl, '_blank', 'noopener,noreferrer');
   };
@@ -324,7 +318,7 @@ export default function GroupDetailPage() {
     const subject = `Check out this BalanceBeam group: ${group.name}`;
     const body = `${shareMessageDefault}\n${groupUrl}`;
     const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoUrl; // Using location.href for mailto
+    window.location.href = mailtoUrl; 
   };
 
 
@@ -364,9 +358,17 @@ export default function GroupDetailPage() {
   const isOwner = group.ownerId === currentUser.id; 
 
   const handleDeleteGroup = () => {
-    console.log("Deleting group:", group.id);
-    toast({ title: "Group Deleted", description: `Group "${group.name}" has been deleted.`});
-    router.push('/groups');
+    // In a real app, this would be an API call.
+    // For mock data, we can filter it out.
+    const groupIndex = mockGroups.findIndex(g => g.id === groupId);
+    if (groupIndex > -1) {
+      mockGroups.splice(groupIndex, 1); // Mutating mock data
+      console.log("Deleting group:", group.id);
+      toast({ title: "Group Deleted", description: `Group "${group.name}" has been deleted.`});
+      router.push('/groups');
+    } else {
+      toast({ title: "Error", description: "Could not delete group.", variant: "destructive"});
+    }
   };
 
   return (
@@ -408,8 +410,10 @@ export default function GroupDetailPage() {
           </div>
           {isOwner && ( 
             <div className="flex gap-2 mt-4 md:mt-0">
-              <Button variant="outline" size="sm" disabled> 
-                <Edit className="mr-2 h-4 w-4" /> Edit Group
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/groups/${groupId}/edit`}>
+                    <Edit className="mr-2 h-4 w-4" /> Edit Group
+                </Link>
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
