@@ -11,7 +11,7 @@ export function AppLogo({ className, iconSize = 28, textSize = "text-2xl" }: App
   return (
     <Link href="/" className={`flex items-center gap-2 ${className}`}>
       <Coins className="text-primary" size={iconSize} />
-      <h1 className={`font-bold ${textSize} text-primary`}>HisabHoga</h1>
+      <h1 className={`font-bold ${textSize} text-primary`}>HisabKaro</h1>
     </Link>
   );
 }

@@ -1,4 +1,4 @@
-# **App Name**: HisabHoga
+# **App Name**: HisabKaro
 
 ## Core Features:
 

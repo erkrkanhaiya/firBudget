@@ -22,7 +22,7 @@ interface MainLayoutProps {
   children: ReactNode;
 }
 
-const INSTALL_BANNER_SESSION_KEY = 'HisabHoga-install-banner-interacted';
+const INSTALL_BANNER_SESSION_KEY = 'HisabKaro-install-banner-interacted';
 
 export function MainLayout({ children }: MainLayoutProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);

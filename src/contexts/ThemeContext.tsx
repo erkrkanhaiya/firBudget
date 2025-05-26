@@ -29,7 +29,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     // This effect runs only on the client
-    const storedTheme = localStorage.getItem("HisabHoga-theme") as Theme | null;
+    const storedTheme = localStorage.getItem("HisabKaro-theme") as Theme | null;
     let initialTheme: Theme;
 
     if (storedTheme) {
@@ -46,7 +46,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const toggleTheme = useCallback(() => {
     setTheme((prevTheme) => {
       const newTheme = prevTheme === "light" ? "dark" : "light";
-      localStorage.setItem("HisabHoga-theme", newTheme);
+      localStorage.setItem("HisabKaro-theme", newTheme);
       applyThemeClass(newTheme);
       return newTheme;
     });

@@ -14,7 +14,7 @@ export function InstallAppBanner({ onInstall, onDismiss }: InstallAppBannerProps
     <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-background border-t border-border shadow-lg print:hidden">
       <div className="container mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="text-center sm:text-left">
-          <p className="font-semibold text-lg">Install HisabHoga</p>
+          <p className="font-semibold text-lg">Install HisabKaro</p>
           <p className="text-sm text-muted-foreground">
             Add our app to your home screen for a quick and easy access!
           </p>

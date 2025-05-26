@@ -1,7 +1,7 @@
 
 {
-  "name": "HisabHoga - Smart Expense Sharing",
-  "short_name": "HisabHoga",
+  "name": "HisabKaro - Smart Expense Sharing",
+  "short_name": "HisabKaro",
   "description": "Effortlessly manage shared expenses with friends and groups.",
   "start_url": "/dashboard",
   "display": "standalone",

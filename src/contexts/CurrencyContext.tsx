@@ -19,7 +19,7 @@ export const CurrencyProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     // This effect runs only on the client
-    const storedCurrency = localStorage.getItem("HisabHoga-currency") as Currency | null;
+    const storedCurrency = localStorage.getItem("HisabKaro-currency") as Currency | null;
     let initialCurrency: Currency = 'USD'; // Default to USD
 
     if (storedCurrency && (storedCurrency === "USD" || storedCurrency === "INR")) {
@@ -33,7 +33,7 @@ export const CurrencyProvider = ({ children }: { children: ReactNode }) => {
   const setCurrency = useCallback((curr: Currency) => {
     setCurrencyState(curr);
     if (typeof window !== 'undefined') {
-        localStorage.setItem("HisabHoga-currency", curr);
+        localStorage.setItem("HisabKaro-currency", curr);
     }
   }, []);
 

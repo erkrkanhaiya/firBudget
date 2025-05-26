@@ -337,13 +337,13 @@ export default function GroupDetailPage() {
       doc.text("No balances to display or balances are being calculated.", 14, yPos);
       yPos += 10;
     }
-    doc.save(`HisabHoga_Group_${group.name.replace(/\s+/g, '_')}_Summary.pdf`);
+    doc.save(`HisabKaro_Group_${group.name.replace(/\s+/g, '_')}_Summary.pdf`);
     toast({ title: "PDF Generated", description: "Your group summary PDF has been downloaded." });
   };
 
   const groupUrl = typeof window !== 'undefined' ? `${window.location.origin}/groups/${groupId}` : '';
-  const shareMessageDefault = `Check out this group on HisabHoga: "${group?.name || 'a group'}"`;
-  const shareTitle = group?.name || 'HisabHoga Group';
+  const shareMessageDefault = `Check out this group on HisabKaro: "${group?.name || 'a group'}"`;
+  const shareTitle = group?.name || 'HisabKaro Group';
 
   const handleNativeShare = async () => {
     if (!group) return;
@@ -380,7 +380,7 @@ export default function GroupDetailPage() {
   const handleShareWhatsApp = () => { if (!group) return; const message = `${shareMessageDefault}\n${groupUrl}`; const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`; window.open(whatsappUrl, '_blank', 'noopener,noreferrer'); };
   const handleShareFacebook = () => { if (!group) return; const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(groupUrl)}`; window.open(facebookUrl, '_blank', 'noopener,noreferrer'); };
   const handleShareTwitter = () => { if (!group) return; const text = `${shareMessageDefault}`; const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(groupUrl)}&text=${encodeURIComponent(text)}`; window.open(twitterUrl, '_blank', 'noopener,noreferrer'); };
-  const handleShareEmail = () => { if (!group) return; const subject = `Check out this HisabHoga group: ${group.name}`; const body = `${shareMessageDefault}\n${groupUrl}`; const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; window.location.href = mailtoUrl; };
+  const handleShareEmail = () => { if (!group) return; const subject = `Check out this HisabKaro group: ${group.name}`; const body = `${shareMessageDefault}\n${groupUrl}`; const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; window.location.href = mailtoUrl; };
 
   const handleDeleteGroup = async () => {
     if (!group || !currentUser || group.ownerId !== currentUser.id) {
