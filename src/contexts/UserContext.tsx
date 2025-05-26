@@ -8,6 +8,8 @@ import {
   onAuthStateChanged, 
   signInWithEmailAndPassword as firebaseSignInWithEmailAndPassword, 
   signOut as firebaseSignOut,
+  createUserWithEmailAndPassword as firebaseCreateUserWithEmailAndPassword, // Import createUser
+  updateProfile as firebaseUpdateProfile, // Import updateProfile
   type User as FirebaseUser // Import Firebase User type
 } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
@@ -15,8 +17,9 @@ import { Loader2 } from 'lucide-react';
 interface UserContextType {
   currentUser: User | null;
   isLoadingAuth: boolean; // To indicate auth state is being determined
-  login: (email: string, password: string) => Promise<FirebaseUser>; // Update signature
+  login: (email: string, password: string) => Promise<FirebaseUser>;
   logout: () => Promise<void>;
+  signup: (email: string, password: string, name?: string) => Promise<FirebaseUser>; // Add signup method
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -46,18 +49,26 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const login = async (email: string, password: string): Promise<FirebaseUser> => {
-    // signInWithEmailAndPassword will throw an error on failure, which can be caught by the caller
     const userCredential = await firebaseSignInWithEmailAndPassword(auth, email, password);
-    // onAuthStateChanged will handle setting currentUser
     return userCredential.user;
   };
 
   const logout = async (): Promise<void> => {
     await firebaseSignOut(auth);
-    // onAuthStateChanged will handle setting currentUser to null
   };
 
-  // Display a loading indicator while Firebase initializes auth state
+  const signup = async (email: string, password: string, name?: string): Promise<FirebaseUser> => {
+    const userCredential = await firebaseCreateUserWithEmailAndPassword(auth, email, password);
+    if (name && userCredential.user) {
+      await firebaseUpdateProfile(userCredential.user, {
+        displayName: name,
+      });
+      // Update local currentUser state immediately if needed, or rely on onAuthStateChanged
+      // For simplicity, onAuthStateChanged will eventually update it.
+    }
+    return userCredential.user;
+  };
+
   if (isLoadingAuth) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -67,7 +78,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   }
 
   return (
-    <UserContext.Provider value={{ currentUser, isLoadingAuth, login, logout }}>
+    <UserContext.Provider value={{ currentUser, isLoadingAuth, login, logout, signup }}>
       {children}
     </UserContext.Provider>
   );

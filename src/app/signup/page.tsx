@@ -3,58 +3,71 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // Import Link
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogIn, Loader2 } from 'lucide-react';
+import { UserPlus, Loader2, LogIn } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { AppLogo } from '@/components/AppLogo';
 import { useToast } from '@/hooks/use-toast';
 import { FirebaseError } from 'firebase/app';
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter();
-  const { login } = useUser(); 
+  const { signup } = useUser(); // Assuming signup function is added to UserContext
   const { toast } = useToast();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (event: React.FormEvent) => {
+  const handleSignup = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsLoading(true);
 
-    try {
-      const firebaseUser = await login(email, password); 
+    if (password !== confirmPassword) {
       toast({
-        title: "Login Successful",
-        description: `Welcome back, ${firebaseUser.displayName || firebaseUser.email}!`,
+        title: "Signup Failed",
+        description: "Passwords do not match.",
+        variant: "destructive",
       });
-      router.push('/dashboard'); 
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      await signup(email, password, name || undefined); // Call the context's signup function
+      toast({
+        title: "Signup Successful!",
+        description: "Welcome! You are now logged in.",
+      });
+      router.push('/dashboard'); // Redirect to dashboard on successful signup
     } catch (error) {
       let errorMessage = "An unknown error occurred. Please try again.";
       if (error instanceof FirebaseError) {
         switch (error.code) {
-          case 'auth/user-not-found':
-          case 'auth/wrong-password':
-          case 'auth/invalid-credential':
-            errorMessage = "Invalid email or password.";
+          case 'auth/email-already-in-use':
+            errorMessage = "This email address is already in use.";
             break;
           case 'auth/invalid-email':
             errorMessage = "Please enter a valid email address.";
             break;
+          case 'auth/weak-password':
+            errorMessage = "Password is too weak. It should be at least 6 characters.";
+            break;
           default:
-            errorMessage = "Login failed. Please try again.";
+            errorMessage = "Signup failed. Please try again.";
             break;
         }
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }
-      console.error("Login error:", error);
+      console.error("Signup error:", error);
       toast({
-        title: "Login Failed",
+        title: "Signup Failed",
         description: errorMessage,
         variant: "destructive",
       });
@@ -70,13 +83,25 @@ export default function LoginPage() {
           <div className="mx-auto mb-6">
             <AppLogo iconSize={40} textSize="text-3xl" />
           </div>
-          <CardTitle className="text-2xl">Welcome Back!</CardTitle>
-          <CardDescription>Log in to manage your shared expenses.</CardDescription>
+          <CardTitle className="text-2xl">Create Account</CardTitle>
+          <CardDescription>Join BalanceBeam to share expenses easily.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin} className="space-y-6">
+          <form onSubmit={handleSignup} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="name">Full Name (Optional)</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoComplete="name"
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email*</Label>
               <Input
                 id="email"
                 type="email"
@@ -89,15 +114,28 @@ export default function LoginPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Password*</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="••••••••"
+                placeholder="•••••••• (min. 6 characters)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                autoComplete="current-password"
+                autoComplete="new-password"
+                disabled={isLoading}
+              />
+            </div>
+             <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password*</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                autoComplete="new-password"
                 disabled={isLoading}
               />
             </div>
@@ -106,17 +144,17 @@ export default function LoginPage() {
                 <Loader2 className="animate-spin h-5 w-5" />
               ) : (
                 <>
-                  <LogIn className="mr-2 h-4 w-4" /> Log In
+                  <UserPlus className="mr-2 h-4 w-4" /> Sign Up
                 </>
               )}
             </Button>
           </form>
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
-              Don&apos;t have an account?{' '}
+              Already have an account?{' '}
               <Button variant="link" asChild className="p-0 h-auto">
-                <Link href="/signup">
-                  Sign Up
+                <Link href="/login">
+                  Log In
                 </Link>
               </Button>
             </p>
