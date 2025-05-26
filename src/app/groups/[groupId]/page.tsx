@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -8,9 +7,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIcon, MessageCircle, Facebook, Twitter, Mail } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIcon, MessageCircle, Facebook, Twitter, Mail, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { mockGroups, mockExpenses, mockUsers, mockActivityLog, mockBalancesGroup1 } from '@/data/mock'; // Using mock data
+import { mockExpenses, mockUsers, mockActivityLog } from '@/data/mock'; // Still using mock for expenses/activity/users
 import type { Group, Expense, User as UserType, ActivityLog, Balance } from '@/types';
 import { useUser } from '@/contexts/UserContext';
 import { format, parseISO } from 'date-fns';
@@ -38,6 +37,8 @@ import { useCurrency } from '@/contexts/CurrencyContext';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Badge } from '@/components/ui/badge';
+import { db } from '@/lib/firebase'; // Import Firebase db
+import { doc, getDoc, Timestamp, deleteDoc, collection, writeBatch } from 'firebase/firestore'; // Import Firestore functions
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDFWithAutoTable;
@@ -46,49 +47,78 @@ interface jsPDFWithAutoTable extends jsPDF {
 export default function GroupDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { currentUser } = useUser();
+  const { currentUser }_ = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
 
   const [group, setGroup] = useState<Group | null>(null);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-  const [balances, setBalances] = useState<Balance[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]); // Still from mock
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]); // Still from mock
+  const [balances, setBalances] = useState<Balance[]>([]); // Calculated from mock expenses
+  const [isLoading, setIsLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [isWebShareSupported, setIsWebShareSupported] = useState(false);
 
 
   useEffect(() => {
-    const foundGroup = mockGroups.find(g => g.id === groupId);
-    if (foundGroup) {
-      if (!currentUser) { 
-        router.push('/login');
+    const fetchGroupDetails = async () => {
+      if (!currentUser || !groupId) {
+        setIsLoading(false);
+        if(!currentUser) router.push('/login'); // Redirect if not logged in and trying to access
         return;
       }
 
-      const isMember = foundGroup.members.some(m => m.id === currentUser.id);
+      setIsLoading(true);
+      setAccessDenied(false);
 
-      if (foundGroup.visibility === 'private' && !isMember) {
-        toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
+      try {
+        const groupDocRef = doc(db, 'groups', groupId);
+        const groupDocSnap = await getDoc(groupDocRef);
+
+        if (groupDocSnap.exists()) {
+          const groupData = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp };
+          const fetchedGroup: Group = {
+            id: groupDocSnap.id,
+            ...groupData,
+            members: groupData.members || [], // Ensure members is an array
+            memberIds: groupData.memberIds || [], // Ensure memberIds is an array
+            createdAt: groupData.createdAt.toDate().toISOString(),
+          };
+
+          const isMember = fetchedGroup.memberIds.includes(currentUser.id);
+
+          if (fetchedGroup.visibility === 'private' && !isMember) {
+            toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
+            setAccessDenied(true);
+            setIsLoading(false);
+            return;
+          }
+          
+          setGroup(fetchedGroup);
+          // For now, expenses and activity logs are still from mock data, filtered by the fetched group's ID.
+          // This can be updated later to fetch from Firestore subcollections if needed.
+          setExpenses(mockExpenses.filter(e => e.groupId === fetchedGroup.id).sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()));
+          setActivityLogs(mockActivityLog.filter(a => a.groupId === fetchedGroup.id).sort((a,b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()));
+          
+          const calculatedBalances = calculateGroupBalances(fetchedGroup, mockExpenses.filter(e => e.groupId === fetchedGroup.id), mockUsers);
+          setBalances(calculatedBalances);
+
+        } else {
+          toast({ title: "Group not found", description: "The group you are looking for does not exist.", variant: "destructive" });
+          setAccessDenied(true);
+        }
+      } catch (error) {
+        console.error("Error fetching group details:", error);
+        toast({ title: "Error", description: "Could not fetch group details.", variant: "destructive" });
         setAccessDenied(true);
-        return;
+      } finally {
+        setIsLoading(false);
       }
-      
-      setGroup(foundGroup);
-      setExpenses(mockExpenses.filter(e => e.groupId === groupId).sort((a,b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()));
-      setActivityLogs(mockActivityLog.filter(a => a.groupId === groupId).sort((a,b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime()));
-      
-      // Recalculate balances each time, as mockGroups might have been updated by edit page
-      const calculatedBalances = calculateGroupBalances(foundGroup, mockExpenses.filter(e => e.groupId === groupId), mockUsers);
-      setBalances(calculatedBalances);
+    };
 
-
-    } else {
-      toast({ title: "Group not found", variant: "destructive" });
-      setAccessDenied(true); 
-    }
-  }, [groupId, router, currentUser, toast]); // Removed group from dependency array to allow re-fetch if mockGroups changes
+    fetchGroupDetails();
+  }, [groupId, currentUser, router, toast]);
 
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.share) {
@@ -96,20 +126,27 @@ export default function GroupDetailPage() {
     }
   }, []);
 
-  const calculateGroupBalances = (currentGroup: Group, groupExpenses: Expense[], allUsers: UserType[]): Balance[] => {
+  const calculateGroupBalances = (currentGroup: Group | null, groupExpenses: Expense[], allUsers: UserType[]): Balance[] => {
     if (!currentGroup) return [];
     const memberBalances: Record<string, { owes: Record<string, number>, owedBy: Record<string, number>, netBalance: number }> = {};
-    currentGroup.members.forEach(member => {
-        memberBalances[member.id] = { owes: {}, owedBy: {}, netBalance: 0 };
+    currentGroup.memberIds.forEach(memberId => { // Use memberIds from the group
+        memberBalances[memberId] = { owes: {}, owedBy: {}, netBalance: 0 };
     });
+
     groupExpenses.forEach(expense => {
         const payerId = expense.paidByUserId;
         const participants = expense.participants;
         if (participants.length === 0) return;
+
         participants.forEach(participant => {
             const debtorId = participant.userId;
             const amountOwedByDebtor = participant.amountOwed;
+
             if (debtorId === payerId) return; 
+            
+            if(!memberBalances[debtorId]) memberBalances[debtorId] = { owes: {}, owedBy: {}, netBalance: 0 };
+            if(!memberBalances[payerId]) memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
+
             memberBalances[debtorId].owes[payerId] = (memberBalances[debtorId].owes[payerId] || 0) + amountOwedByDebtor;
             memberBalances[debtorId].netBalance -= amountOwedByDebtor;
             memberBalances[payerId].owedBy[debtorId] = (memberBalances[payerId].owedBy[debtorId] || 0) + amountOwedByDebtor;
@@ -155,8 +192,9 @@ export default function GroupDetailPage() {
     doc.text("Group Members", 14, yPos);
     yPos += 8;
     doc.setFontSize(11);
-    group.members.forEach(member => {
-      doc.text(`- ${member.name} (${member.email})${member.id === group.ownerId ? ' (Admin)' : ''}`, 16, yPos);
+    group.members.forEach(member => { // Use group.members which are User-like objects
+      const userDetail = mockUsers.find(u => u.id === member.id); // Get full detail if needed, or use member.name directly
+      doc.text(`- ${member.name || userDetail?.name} (${member.email || userDetail?.email})${member.id === group.ownerId ? ' (Admin)' : ''}`, 16, yPos);
       yPos += 6;
     });
     yPos += 4; 
@@ -196,7 +234,7 @@ export default function GroupDetailPage() {
       doc.setFontSize(11);
       const balanceSummary: string[][] = [];
       balances.forEach(balance => {
-        const user = mockUsers.find(u => u.id === balance.userId);
+        const user = mockUsers.find(u => u.id === balance.userId); // Balances are keyed by userId
         if (!user) return;
         let balanceText = "";
         if (balance.netBalance > 0) {
@@ -254,7 +292,6 @@ export default function GroupDetailPage() {
     toast({ title: "PDF Generated", description: "Your group summary PDF has been downloaded." });
   };
 
-  // Share handlers
   const groupUrl = typeof window !== 'undefined' ? `${window.location.origin}/groups/${groupId}` : '';
   const shareMessageDefault = `Check out this group on BalanceBeam: "${group?.name || 'a group'}"`;
   const shareTitle = group?.name || 'BalanceBeam Group';
@@ -321,7 +358,41 @@ export default function GroupDetailPage() {
     window.location.href = mailtoUrl; 
   };
 
+  const handleDeleteGroup = async () => {
+    if (!group || !currentUser || group.ownerId !== currentUser.id) {
+      toast({ title: "Error", description: "You do not have permission to delete this group.", variant: "destructive"});
+      return;
+    }
+    // In a real app, consider subcollection cleanup (expenses, activity) or use Firebase Functions for that.
+    // For now, just delete the group document.
+    try {
+      const groupDocRef = doc(db, 'groups', groupId);
+      await deleteDoc(groupDocRef);
+      toast({ title: "Group Deleted", description: `Group "${group.name}" has been deleted.`});
+      router.push('/groups');
+    } catch (error) {
+      console.error("Error deleting group:", error);
+      toast({ title: "Error", description: "Could not delete group.", variant: "destructive"});
+    }
+  };
 
+  const getInitials = (name: string | undefined | null) => {
+    if (!name) return "U";
+    const names = name.split(' ');
+    if (names.length > 1) {
+      return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
+
+  if (isLoading) {
+    return (
+        <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+    );
+  }
+  
   if (accessDenied) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4">
@@ -337,39 +408,23 @@ export default function GroupDetailPage() {
     );
   }
 
-  if (!currentUser) {
-    return <p>Loading user...</p>; 
+  if (!currentUser) { // Should be caught by isLoading or accessDenied if group requires auth
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4">
+        <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
+        <h1 className="text-3xl font-bold mb-2">Authentication Required</h1>
+        <p className="text-lg text-muted-foreground mb-6">Please log in to view this page.</p>
+        <Button asChild><Link href="/login">Go to Login</Link></Button>
+      </div>
+    );
   }
   
-  if (!group) {
-    return <p>Loading group details...</p>; 
+  if (!group) { // Should be covered by isLoading or accessDenied
+    return <p>Loading group details...</p>; // Fallback, though ideally accessDenied or loader handles it
   }
   
-  const getInitials = (name: string | undefined) => {
-    if (!name) return "U";
-    const names = name.split(' ');
-    if (names.length > 1) {
-      return names[0][0] + names[names.length - 1][0];
-    }
-    return name.substring(0, 2).toUpperCase();
-  };
-
-  const isMember = group.members.some(m => m.id === currentUser.id);
+  const isMember = group.memberIds.includes(currentUser.id);
   const isOwner = group.ownerId === currentUser.id; 
-
-  const handleDeleteGroup = () => {
-    // In a real app, this would be an API call.
-    // For mock data, we can filter it out.
-    const groupIndex = mockGroups.findIndex(g => g.id === groupId);
-    if (groupIndex > -1) {
-      mockGroups.splice(groupIndex, 1); // Mutating mock data
-      console.log("Deleting group:", group.id);
-      toast({ title: "Group Deleted", description: `Group "${group.name}" has been deleted.`});
-      router.push('/groups');
-    } else {
-      toast({ title: "Error", description: "Could not delete group.", variant: "destructive"});
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -426,7 +481,7 @@ export default function GroupDetailPage() {
                     <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                     <AlertDialogDescription>
                       This action cannot be undone. This will permanently delete the group
-                      "{group.name}" and all its associated data.
+                      "{group.name}" and all its associated data from Firestore. Related expenses and activities (if stored in subcollections) may need manual cleanup or a Firebase Function.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -508,7 +563,7 @@ export default function GroupDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Expenses</CardTitle>
-              <CardDescription>All expenses recorded in this group.</CardDescription>
+              <CardDescription>All expenses recorded in this group. (Currently from mock data)</CardDescription>
             </CardHeader>
             <CardContent>
               {expenses.length > 0 ? (
@@ -540,7 +595,7 @@ export default function GroupDetailPage() {
                   )})}
                 </ul>
               ) : (
-                <p className="text-muted-foreground text-center py-4">No expenses recorded yet.</p>
+                <p className="text-muted-foreground text-center py-4">No expenses recorded yet in mock data for this group.</p>
               )}
             </CardContent>
           </Card>
@@ -550,13 +605,13 @@ export default function GroupDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Balances</CardTitle>
-              <CardDescription>Who owes whom in this group.</CardDescription>
+              <CardDescription>Who owes whom in this group. (Calculated from mock expenses)</CardDescription>
             </CardHeader>
             <CardContent>
               {balances.length > 0 ? (
                 <ul className="space-y-3">
                   {balances.map(balance => {
-                    const user = mockUsers.find(u => u.id === balance.userId);
+                    const user = mockUsers.find(u => u.id === balance.userId); // Find user from mockUsers
                     if (!user) return null;
 
                     const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({
@@ -609,7 +664,7 @@ export default function GroupDetailPage() {
                   })}
                 </ul>
               ) : (
-                 <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses yet.</p>
+                 <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses yet in mock data.</p>
               )}
             </CardContent>
           </Card>
@@ -626,11 +681,11 @@ export default function GroupDetailPage() {
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
-                {group.members.map(member => (
+                {group.members.map(member => ( // group.members contains User-like objects
                   <li key={member.id} className="flex items-center justify-between p-2 border rounded-md">
                     <div className="flex items-center gap-3">
                         <Avatar>
-                            <AvatarImage src={member.avatarUrl} />
+                            <AvatarImage src={member.avatarUrl || undefined} />
                             <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
                         </Avatar>
                         <div>
@@ -657,7 +712,7 @@ export default function GroupDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Activity Log</CardTitle>
-              <CardDescription>Recent actions within this group.</CardDescription>
+              <CardDescription>Recent actions within this group. (Currently from mock data)</CardDescription>
             </CardHeader>
             <CardContent>
               {activityLogs.length > 0 ? (
@@ -678,7 +733,7 @@ export default function GroupDetailPage() {
                   )})}
                 </ul>
               ) : (
-                 <p className="text-muted-foreground text-center py-4">No activity recorded yet.</p>
+                 <p className="text-muted-foreground text-center py-4">No activity recorded yet in mock data for this group.</p>
               )}
             </CardContent>
           </Card>
@@ -687,4 +742,3 @@ export default function GroupDetailPage() {
     </div>
   );
 }
-
