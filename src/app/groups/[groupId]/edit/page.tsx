@@ -12,57 +12,96 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ArrowLeft, Save, Image as ImageIcon, Lock, Unlock, AlertTriangle, Loader2 } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
-// Removed mockGroups import, will fetch from Firestore
 import type { Group, GroupVisibility } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import NextImage from 'next/image'; // Renamed to avoid conflict with Lucide's Image
 import { db } from '@/lib/firebase';
 import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
-import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
+import { useNotification } from '@/contexts/NotificationContext';
 
 export default function EditGroupPage() {
   const params = useParams();
   const router = useRouter();
   const { currentUser } = useUser();
   const { toast } = useToast();
-  const { addNotification } = useNotification(); // Use notification context
+  const { addNotification } = useNotification();
   const groupId = params.groupId as string;
 
   const [group, setGroup] = useState<Group | null>(null);
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
-  const [groupPhoto, setGroupPhoto] = useState<File | null>(null); // For new file upload
-  const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null); // For display
+  const [groupPhoto, setGroupPhoto] = useState<File | null>(null);
+  const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
   const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [accessDeniedReason, setAccessDeniedReason] = useState<"not_found" | "not_owner" | "generic_error">("generic_error");
+
 
   useEffect(() => {
     const fetchGroup = async () => {
       if (!currentUser || !groupId) {
         setIsLoading(false);
-        if (!currentUser) router.push('/login');
+        if (!currentUser) {
+            // User context might still be loading, or user is genuinely not logged in
+            // Delay redirect to ensure UserProvider had a chance to load
+            setTimeout(() => {
+                if (!auth.currentUser) router.push('/login');
+            }, 500);
+        }
         return;
       }
       setIsLoading(true);
+      setAccessDenied(false); // Reset access denied state on new fetch
+
       try {
         const groupDocRef = doc(db, 'groups', groupId);
         const groupDocSnap = await getDoc(groupDocRef);
 
+        if (!currentUser) { // Re-check currentUser after await, in case of async context changes
+            toast({ title: "Authentication Error", description: "User session might have expired. Please log in again.", variant: "destructive" });
+            router.push('/login');
+            setAccessDenied(true);
+            setAccessDeniedReason("generic_error");
+            setIsLoading(false);
+            return;
+        }
+        
         if (groupDocSnap.exists()) {
-          const data = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & {createdAt: Timestamp};
-          const fetchedGroup: Group = { 
-            id: groupDocSnap.id, 
-            ...data,
-            members: data.members || [],
-            memberIds: data.memberIds || [],
-            createdAt: data.createdAt.toDate().toISOString()
+          const data = groupDocSnap.data();
+           if (!data) {
+            toast({ title: "Group Data Error", description: "Could not retrieve group data.", variant: "destructive" });
+            setAccessDenied(true);
+            setAccessDeniedReason("not_found");
+            setIsLoading(false);
+            return;
+          }
+          // Adjust type to be more flexible for createdAt from Firestore
+          const groupData = data as Omit<Group, 'id' | 'createdAt'> & {createdAt?: Timestamp | {seconds: number, nanoseconds: number} };
+
+          const fetchedGroup: Group = {
+            id: groupDocSnap.id,
+            name: groupData.name || '', // Ensure fallbacks for critical fields
+            description: groupData.description || '',
+            photoUrl: groupData.photoUrl || '',
+            dataAiHint: groupData.dataAiHint || '',
+            ownerId: groupData.ownerId || '', // Ensure ownerId exists
+            members: groupData.members || [],
+            memberIds: groupData.memberIds || [],
+            visibility: groupData.visibility || 'private',
+            createdAt: (groupData.createdAt && typeof (groupData.createdAt as Timestamp).toDate === 'function')
+              ? (groupData.createdAt as Timestamp).toDate().toISOString()
+              : (groupData.createdAt && (groupData.createdAt as {seconds: number}).seconds) // Handle plain object timestamp
+              ? new Date((groupData.createdAt as {seconds: number}).seconds * 1000).toISOString()
+              : new Date().toISOString(), // Fallback
           };
           
-          if (fetchedGroup.ownerId !== currentUser.id) {
+          if (!fetchedGroup.ownerId || fetchedGroup.ownerId !== currentUser.id) {
             toast({ title: "Access Denied", description: "You are not the owner of this group.", variant: "destructive" });
             setAccessDenied(true);
+            setAccessDeniedReason("not_owner");
+            setGroup(fetchedGroup); // Still set group so "Not owner" message can be more specific
             setIsLoading(false);
             return;
           }
@@ -73,13 +112,15 @@ export default function EditGroupPage() {
           setGroupPhotoPreview(fetchedGroup.photoUrl || null);
           setGroupVisibility(fetchedGroup.visibility);
         } else {
-          toast({ title: "Group not found", variant: "destructive" });
-          setAccessDenied(true); // Or router.push('/groups');
+          toast({ title: "Group Not Found", description: "The group you are trying to edit does not exist.", variant: "destructive" });
+          setAccessDenied(true);
+          setAccessDeniedReason("not_found");
         }
       } catch (error) {
         console.error("Error fetching group for edit:", error);
         toast({ title: "Error", description: "Could not load group details for editing.", variant: "destructive" });
-        setAccessDenied(true); // Or router.push('/groups');
+        setAccessDenied(true);
+        setAccessDeniedReason("generic_error");
       } finally {
         setIsLoading(false);
       }
@@ -95,29 +136,47 @@ export default function EditGroupPage() {
     );
   }
 
-  if (accessDenied || !group) {
+  if (accessDenied) {
+    let message = "An error occurred or you do not have permission.";
+    if (accessDeniedReason === "not_found") {
+        message = "This group could not be found. It might have been deleted.";
+    } else if (accessDeniedReason === "not_owner" && group) {
+        message = `You do not have permission to edit the group "${group.name}". Only the owner can make changes.`;
+    } else if (accessDeniedReason === "not_owner") {
+        message = "You do not have permission to edit this group. Only the owner can make changes.";
+    }
+
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
         <h1 className="text-3xl font-bold mb-2">Access Denied</h1>
-        <p className="text-lg text-muted-foreground mb-6">
-          {group ? "You do not have permission to edit this group." : "Group not found or you do not have permission."}
-        </p>
+        <p className="text-lg text-muted-foreground mb-6">{message}</p>
         <Button asChild>
-          <Link href={`/groups/${groupId}`}>Back to Group</Link>
-        </Button>
-         <Button asChild variant="link" className="mt-2">
-          <Link href="/groups">Go to All Groups</Link>
+          <Link href={group ? `/groups/${group.id}` : "/groups"}>
+            {group ? "Back to Group" : "Back to Groups"}
+          </Link>
         </Button>
       </div>
     );
   }
+  
+  // This check should ideally be redundant due to isLoading and accessDenied checks above,
+  // but can be a fallback.
+  if (!group) {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+        <p className="ml-2 text-muted-foreground">Loading group data...</p>
+      </div>
+    );
+  }
+
 
   const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      setGroupPhoto(file); // Store the file object for potential upload
-      setGroupPhotoPreview(URL.createObjectURL(file)); // Set preview
+      setGroupPhoto(file);
+      setGroupPhotoPreview(URL.createObjectURL(file));
     }
   };
 
@@ -130,38 +189,38 @@ export default function EditGroupPage() {
       setIsSubmitting(false);
       return;
     }
-    if (!group) {
+    if (!group) { // Should not happen if page rendered correctly
         toast({ title: "Error", description: "Group data not loaded.", variant: "destructive" });
         setIsSubmitting(false);
         return;
     }
 
-    const oldGroupName = group.name; // Store for notification
+    const oldGroupName = group.name;
 
     // In a real app, if groupPhoto (File object) exists, upload it to Firebase Storage
-    // and get the new photoUrl. For this demo, if groupPhotoPreview changed and it's
-    // a blob URL (from new upload), we'll just use the preview as is.
     // This part needs Firebase Storage integration for real photo uploads.
-    let finalPhotoUrl = group.photoUrl;
+    let finalPhotoUrl = group.photoUrl; // Start with existing URL
     if (groupPhoto && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
       // Here you would:
-      // 1. Upload groupPhoto to Firebase Storage
+      // 1. Upload groupPhoto to Firebase Storage (e.g., using a helper function)
       // 2. Get the downloadURL from storage
       // finalPhotoUrl = downloadURL;
-      // For now, we'll simulate by keeping the preview URL, but this is not persistent.
+      // For now, we'll simulate by keeping the preview URL, but this is not persistent on refresh.
+      // A real implementation would involve async upload and getting the URL back.
       finalPhotoUrl = groupPhotoPreview; 
-      toast({ title: "Photo Upload (Mock)", description: "Photo preview updated. Real upload needs Firebase Storage.", variant: "info" });
-    } else if (!groupPhotoPreview && group.photoUrl) { // If preview was cleared
-        finalPhotoUrl = ''; // Clear photo
+      toast({ title: "Photo Upload (Simulated)", description: "Photo preview updated. Real upload to Firebase Storage needed for persistence.", variant: "info" });
+    } else if (!groupPhotoPreview && group.photoUrl) { // If preview was cleared (meaning user removed photo)
+        finalPhotoUrl = ''; 
     }
 
 
     const groupDataToUpdate = {
       name: groupName.trim(),
       description: groupDescription.trim(),
-      photoUrl: finalPhotoUrl,
+      photoUrl: finalPhotoUrl, // This will be the blob URL or empty if removed, or original if unchanged
       visibility: groupVisibility,
       // ownerId, members, memberIds, createdAt should generally not be updated here
+      // Potentially add an 'updatedAt: serverTimestamp()' field if needed
     };
     
     try {
@@ -178,10 +237,10 @@ export default function EditGroupPage() {
         type: "success",
         href: `/groups/${groupId}`,
       });
-      router.push(`/groups/${groupId}?refresh=${Date.now()}`); // Refresh to show changes
+      router.push(`/groups/${groupId}?refresh=${Date.now()}`); 
     } catch (error) {
       console.error("Error updating group:", error);
-      toast({ title: "Error", description: "Could not update group details in Firestore.", variant: "destructive" });
+      toast({ title: "Error Updating Group", description: "Could not update group details in Firestore.", variant: "destructive" });
       addNotification({
         title: "Group Update Failed",
         message: `Could not update group: "${oldGroupName}"`,
@@ -251,7 +310,7 @@ export default function EditGroupPage() {
                  </div>
                 <input id="group-photo-upload" type="file" className="hidden" accept="image/*" onChange={handlePhotoChange} disabled={isSubmitting} />
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Note: Photo upload to server requires Firebase Storage (not fully implemented in this demo).</p>
+              <p className="text-xs text-muted-foreground mt-1">Note: Photo upload to server requires Firebase Storage integration (not fully implemented in this demo).</p>
             </div>
 
             <div>
@@ -302,3 +361,5 @@ export default function EditGroupPage() {
     </div>
   );
 }
+
+    
