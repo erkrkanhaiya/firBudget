@@ -15,7 +15,7 @@ import { useUser } from '@/contexts/UserContext';
 import type { Group, GroupVisibility } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import NextImage from 'next/image'; // Renamed to avoid conflict with Lucide's Image
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase'; // auth needed for currentUser check consistency
 import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
 
@@ -30,7 +30,7 @@ export default function EditGroupPage() {
   const [group, setGroup] = useState<Group | null>(null);
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
-  const [groupPhoto, setGroupPhoto] = useState<File | null>(null);
+  const [groupPhotoFile, setGroupPhotoFile] = useState<File | null>(null); // Renamed to avoid confusion
   const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
   const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,8 +44,6 @@ export default function EditGroupPage() {
       if (!currentUser || !groupId) {
         setIsLoading(false);
         if (!currentUser) {
-            // User context might still be loading, or user is genuinely not logged in
-            // Delay redirect to ensure UserProvider had a chance to load
             setTimeout(() => {
                 if (!auth.currentUser) router.push('/login');
             }, 500);
@@ -53,13 +51,13 @@ export default function EditGroupPage() {
         return;
       }
       setIsLoading(true);
-      setAccessDenied(false); // Reset access denied state on new fetch
+      setAccessDenied(false); 
 
       try {
         const groupDocRef = doc(db, 'groups', groupId);
         const groupDocSnap = await getDoc(groupDocRef);
 
-        if (!currentUser) { // Re-check currentUser after await, in case of async context changes
+        if (!auth.currentUser) { 
             toast({ title: "Authentication Error", description: "User session might have expired. Please log in again.", variant: "destructive" });
             router.push('/login');
             setAccessDenied(true);
@@ -77,31 +75,30 @@ export default function EditGroupPage() {
             setIsLoading(false);
             return;
           }
-          // Adjust type to be more flexible for createdAt from Firestore
           const groupData = data as Omit<Group, 'id' | 'createdAt'> & {createdAt?: Timestamp | {seconds: number, nanoseconds: number} };
 
           const fetchedGroup: Group = {
             id: groupDocSnap.id,
-            name: groupData.name || '', // Ensure fallbacks for critical fields
+            name: groupData.name || '', 
             description: groupData.description || '',
             photoUrl: groupData.photoUrl || '',
             dataAiHint: groupData.dataAiHint || '',
-            ownerId: groupData.ownerId || '', // Ensure ownerId exists
+            ownerId: groupData.ownerId || '', 
             members: groupData.members || [],
             memberIds: groupData.memberIds || [],
             visibility: groupData.visibility || 'private',
             createdAt: (groupData.createdAt && typeof (groupData.createdAt as Timestamp).toDate === 'function')
               ? (groupData.createdAt as Timestamp).toDate().toISOString()
-              : (groupData.createdAt && (groupData.createdAt as {seconds: number}).seconds) // Handle plain object timestamp
+              : (groupData.createdAt && (groupData.createdAt as {seconds: number}).seconds) 
               ? new Date((groupData.createdAt as {seconds: number}).seconds * 1000).toISOString()
-              : new Date().toISOString(), // Fallback
+              : new Date().toISOString(), 
           };
           
-          if (!fetchedGroup.ownerId || fetchedGroup.ownerId !== currentUser.id) {
+          if (fetchedGroup.ownerId !== currentUser.id) { // Check against currentUser from context
             toast({ title: "Access Denied", description: "You are not the owner of this group.", variant: "destructive" });
             setAccessDenied(true);
             setAccessDeniedReason("not_owner");
-            setGroup(fetchedGroup); // Still set group so "Not owner" message can be more specific
+            setGroup(fetchedGroup); 
             setIsLoading(false);
             return;
           }
@@ -160,8 +157,6 @@ export default function EditGroupPage() {
     );
   }
   
-  // This check should ideally be redundant due to isLoading and accessDenied checks above,
-  // but can be a fallback.
   if (!group) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
@@ -175,7 +170,7 @@ export default function EditGroupPage() {
   const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      setGroupPhoto(file);
+      setGroupPhotoFile(file);
       setGroupPhotoPreview(URL.createObjectURL(file));
     }
   };
@@ -189,7 +184,7 @@ export default function EditGroupPage() {
       setIsSubmitting(false);
       return;
     }
-    if (!group) { // Should not happen if page rendered correctly
+    if (!group) { 
         toast({ title: "Error", description: "Group data not loaded.", variant: "destructive" });
         setIsSubmitting(false);
         return;
@@ -197,30 +192,24 @@ export default function EditGroupPage() {
 
     const oldGroupName = group.name;
 
-    // In a real app, if groupPhoto (File object) exists, upload it to Firebase Storage
-    // This part needs Firebase Storage integration for real photo uploads.
-    let finalPhotoUrl = group.photoUrl; // Start with existing URL
-    if (groupPhoto && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
-      // Here you would:
-      // 1. Upload groupPhoto to Firebase Storage (e.g., using a helper function)
-      // 2. Get the downloadURL from storage
-      // finalPhotoUrl = downloadURL;
-      // For now, we'll simulate by keeping the preview URL, but this is not persistent on refresh.
-      // A real implementation would involve async upload and getting the URL back.
+    // In a real app, if groupPhotoFile (File object) exists, upload it to Firebase Storage
+    let finalPhotoUrl = group.photoUrl; 
+    if (groupPhotoFile && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
+      // This is where actual upload to Firebase Storage would happen.
+      // For now, we'll simulate by keeping the preview URL, but this is not persistent.
       finalPhotoUrl = groupPhotoPreview; 
       toast({ title: "Photo Upload (Simulated)", description: "Photo preview updated. Real upload to Firebase Storage needed for persistence.", variant: "info" });
-    } else if (!groupPhotoPreview && group.photoUrl) { // If preview was cleared (meaning user removed photo)
+    } else if (!groupPhotoPreview && group.photoUrl) { 
         finalPhotoUrl = ''; 
     }
 
 
-    const groupDataToUpdate = {
+    const groupDataToUpdate: Partial<Group> & {name: string} = { // Ensure name is always present
       name: groupName.trim(),
       description: groupDescription.trim(),
-      photoUrl: finalPhotoUrl, // This will be the blob URL or empty if removed, or original if unchanged
+      photoUrl: finalPhotoUrl, 
       visibility: groupVisibility,
-      // ownerId, members, memberIds, createdAt should generally not be updated here
-      // Potentially add an 'updatedAt: serverTimestamp()' field if needed
+      dataAiHint: finalPhotoUrl && finalPhotoUrl.includes('placehold.co') ? (group.dataAiHint || 'group image') : '',
     };
     
     try {
@@ -290,7 +279,14 @@ export default function EditGroupPage() {
               <Label htmlFor="groupPhoto">Group Photo (Optional)</Label>
               <div className="mt-1 flex items-center gap-4">
                 {groupPhotoPreview ? (
-                  <NextImage data-ai-hint="group photo" src={groupPhotoPreview} alt="Group photo preview" width={80} height={80} className="rounded-md object-cover h-20 w-20" />
+                  <NextImage 
+                    src={groupPhotoPreview} 
+                    alt="Group photo preview" 
+                    width={80} 
+                    height={80} 
+                    className="rounded-md object-cover h-20 w-20"
+                    {...(groupPhotoFile ? {} : { 'data-ai-hint': group.dataAiHint || 'group image' })} // Only add hint if it's not a user file
+                  />
                 ) : (
                   <div className="h-20 w-20 bg-muted rounded-md flex items-center justify-center">
                     <ImageIcon className="h-10 w-10 text-muted-foreground" />
@@ -303,7 +299,7 @@ export default function EditGroupPage() {
                         </label>
                     </Button>
                     {groupPhotoPreview && (
-                        <Button type="button" variant="ghost" size="sm" className="text-xs text-destructive" onClick={() => { setGroupPhotoPreview(null); setGroupPhoto(null); }} disabled={isSubmitting}>
+                        <Button type="button" variant="ghost" size="sm" className="text-xs text-destructive" onClick={() => { setGroupPhotoPreview(null); setGroupPhotoFile(null); }} disabled={isSubmitting}>
                             Remove Photo
                         </Button>
                     )}
@@ -361,5 +357,3 @@ export default function EditGroupPage() {
     </div>
   );
 }
-
-    

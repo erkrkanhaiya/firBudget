@@ -251,8 +251,9 @@ export default function CreateGroupPage() {
     setIsSubmitting(true);
 
     let photoURLToSave = '';
+    // Note: Saving blob URLs to Firestore is not a persistent solution for images.
+    // This requires Firebase Storage integration for proper image uploads.
     if (groupPhoto && groupPhotoPreview) {
-      // Placeholder: Real implementation would upload to Firebase Storage
       photoURLToSave = groupPhotoPreview; 
     }
 
@@ -263,7 +264,7 @@ export default function CreateGroupPage() {
       name: groupName.trim(),
       description: groupDescription.trim(),
       photoUrl: photoURLToSave,
-      dataAiHint: '', 
+      dataAiHint: photoURLToSave.includes('placehold.co') ? 'group image' : '', // Add hint if it's a placeholder
       ownerId: currentUser.id,
       members: selectedMembers.map(m => ({ 
         id: m.id, 
@@ -345,7 +346,14 @@ export default function CreateGroupPage() {
               <Label htmlFor="groupPhoto">Group Photo (Optional)</Label>
               <div className="mt-1 flex items-center gap-4">
                 {groupPhotoPreview ? (
-                  <NextImage data-ai-hint="group photo" src={groupPhotoPreview} alt="Group photo preview" width={80} height={80} className="rounded-md object-cover h-20 w-20" />
+                  <NextImage 
+                    src={groupPhotoPreview} 
+                    alt="Group photo preview" 
+                    width={80} 
+                    height={80} 
+                    className="rounded-md object-cover h-20 w-20"
+                    {...(groupPhoto ? {} : { 'data-ai-hint': 'group photo' })} // Only add hint if it's not a user file
+                  />
                 ) : (
                   <div className="h-20 w-20 bg-muted rounded-md flex items-center justify-center">
                     <ImageIcon className="h-10 w-10 text-muted-foreground" />
@@ -508,5 +516,3 @@ export default function CreateGroupPage() {
     </div>
   );
 }
-
-    
