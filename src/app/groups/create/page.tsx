@@ -10,16 +10,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus, Lock, Unlock, Contact, Loader2, Send, Briefcase, Home, Heart, PartyPopper, Shapes } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from "@/hooks/use-toast";
 import type { User, GroupVisibility, Group, AppMemberContact, GroupCategory } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import NextImage from 'next/image';
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
+import React from 'react';
 
 // Helper to get initials
 const getInitials = (name: string | null | undefined): string => {
@@ -215,7 +215,7 @@ export default function CreateGroupPage() {
         avatarUrl: undefined,
       };
 
-      setAllPotentialMembers(prev => [newContact, ...prev]); // Add to top of potential members list
+      setAllPotentialMembers(prev => [newContact, ...prev]); 
       setSelectedMembers(prev => {
         if (!prev.some(m => m.id === newContact.id)) {
           return [...prev, newContact];
@@ -261,16 +261,15 @@ export default function CreateGroupPage() {
     setIsSubmitting(true);
 
     let photoURLToSave = '';
+    let dataAiHintToSave = '';
     if (groupPhoto && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
-      // Placeholder for actual Firebase Storage upload. In a real app, upload groupPhoto File, get URL.
-      // For this demo, we'll assume the blob URL would be replaced by a real URL.
-      // To avoid saving blob URLs (which are temporary), we'll clear it if it's a blob.
-      // For production, you MUST upload the 'groupPhoto' file to Firebase Storage here and get its URL.
-      // For now, we'll just use a placeholder to simulate.
       console.warn("Group photo is a blob URL. In production, upload to Firebase Storage.");
-      photoURLToSave = ''; // Or a placeholder like `https://placehold.co/600x400.png?text=${groupName}`
+      photoURLToSave = ''; 
+    } else if (groupPhotoPreview && groupPhotoPreview.includes('placehold.co')) {
+      photoURLToSave = groupPhotoPreview;
+      dataAiHintToSave = 'group image'; // Default hint for placeholders
     } else if (groupPhotoPreview) {
-      photoURLToSave = groupPhotoPreview; // If it was already a URL (e.g., from a previous edit or placeholder)
+       photoURLToSave = groupPhotoPreview;
     }
 
 
@@ -281,7 +280,7 @@ export default function CreateGroupPage() {
       name: groupName.trim(),
       description: groupDescription.trim(),
       photoUrl: photoURLToSave,
-      dataAiHint: photoURLToSave.includes('placehold.co') ? 'group image' : '',
+      dataAiHint: dataAiHintToSave,
       ownerId: currentUser.id,
       members: selectedMembers.map(m => ({ 
         id: m.id, 
@@ -361,30 +360,29 @@ export default function CreateGroupPage() {
               />
             </div>
             <div>
-              <Label htmlFor="groupCategory">Group Category*</Label>
-              <Select
+              <Label>Group Category*</Label>
+              <RadioGroup
                 value={groupCategory}
                 onValueChange={(value) => setGroupCategory(value as GroupCategory)}
-                required
+                className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3"
                 disabled={isSubmitting}
               >
-                <SelectTrigger id="groupCategory">
-                  <SelectValue placeholder="Select a category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(groupCategoryIcons) as GroupCategory[]).map((cat) => {
-                    const IconComponent = groupCategoryIcons[cat];
-                    return (
-                      <SelectItem key={cat} value={cat}>
-                        <div className="flex items-center gap-2">
-                          <IconComponent className="h-4 w-4 text-muted-foreground" />
-                          {cat.charAt(0) + cat.slice(1).toLowerCase()}
-                        </div>
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+                {(Object.keys(groupCategoryIcons) as GroupCategory[]).map((cat) => {
+                  const IconComponent = groupCategoryIcons[cat];
+                  return (
+                    <div key={cat}>
+                      <RadioGroupItem value={cat} id={`category-${cat}`} className="peer sr-only" disabled={isSubmitting} />
+                      <Label
+                        htmlFor={`category-${cat}`}
+                        className={`flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-3 h-full hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                      >
+                        <IconComponent className="mb-1.5 h-5 w-5" />
+                        <span className="text-xs text-center">{cat.charAt(0) + cat.slice(1).toLowerCase()}</span>
+                      </Label>
+                    </div>
+                  );
+                })}
+              </RadioGroup>
             </div>
             <div>
               <Label htmlFor="groupPhoto">Group Photo (Optional)</Label>
@@ -396,8 +394,7 @@ export default function CreateGroupPage() {
                     width={80} 
                     height={80} 
                     className="rounded-md object-cover h-20 w-20"
-                    // No data-ai-hint if it's a user uploaded file (blob:)
-                    {...(groupPhoto ? {} : { 'data-ai-hint': 'group photo' })}
+                    {...(groupPhoto ? {} : (groupPhotoPreview.includes('placehold.co') ? { 'data-ai-hint': 'group image' } : {}))}
                   />
                 ) : (
                   <div className="h-20 w-20 bg-muted rounded-md flex items-center justify-center">
@@ -426,7 +423,7 @@ export default function CreateGroupPage() {
                   <RadioGroupItem value="private" id="private" className="peer sr-only" />
                   <Label
                     htmlFor="private"
-                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 h-full hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                   >
                     <Lock className="mb-2 h-6 w-6" />
                     Private
@@ -437,7 +434,7 @@ export default function CreateGroupPage() {
                   <RadioGroupItem value="public" id="public" className="peer sr-only" />
                   <Label
                     htmlFor="public"
-                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 h-full hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                   >
                     <Unlock className="mb-2 h-6 w-6" />
                     Public
@@ -542,7 +539,7 @@ export default function CreateGroupPage() {
                 </CardContent>
               </Card>
               <p className="text-xs text-muted-foreground mt-2">
-                Selected for group: {selectedMembers.length > 0 ? selectedMembers.map(m => m.name).join(', ') : 'None'}
+                Selected for group: {selectedMembers.length > 0 ? selectedMembers.map(m => m.name || `User ${m.id.substring(0,4)}`).join(', ') : 'None'}
               </p>
             </div>
           </CardContent>

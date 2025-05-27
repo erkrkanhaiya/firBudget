@@ -8,9 +8,9 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import type { Group, Expense, User as UserType, ActivityLog, Balance } from '@/types';
+import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory } from '@/types';
 import { useUser } from '@/contexts/UserContext';
 import { format, parseISO } from 'date-fns';
 import {
@@ -38,14 +38,15 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/firebase'; 
-import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction } from 'firebase/firestore';
-import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
+import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction, QuerySnapshot } from 'firebase/firestore';
+import { useNotification } from '@/contexts/NotificationContext'; 
+import React from 'react';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDFWithAutoTable;
 }
 
-// Helper to get initials - can be moved to utils later
+// Helper to get initials
 const getInitials = (name: string | undefined | null) => {
   if (!name) return "U";
   const names = name.split(' ');
@@ -56,16 +57,24 @@ const getInitials = (name: string | undefined | null) => {
   return "U";
 };
 
+const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
+  TRIP: Plane,
+  HOME: HomeIconLucide,
+  COUPLE: Heart,
+  PARTY: PartyPopper,
+  OTHER: Shapes,
+};
+
 
 export default function GroupDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams(); // To detect refresh requests
+  const searchParams = useSearchParams(); 
   const { currentUser } = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
-  const { addNotification } = useNotification(); // Use notification context
+  const { addNotification } = useNotification(); 
 
   const [group, setGroup] = useState<Group | null>(null);
   const [firestoreExpenses, setFirestoreExpenses] = useState<Expense[]>([]);
@@ -103,6 +112,7 @@ export default function GroupDetailPage() {
           members: groupData.members || [],
           memberIds: groupData.memberIds || [],
           createdAt: groupData.createdAt.toDate().toISOString(),
+          category: groupData.category || 'OTHER',
         };
 
         const isMember = fetchedGroup.memberIds.includes(currentUser.id);
@@ -143,7 +153,6 @@ export default function GroupDetailPage() {
         });
         setFirestoreActivityLogs(fetchedActivityLogs);
         
-        // Calculate balances (must happen after expenses are fetched)
         const calculatedBalances = calculateGroupBalances(fetchedGroup, fetchedExpenses, fetchedGroup.members);
         setBalances(calculatedBalances);
 
@@ -162,7 +171,7 @@ export default function GroupDetailPage() {
 
   useEffect(() => {
     fetchGroupData();
-  }, [fetchGroupData, searchParams]); // Re-fetch if searchParams (like refresh) changes
+  }, [fetchGroupData, searchParams]); 
 
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.share) {
@@ -174,13 +183,13 @@ export default function GroupDetailPage() {
     if (!currentGroup || groupMembers.length === 0) return [];
     const memberBalances: Record<string, { owes: Record<string, number>, owedBy: Record<string, number>, netBalance: number }> = {};
     
-    groupMembers.forEach(member => { // Initialize for all listed members
+    groupMembers.forEach(member => { 
         memberBalances[member.id] = { owes: {}, owedBy: {}, netBalance: 0 };
     });
 
     groupExpenses.forEach(expense => {
         const payerId = expense.paidByUserId;
-        if (!memberBalances[payerId] && groupMembers.find(m => m.id === payerId)) { // Ensure payer exists in members
+        if (!memberBalances[payerId] && groupMembers.find(m => m.id === payerId)) { 
              memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
         }
 
@@ -194,7 +203,6 @@ export default function GroupDetailPage() {
                 memberBalances[debtorId] = { owes: {}, owedBy: {}, netBalance: 0 };
             }
             
-            // Ensure both debtor and payer are part of the group's member list before processing
             if (memberBalances[debtorId] && memberBalances[payerId]) {
                 memberBalances[debtorId].owes[payerId] = (memberBalances[debtorId].owes[payerId] || 0) + amountOwedByDebtor;
                 memberBalances[debtorId].netBalance -= amountOwedByDebtor;
@@ -206,7 +214,7 @@ export default function GroupDetailPage() {
     return Object.entries(memberBalances).map(([userId, balanceData]) => ({
         userId,
         ...balanceData
-    })).filter(b => groupMembers.some(m => m.id === b.userId)); // Only return balances for actual group members
+    })).filter(b => groupMembers.some(m => m.id === b.userId)); 
   };
 
   const handleDownloadPdf = () => {
@@ -257,7 +265,7 @@ export default function GroupDetailPage() {
         return [
           format(parseISO(exp.date), "MMM d, yyyy"),
           exp.description,
-          payer?.name || exp.paidByUserId.substring(0,6), // Fallback to ID if name not found
+          payer?.name || exp.paidByUserId.substring(0,6), 
           `${currencySymbol}${exp.amount.toFixed(2)}`
         ];
       });
@@ -286,9 +294,9 @@ export default function GroupDetailPage() {
         const user = memberDetailsMap.get(balance.userId);
         if (!user) return;
         let balanceText = "";
-        if (balance.netBalance > 0.005) { // Use threshold
+        if (balance.netBalance > 0.005) { 
           balanceText = `Is Owed: ${currencySymbol}${balance.netBalance.toFixed(2)}`;
-        } else if (balance.netBalance < -0.005) { // Use threshold
+        } else if (balance.netBalance < -0.005) { 
           balanceText = `Owes: ${currencySymbol}${Math.abs(balance.netBalance).toFixed(2)}`;
         } else {
           balanceText = "Settled Up";
@@ -387,7 +395,7 @@ export default function GroupDetailPage() {
       toast({ title: "Error", description: "You do not have permission to delete this group.", variant: "destructive"});
       return;
     }
-    const groupName = group.name; // Store for notification
+    const groupName = group.name; 
     try {
       await runTransaction(db, async (transaction) => {
         const groupDocRef = doc(db, 'groups', groupId);
@@ -456,11 +464,17 @@ export default function GroupDetailPage() {
   }
   
   if (!group) {
-    return <p>Loading group details...</p>; 
+    return (
+         <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
+            <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+            <p className="ml-2 text-muted-foreground">Loading group data...</p>
+        </div>
+    );
   }
   
   const isMember = group.memberIds.includes(currentUser.id);
   const isOwner = group.ownerId === currentUser.id; 
+  const CategoryIcon = groupCategoryIcons[group.category || 'OTHER'] || Shapes;
 
   return (
     <div className="space-y-6">
@@ -473,15 +487,20 @@ export default function GroupDetailPage() {
       <Card>
         <CardHeader className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="flex items-start gap-4">
-            {group.photoUrl && (
+            {group.photoUrl ? (
               <Image 
                 src={group.photoUrl} 
                 alt={group.name} 
                 width={100} 
                 height={100} 
-                className="rounded-lg object-cover h-24 w-24 md:h-28 md:w-28"
+                className="rounded-lg object-cover h-24 w-24 md:h-28 md:w-28 shadow-md"
                 data-ai-hint={group.dataAiHint || "group image"}
+                priority // Consider adding priority for LCP images
               />
+            ) : (
+              <div className="rounded-lg h-24 w-24 md:h-28 md:w-28 flex items-center justify-center bg-muted shadow-md">
+                <CategoryIcon className="h-12 w-12 md:h-14 md:w-14 text-muted-foreground" />
+              </div>
             )}
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -559,7 +578,7 @@ export default function GroupDetailPage() {
              <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 sm:flex-none">
                 <Download className="mr-2 h-4 w-4" /> Download PDF
             </Button>
-            {(group.visibility === 'public' || isMember) && ( // Allow sharing for members of private groups too
+            {(group.visibility === 'public' || isMember) && ( 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="flex-1 sm:flex-none">
@@ -624,7 +643,7 @@ export default function GroupDetailPage() {
                       <div className="text-right">
                         <p className="text-lg font-semibold">{getCurrencySymbol()}{expense.amount.toFixed(2)}</p>
                         {isMember && currentUserShare && (
-                           <p className="text-xs text-blue-600">Your share: {getCurrencySymbol()}{currentUserShare.amountOwed.toFixed(2)}</p>
+                           <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {getCurrencySymbol()}{currentUserShare.amountOwed.toFixed(2)}</p>
                         )}
                       </div>
                     </li>
@@ -668,13 +687,13 @@ export default function GroupDetailPage() {
                                     <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                                 </Avatar>
                                 <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Balance:</span>
-                                <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600' : balance.netBalance < -0.005 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                                <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
                                     {getCurrencySymbol()}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed" : balance.netBalance < -0.005 ? "owes" : "is settled"}
                                 </span>
                             </div>
                             {owedToList.length > 0 && (
                                 <div className="pl-4 text-sm">
-                                    <p className="text-red-600">Owes:</p>
+                                    <p className="text-red-600 dark:text-red-400">Owes:</p>
                                     <ul className="list-disc list-inside ml-2">
                                         {owedToList.map(item => (
                                             <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
@@ -684,7 +703,7 @@ export default function GroupDetailPage() {
                             )}
                             {owedByList.length > 0 && (
                                  <div className="pl-4 text-sm mt-1">
-                                    <p className="text-green-600">Is owed by:</p>
+                                    <p className="text-green-600 dark:text-green-400">Is owed by:</p>
                                     <ul className="list-disc list-inside ml-2">
                                         {owedByList.map(item => (
                                             <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} from ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
@@ -783,3 +802,4 @@ export default function GroupDetailPage() {
     </div>
   );
 }
+
