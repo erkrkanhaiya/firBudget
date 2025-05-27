@@ -21,11 +21,8 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
-      {
-        source: '/',
-        destination: '/login', // Changed from /dashboard to /login
-        permanent: true,
-      },
+      // Removed the redirect from '/' to '/login'
+      // Add other redirects here if needed
     ]
   },
 };

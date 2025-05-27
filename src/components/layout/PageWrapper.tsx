@@ -11,16 +11,18 @@ interface PageWrapperProps {
 }
 
 const AUTH_ROUTES = ['/login', '/signup'];
+const PUBLIC_LANDING_ROUTES = ['/', '/about', '/contact']; // Added new public routes
 
 export function PageWrapper({ children }: PageWrapperProps) {
   const pathname = usePathname();
   const isAuthRoute = AUTH_ROUTES.includes(pathname);
+  const isPublicLandingRoute = PUBLIC_LANDING_ROUTES.includes(pathname);
 
-  if (isAuthRoute) {
+  if (isAuthRoute || isPublicLandingRoute) { // If it's an auth route OR a public landing route
     return (
       <>
         {children}
-        <Toaster /> {/* Ensure Toaster is available for auth routes */}
+        <Toaster /> {/* Ensure Toaster is available */}
       </>
     );
   }
