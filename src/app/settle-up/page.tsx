@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, BarChart3, Users, DollarSign as DollarSignIcon, ArrowUpCircle, ArrowDownCircle, Loader2, HandCoins } from 'lucide-react';
+import { AlertTriangle, BarChart3, Users, DollarSign as DollarSignIcon, ArrowUpCircle, ArrowDownCircle, Loader2, HandCoins, Info } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
 import type { User as UserType, Group as GroupType, Expense } from '@/types';
@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 // Helper to get initials
 const getInitials = (name: string | undefined | null) => {
@@ -57,7 +58,6 @@ export default function GlobalSettleUpPage() {
       setError(null);
 
       try {
-        // 1. Get all groups the user is a member of
         const userGroupsQuery = query(
           collection(db, 'groups'),
           where('memberIds', 'array-contains', currentUser.id)
@@ -101,7 +101,6 @@ export default function GlobalSettleUpPage() {
           return;
         }
 
-        // 2. For each group, fetch its expenses
         const groupExpensePromises = Array.from(groupsMap.keys()).map(groupId => {
           const expensesColRef = collection(db, 'groups', groupId, 'expenses');
           return getDocs(query(expensesColRef));
@@ -122,7 +121,6 @@ export default function GlobalSettleUpPage() {
           });
         });
 
-        // 3. Calculate balances
         const userNetBalances: Record<string, number> = {}; 
 
         allExpenses.forEach(expense => {
@@ -215,7 +213,7 @@ export default function GlobalSettleUpPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settle All Debts</h1>
         <p className="text-muted-foreground">
-          View and manage pending settlements across all your groups.
+          Guidance for settling your overall debts across all groups.
         </p>
       </div>
 
@@ -281,6 +279,47 @@ export default function GlobalSettleUpPage() {
               </Card>
             </CardContent>
           </Card>
+          
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>How to Settle Up</AlertTitle>
+            <AlertDescription>
+              This page summarizes who owes whom across all your groups. To actually record a payment (e.g., if you pay someone back, or someone pays you), please go to the specific group where the expenses originated and use the &quot;Settle Up&quot; feature available on that group&apos;s detail page. This ensures payments are correctly attributed.
+            </AlertDescription>
+          </Alert>
+
+          {balancesData.creditors.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center text-red-600 dark:text-red-400">
+                  <ArrowUpCircle className="mr-2 h-6 w-6" />
+                  Who You Owe (Overall)
+                </CardTitle>
+                <CardDescription>Individuals you owe money to across all groups.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-3">
+                  {balancesData.creditors.map((creditor) => (
+                    <li key={creditor.userId} className="flex flex-col items-start sm:flex-row sm:items-center sm:justify-between p-3 border rounded-md hover:bg-muted/20">
+                      <div className="flex items-center gap-3 mb-2 sm:mb-0">
+                        <Avatar>
+                          <AvatarImage src={creditor.userAvatarUrl || undefined} alt={creditor.userName} />
+                          <AvatarFallback>{getInitials(creditor.userName)}</AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium">{creditor.userName}</span>
+                      </div>
+                      <div className="w-full sm:w-auto text-left sm:text-right">
+                        <span className="font-semibold text-red-600 dark:text-red-400">
+                          You owe: {currencySymbol}{Math.abs(creditor.amount).toFixed(2)}
+                        </span>
+                        <p className="text-xs text-muted-foreground mt-0.5">To settle, record payment in a shared group.</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
 
           {balancesData.debtors.length > 0 && (
             <Card>
@@ -294,47 +333,20 @@ export default function GlobalSettleUpPage() {
               <CardContent>
                 <ul className="space-y-3">
                   {balancesData.debtors.map((debtor) => (
-                    <li key={debtor.userId} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/20">
-                      <div className="flex items-center gap-3">
+                    <li key={debtor.userId} className="flex flex-col items-start sm:flex-row sm:items-center sm:justify-between p-3 border rounded-md hover:bg-muted/20">
+                      <div className="flex items-center gap-3 mb-2 sm:mb-0">
                         <Avatar>
                           <AvatarImage src={debtor.userAvatarUrl || undefined} alt={debtor.userName} />
                           <AvatarFallback>{getInitials(debtor.userName)}</AvatarFallback>
                         </Avatar>
                         <span className="font-medium">{debtor.userName}</span>
                       </div>
-                      <span className="font-semibold text-green-600 dark:text-green-400">
-                        Owes you: {currencySymbol}{debtor.amount.toFixed(2)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-          
-          {balancesData.creditors.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center text-red-600 dark:text-red-400">
-                  <ArrowUpCircle className="mr-2 h-6 w-6" />
-                  Who You Owe (Overall)
-                </CardTitle>
-                <CardDescription>Individuals you owe money to across all groups.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-3">
-                  {balancesData.creditors.map((creditor) => (
-                    <li key={creditor.userId} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/20">
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={creditor.userAvatarUrl || undefined} alt={creditor.userName} />
-                          <AvatarFallback>{getInitials(creditor.userName)}</AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">{creditor.userName}</span>
+                       <div className="w-full sm:w-auto text-left sm:text-right">
+                        <span className="font-semibold text-green-600 dark:text-green-400">
+                          Owes you: {currencySymbol}{debtor.amount.toFixed(2)}
+                        </span>
+                         <p className="text-xs text-muted-foreground mt-0.5">They can record payment in a shared group.</p>
                       </div>
-                      <span className="font-semibold text-red-600 dark:text-red-400">
-                        You owe: {currencySymbol}{Math.abs(creditor.amount).toFixed(2)}
-                      </span>
                     </li>
                   ))}
                 </ul>
@@ -353,9 +365,6 @@ export default function GlobalSettleUpPage() {
                 </CardContent>
             </Card>
           )}
-          <p className="text-center text-sm text-muted-foreground">
-            To record a payment within a specific group, please navigate to that group and use the "Settle Up" option there.
-          </p>
         </>
       ) : (
          <Card>
@@ -376,3 +385,6 @@ export default function GlobalSettleUpPage() {
     </div>
   );
 }
+
+
+    
