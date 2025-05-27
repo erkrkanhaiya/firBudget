@@ -86,6 +86,9 @@ export default function DashboardPage() {
   const [isLoadingGroupsCount, setIsLoadingGroupsCount] = useState(true);
   const [recentActivities, setRecentActivities] = useState<EnrichedActivityLog[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(true);
+  const [netOverallBalance, setNetOverallBalance] = useState<number | null>(null);
+  const [isLoadingOverallBalances, setIsLoadingOverallBalances] = useState(true);
+
 
   const [lastActiveGroup, setLastActiveGroup] = useState<GroupType | null>(null);
   const [quickExpenseDescription, setQuickExpenseDescription] = useState('');
@@ -99,11 +102,13 @@ export default function DashboardPage() {
       if (!currentUser) {
         setIsLoadingGroupsCount(false);
         setIsLoadingActivities(false);
+        setIsLoadingOverallBalances(false);
         setLastActiveGroup(null);
         return;
       }
       setIsLoadingGroupsCount(true);
       setIsLoadingActivities(true);
+      setIsLoadingOverallBalances(true);
       setLastActiveGroup(null);
 
       try {
@@ -133,32 +138,30 @@ export default function DashboardPage() {
              userGroups.push(group);
         });
         
-        // Fetch recent activities
+        // Fetch recent activities & calculate overall balances
         const userGroupIds = Array.from(groupsDataMap.keys());
 
         if (userGroupIds.length === 0) {
           setRecentActivities([]);
           setIsLoadingActivities(false);
+          setNetOverallBalance(0);
+          setIsLoadingOverallBalances(false);
           setLastActiveGroup(null);
           return;
         }
 
         let fetchedLogs: EnrichedActivityLog[] = [];
-        const activityLogPromises = userGroupIds.map(groupId => {
-          const logsColRef = collection(db, 'groups', groupId, 'activityLog');
-          return getDocs(query(logsColRef, orderBy('timestamp', 'desc'), limit(MAX_RECENT_ACTIVITIES)));
-        });
+        let calculatedNetBalance = 0;
 
-        const groupActivityLogSnapshots = await Promise.all(activityLogPromises);
-        
-        groupActivityLogSnapshots.forEach((snapshot, index) => {
-          const groupId = userGroupIds[index];
+        const groupDataPromises = userGroupIds.map(async (groupId) => {
           const group = groupsDataMap.get(groupId);
-
-          snapshot.forEach(docSnap => {
+          
+          // Fetch activities for this group
+          const logsColRef = collection(db, 'groups', groupId, 'activityLog');
+          const activitySnapshot = await getDocs(query(logsColRef, orderBy('timestamp', 'desc'), limit(MAX_RECENT_ACTIVITIES)));
+          activitySnapshot.forEach(docSnap => {
             const logData = docSnap.data() as Omit<ActivityLog, 'id' | 'timestamp'> & { timestamp: Timestamp | string };
             const actor = group?.members.find(m => m.id === logData.userId);
-            
             fetchedLogs.push({
               id: docSnap.id,
               ...logData,
@@ -166,14 +169,39 @@ export default function DashboardPage() {
               groupName: group?.name,
               actorName: actor?.name,
               actorAvatarUrl: actor?.avatarUrl,
-              groupId: group?.id // Ensure groupId is on the log for lastActiveGroup determination
+              groupId: group?.id
             });
+          });
+
+          // Fetch expenses for this group for balance calculation
+          const expensesColRef = collection(db, 'groups', groupId, 'expenses');
+          const expensesSnapshot = await getDocs(query(expensesColRef));
+          expensesSnapshot.docs.forEach(docSnap => {
+            const expense = docSnap.data() as Expense;
+            if (expense.paidByUserId === currentUser.id) {
+              expense.participants.forEach(p => {
+                if (p.userId !== currentUser.id) {
+                  calculatedNetBalance += p.amountOwed;
+                }
+              });
+            } else {
+              const currentUserParticipant = expense.participants.find(p => p.userId === currentUser.id);
+              if (currentUserParticipant) {
+                calculatedNetBalance -= currentUserParticipant.amountOwed;
+              }
+            }
           });
         });
 
+        await Promise.all(groupDataPromises);
+        
         fetchedLogs.sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
         setRecentActivities(fetchedLogs.slice(0, MAX_RECENT_ACTIVITIES));
         setIsLoadingActivities(false);
+
+        setNetOverallBalance(calculatedNetBalance);
+        setIsLoadingOverallBalances(false);
+
 
         // Determine last active group
         if (fetchedLogs.length > 0 && fetchedLogs[0].groupId) {
@@ -193,10 +221,13 @@ export default function DashboardPage() {
         console.error("Error fetching dashboard data:", error);
         setUserGroupsCount(0); 
         setRecentActivities([]);
+        setNetOverallBalance(0);
+        setIsLoadingOverallBalances(false);
         setLastActiveGroup(null);
       } finally {
         setIsLoadingGroupsCount(false); 
         setIsLoadingActivities(false);
+        setIsLoadingOverallBalances(false);
       }
     };
     fetchDashboardData();
@@ -273,6 +304,13 @@ export default function DashboardPage() {
       setQuickExpenseDescription('');
       setQuickExpenseAmount('');
       setIsQuickAddDialogOpen(false); // Close dialog on success
+      // Manually update overall balances after quick add
+      if (netOverallBalance !== null) {
+        let updatedBalance = netOverallBalance;
+        // Current user paid, so their net balance increases by (amount - their_share)
+        updatedBalance += (numericAmount - share);
+        setNetOverallBalance(updatedBalance);
+      }
     } catch (error) {
       console.error("Error quick adding expense:", error);
       toast({ title: "Error", description: "Could not add quick expense.", variant: "destructive" });
@@ -286,7 +324,7 @@ export default function DashboardPage() {
     }
   };
 
-  if (!currentUser && !isLoadingGroupsCount && !isLoadingActivities) {
+  if (!currentUser && !isLoadingGroupsCount && !isLoadingActivities && !isLoadingOverallBalances) {
     return (
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
             <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -298,6 +336,8 @@ export default function DashboardPage() {
         </div>
     );
   }
+
+  const currencySymbol = getCurrencySymbol();
 
   return (
     <div className="flex flex-col gap-8">
@@ -347,7 +387,7 @@ export default function DashboardPage() {
                   <div>
                     <Label htmlFor="quickExpenseAmountDialog">Amount*</Label>
                     <div className="relative">
-                      <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{getCurrencySymbol()}</span>
+                      <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{currencySymbol}</span>
                       <Input
                         id="quickExpenseAmountDialog"
                         type="number"
@@ -421,13 +461,20 @@ export default function DashboardPage() {
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">--</div>
+            {isLoadingOverallBalances ? (
+              <Skeleton className="h-8 w-20 mb-1" />
+            ) : (
+              <div className={`text-2xl font-bold ${netOverallBalance !== null && netOverallBalance > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                {currencySymbol}
+                {netOverallBalance !== null && netOverallBalance > 0 ? netOverallBalance.toFixed(2) : '0.00'}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
-              {translate({ en: "Net amount others may owe you. Detailed view coming soon.", hi: "दूसरों द्वारा आपको देय शुद्ध राशि। विस्तृत दृश्य जल्द ही।" })}
+              {translate({ en: "Net amount others may owe you. From Firestore.", hi: "दूसरों द्वारा आपको देय शुद्ध राशि। फायरस्टोर से।" })}
             </p>
           </CardContent>
            <CardFooter>
-            <Button asChild variant="outline" size="sm" className="w-full" disabled>
+            <Button asChild variant="outline" size="sm" className="w-full" disabled={!currentUser}>
               <Link href="/balances"> 
                 {translate({ en: "View Balances", hi: "शेष राशि देखें" })} <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -443,13 +490,20 @@ export default function DashboardPage() {
             <ListChecks className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">--</div>
+            {isLoadingOverallBalances ? (
+                <Skeleton className="h-8 w-20 mb-1" />
+            ) : (
+                <div className={`text-2xl font-bold ${netOverallBalance !== null && netOverallBalance < 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                    {currencySymbol}
+                    {netOverallBalance !== null && netOverallBalance < 0 ? Math.abs(netOverallBalance).toFixed(2) : '0.00'}
+                </div>
+            )}
             <p className="text-xs text-muted-foreground">
-              {translate({ en: "Net amount you may owe. Detailed view coming soon.", hi: "आपके द्वारा देय शुद्ध राशि। विस्तृत दृश्य जल्द ही।" })}
+              {translate({ en: "Net amount you may owe. From Firestore.", hi: "आपके द्वारा देय शुद्ध राशि। फायरस्टोर से।" })}
             </p>
           </CardContent>
           <CardFooter>
-            <Button asChild variant="destructive" size="sm" className="w-full" disabled>
+            <Button asChild variant="destructive" size="sm" className="w-full" disabled={!currentUser}>
               <Link href="/settle-up"> 
                  {translate({ en: "Settle All", hi: "सभी का निपटान करें" })} <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -525,3 +579,6 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+
+    
