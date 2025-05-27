@@ -10,14 +10,24 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ArrowLeft, Save, Image as ImageIcon, Lock, Unlock, AlertTriangle, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ArrowLeft, Save, Image as ImageIcon, Lock, Unlock, AlertTriangle, Loader2, Briefcase, Home as HomeIconLucide, Heart, PartyPopper, Shapes } from 'lucide-react'; // Renamed Home to HomeIconLucide
 import { useUser } from '@/contexts/UserContext';
-import type { Group, GroupVisibility } from '@/types';
+import type { Group, GroupVisibility, GroupCategory } from '@/types';
 import { useToast } from "@/hooks/use-toast";
-import NextImage from 'next/image'; // Renamed to avoid conflict with Lucide's Image
-import { db, auth } from '@/lib/firebase'; // auth needed for currentUser check consistency
+import NextImage from 'next/image'; 
+import { db, auth } from '@/lib/firebase'; 
 import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
+
+const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
+  TRIP: Briefcase,
+  HOME: HomeIconLucide, // Use renamed import
+  COUPLE: Heart,
+  PARTY: PartyPopper,
+  OTHER: Shapes,
+};
+
 
 export default function EditGroupPage() {
   const params = useParams();
@@ -30,9 +40,10 @@ export default function EditGroupPage() {
   const [group, setGroup] = useState<Group | null>(null);
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
-  const [groupPhotoFile, setGroupPhotoFile] = useState<File | null>(null); // Renamed to avoid confusion
+  const [groupPhotoFile, setGroupPhotoFile] = useState<File | null>(null);
   const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
   const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
+  const [groupCategory, setGroupCategory] = useState<GroupCategory>('OTHER');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
@@ -87,6 +98,7 @@ export default function EditGroupPage() {
             members: groupData.members || [],
             memberIds: groupData.memberIds || [],
             visibility: groupData.visibility || 'private',
+            category: groupData.category || 'OTHER',
             createdAt: (groupData.createdAt && typeof (groupData.createdAt as Timestamp).toDate === 'function')
               ? (groupData.createdAt as Timestamp).toDate().toISOString()
               : (groupData.createdAt && (groupData.createdAt as {seconds: number}).seconds) 
@@ -94,7 +106,7 @@ export default function EditGroupPage() {
               : new Date().toISOString(), 
           };
           
-          if (fetchedGroup.ownerId !== currentUser.id) { // Check against currentUser from context
+          if (fetchedGroup.ownerId !== currentUser.id) { 
             toast({ title: "Access Denied", description: "You are not the owner of this group.", variant: "destructive" });
             setAccessDenied(true);
             setAccessDeniedReason("not_owner");
@@ -108,6 +120,7 @@ export default function EditGroupPage() {
           setGroupDescription(fetchedGroup.description || '');
           setGroupPhotoPreview(fetchedGroup.photoUrl || null);
           setGroupVisibility(fetchedGroup.visibility);
+          setGroupCategory(fetchedGroup.category || 'OTHER');
         } else {
           toast({ title: "Group Not Found", description: "The group you are trying to edit does not exist.", variant: "destructive" });
           setAccessDenied(true);
@@ -192,23 +205,26 @@ export default function EditGroupPage() {
 
     const oldGroupName = group.name;
 
-    // In a real app, if groupPhotoFile (File object) exists, upload it to Firebase Storage
     let finalPhotoUrl = group.photoUrl; 
     if (groupPhotoFile && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
-      // This is where actual upload to Firebase Storage would happen.
-      // For now, we'll simulate by keeping the preview URL, but this is not persistent.
-      finalPhotoUrl = groupPhotoPreview; 
-      toast({ title: "Photo Upload (Simulated)", description: "Photo preview updated. Real upload to Firebase Storage needed for persistence.", variant: "info" });
+      console.warn("Group photo is a blob URL. In production, upload to Firebase Storage.");
+      // For demo, not uploading. If it were a real upload, finalPhotoUrl would be the new Firebase Storage URL.
+      // Since we don't upload, if it was a blob, we revert to the old URL or empty.
+      // For now, let's simulate by keeping it empty if it's a new blob.
+      finalPhotoUrl = ''; // Or group.photoUrl if you want to keep old one if new blob fails
     } else if (!groupPhotoPreview && group.photoUrl) { 
         finalPhotoUrl = ''; 
+    } else if (groupPhotoPreview && !groupPhotoPreview.startsWith('blob:')) {
+        finalPhotoUrl = groupPhotoPreview; // It was already a URL
     }
 
 
-    const groupDataToUpdate: Partial<Group> & {name: string} = { // Ensure name is always present
+    const groupDataToUpdate: Partial<Group> & {name: string} = {
       name: groupName.trim(),
       description: groupDescription.trim(),
       photoUrl: finalPhotoUrl, 
       visibility: groupVisibility,
+      category: groupCategory,
       dataAiHint: finalPhotoUrl && finalPhotoUrl.includes('placehold.co') ? (group.dataAiHint || 'group image') : '',
     };
     
@@ -276,6 +292,32 @@ export default function EditGroupPage() {
               />
             </div>
             <div>
+              <Label htmlFor="groupCategory">Group Category*</Label>
+              <Select
+                value={groupCategory}
+                onValueChange={(value) => setGroupCategory(value as GroupCategory)}
+                required
+                disabled={isSubmitting}
+              >
+                <SelectTrigger id="groupCategory">
+                  <SelectValue placeholder="Select a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(groupCategoryIcons) as GroupCategory[]).map((cat) => {
+                    const IconComponent = groupCategoryIcons[cat];
+                    return (
+                      <SelectItem key={cat} value={cat}>
+                        <div className="flex items-center gap-2">
+                          <IconComponent className="h-4 w-4 text-muted-foreground" />
+                          {cat.charAt(0) + cat.slice(1).toLowerCase()}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label htmlFor="groupPhoto">Group Photo (Optional)</Label>
               <div className="mt-1 flex items-center gap-4">
                 {groupPhotoPreview ? (
@@ -285,7 +327,7 @@ export default function EditGroupPage() {
                     width={80} 
                     height={80} 
                     className="rounded-md object-cover h-20 w-20"
-                    {...(groupPhotoFile ? {} : { 'data-ai-hint': group.dataAiHint || 'group image' })} // Only add hint if it's not a user file
+                    {...(groupPhotoFile || (groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) ? {} : { 'data-ai-hint': group.dataAiHint || 'group image' })}
                   />
                 ) : (
                   <div className="h-20 w-20 bg-muted rounded-md flex items-center justify-center">

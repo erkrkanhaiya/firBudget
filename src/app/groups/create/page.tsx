@@ -9,10 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus, Lock, Unlock, Contact, Loader2, Send } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus, Lock, Unlock, Contact, Loader2, Send, Briefcase, Home, Heart, PartyPopper, Shapes } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from "@/hooks/use-toast";
-import type { User, GroupVisibility, Group, AppMemberContact } from '@/types';
+import type { User, GroupVisibility, Group, AppMemberContact, GroupCategory } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import NextImage from 'next/image';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -31,6 +32,14 @@ const getInitials = (name: string | null | undefined): string => {
   return 'U';
 };
 
+const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
+  TRIP: Briefcase,
+  HOME: Home,
+  COUPLE: Heart,
+  PARTY: PartyPopper,
+  OTHER: Shapes,
+};
+
 export default function CreateGroupPage() {
   const router = useRouter();
   const { currentUser, isLoadingAuth } = useUser();
@@ -43,6 +52,7 @@ export default function CreateGroupPage() {
   const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
   const [selectedMembers, setSelectedMembers] = useState<User[]>([]);
   const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
+  const [groupCategory, setGroupCategory] = useState<GroupCategory>('OTHER');
   const [isImportingContacts, setIsImportingContacts] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [allPotentialMembers, setAllPotentialMembers] = useState<User[]>([]);
@@ -61,7 +71,7 @@ export default function CreateGroupPage() {
         avatarUrl: currentUser.avatarUrl 
       }]);
     }
-  }, [currentUser]);
+  }, [currentUser, selectedMembers]);
 
   useEffect(() => {
     const fetchAppContacts = async () => {
@@ -251,11 +261,18 @@ export default function CreateGroupPage() {
     setIsSubmitting(true);
 
     let photoURLToSave = '';
-    // Note: Saving blob URLs to Firestore is not a persistent solution for images.
-    // This requires Firebase Storage integration for proper image uploads.
-    if (groupPhoto && groupPhotoPreview) {
-      photoURLToSave = groupPhotoPreview; 
+    if (groupPhoto && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
+      // Placeholder for actual Firebase Storage upload. In a real app, upload groupPhoto File, get URL.
+      // For this demo, we'll assume the blob URL would be replaced by a real URL.
+      // To avoid saving blob URLs (which are temporary), we'll clear it if it's a blob.
+      // For production, you MUST upload the 'groupPhoto' file to Firebase Storage here and get its URL.
+      // For now, we'll just use a placeholder to simulate.
+      console.warn("Group photo is a blob URL. In production, upload to Firebase Storage.");
+      photoURLToSave = ''; // Or a placeholder like `https://placehold.co/600x400.png?text=${groupName}`
+    } else if (groupPhotoPreview) {
+      photoURLToSave = groupPhotoPreview; // If it was already a URL (e.g., from a previous edit or placeholder)
     }
+
 
     const memberIds = selectedMembers.map(m => m.id);
     const uniqueMemberIds = Array.from(new Set(memberIds));
@@ -264,7 +281,7 @@ export default function CreateGroupPage() {
       name: groupName.trim(),
       description: groupDescription.trim(),
       photoUrl: photoURLToSave,
-      dataAiHint: photoURLToSave.includes('placehold.co') ? 'group image' : '', // Add hint if it's a placeholder
+      dataAiHint: photoURLToSave.includes('placehold.co') ? 'group image' : '',
       ownerId: currentUser.id,
       members: selectedMembers.map(m => ({ 
         id: m.id, 
@@ -274,6 +291,7 @@ export default function CreateGroupPage() {
       })),
       memberIds: uniqueMemberIds,
       visibility: groupVisibility,
+      category: groupCategory,
       createdAt: serverTimestamp() as Timestamp,
     };
 
@@ -343,6 +361,32 @@ export default function CreateGroupPage() {
               />
             </div>
             <div>
+              <Label htmlFor="groupCategory">Group Category*</Label>
+              <Select
+                value={groupCategory}
+                onValueChange={(value) => setGroupCategory(value as GroupCategory)}
+                required
+                disabled={isSubmitting}
+              >
+                <SelectTrigger id="groupCategory">
+                  <SelectValue placeholder="Select a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(groupCategoryIcons) as GroupCategory[]).map((cat) => {
+                    const IconComponent = groupCategoryIcons[cat];
+                    return (
+                      <SelectItem key={cat} value={cat}>
+                        <div className="flex items-center gap-2">
+                          <IconComponent className="h-4 w-4 text-muted-foreground" />
+                          {cat.charAt(0) + cat.slice(1).toLowerCase()}
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label htmlFor="groupPhoto">Group Photo (Optional)</Label>
               <div className="mt-1 flex items-center gap-4">
                 {groupPhotoPreview ? (
@@ -352,7 +396,8 @@ export default function CreateGroupPage() {
                     width={80} 
                     height={80} 
                     className="rounded-md object-cover h-20 w-20"
-                    {...(groupPhoto ? {} : { 'data-ai-hint': 'group photo' })} // Only add hint if it's not a user file
+                    // No data-ai-hint if it's a user uploaded file (blob:)
+                    {...(groupPhoto ? {} : { 'data-ai-hint': 'group photo' })}
                   />
                 ) : (
                   <div className="h-20 w-20 bg-muted rounded-md flex items-center justify-center">
@@ -366,6 +411,7 @@ export default function CreateGroupPage() {
                 </Button>
                 <input id="group-photo-upload" type="file" className="hidden" accept="image/*" onChange={handlePhotoChange} disabled={isSubmitting} />
               </div>
+               <p className="text-xs text-muted-foreground mt-1">Note: Photo upload to server requires Firebase Storage integration (not fully implemented in this demo).</p>
             </div>
 
             <div>
@@ -410,7 +456,6 @@ export default function CreateGroupPage() {
                 </Button>
               </div>
               
-              {/* Quick Add New Member Section */}
               <Card className="mb-4 border-dashed">
                 <CardContent className="p-3 space-y-2">
                   <Label htmlFor="quickMemberName" className="text-sm font-medium">Quick Add New Member</Label>
