@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, FormEvent, useEffect } from 'react';
+import { useState, FormEvent, useEffect, ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -9,16 +9,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus, Lock, Unlock, Contact, Loader2 } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus, Lock, Unlock, Contact, Loader2, Send, Briefcase, Home, Heart, PartyPopper, Shapes } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from "@/hooks/use-toast";
-import type { User, GroupVisibility, Group, AppMemberContact } from '@/types';
+import type { User, GroupVisibility, Group, AppMemberContact, GroupCategory } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import NextImage from 'next/image';
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where } from 'firebase/firestore';
-import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
+import { useNotification } from '@/contexts/NotificationContext';
+import React from 'react';
 
 // Helper to get initials
 const getInitials = (name: string | null | undefined): string => {
@@ -27,14 +28,23 @@ const getInitials = (name: string | null | undefined): string => {
   if (names.length > 1 && names[0] && names[names.length-1]) {
     return (names[0][0] + names[names.length - 1][0]).toUpperCase();
   }
-  return name.substring(0, 2).toUpperCase();
+  if (name.length > 0) return name.substring(0, 2).toUpperCase();
+  return 'U';
+};
+
+const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
+  TRIP: Briefcase,
+  HOME: Home,
+  COUPLE: Heart,
+  PARTY: PartyPopper,
+  OTHER: Shapes,
 };
 
 export default function CreateGroupPage() {
   const router = useRouter();
   const { currentUser, isLoadingAuth } = useUser();
   const { toast } = useToast();
-  const { addNotification } = useNotification(); // Use notification context
+  const { addNotification } = useNotification();
 
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
@@ -42,10 +52,14 @@ export default function CreateGroupPage() {
   const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
   const [selectedMembers, setSelectedMembers] = useState<User[]>([]);
   const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
-  const [isImportingContacts, setIsImportingContacts] = useState(false); // For device contacts
+  const [groupCategory, setGroupCategory] = useState<GroupCategory>('OTHER');
+  const [isImportingContacts, setIsImportingContacts] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [allPotentialMembers, setAllPotentialMembers] = useState<User[]>([]);
   const [isLoadingPotentialMembers, setIsLoadingPotentialMembers] = useState(true);
+
+  const [newQuickMemberName, setNewQuickMemberName] = useState('');
+  const [isAddingQuickMember, setIsAddingQuickMember] = useState(false);
 
 
   useEffect(() => {
@@ -57,7 +71,7 @@ export default function CreateGroupPage() {
         avatarUrl: currentUser.avatarUrl 
       }]);
     }
-  }, [currentUser]); // Removed selectedMembers from dependency array to prevent loop
+  }, [currentUser, selectedMembers]);
 
   useEffect(() => {
     const fetchAppContacts = async () => {
@@ -112,7 +126,7 @@ export default function CreateGroupPage() {
     );
   }
 
-  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
       setGroupPhoto(file);
@@ -180,6 +194,55 @@ export default function CreateGroupPage() {
     }
   };
 
+  const handleQuickAddMember = async () => {
+    if (!newQuickMemberName.trim() || !currentUser) {
+      toast({ title: "Name required", description: "Please enter a name for the new member.", variant: "destructive" });
+      return;
+    }
+    setIsAddingQuickMember(true);
+    const memberName = newQuickMemberName.trim();
+    try {
+      const docRef = await addDoc(collection(db, 'appMemberContacts'), {
+        name: memberName,
+        addedByUid: currentUser.id,
+        createdAt: serverTimestamp(),
+      });
+
+      const newContact: User = {
+        id: docRef.id,
+        name: memberName,
+        email: null,
+        avatarUrl: undefined,
+      };
+
+      setAllPotentialMembers(prev => [newContact, ...prev]); 
+      setSelectedMembers(prev => {
+        if (!prev.some(m => m.id === newContact.id)) {
+          return [...prev, newContact];
+        }
+        return prev;
+      });
+
+      toast({ title: "Member Added & Selected", description: `"${memberName}" added to contacts and selected for this group.` });
+      addNotification({
+        title: "New Contact Added",
+        message: `You added "${memberName}" to your contacts.`,
+        type: "success",
+      });
+      setNewQuickMemberName('');
+    } catch (error) {
+      console.error("Error quick adding member:", error);
+      toast({ title: "Error", description: "Could not add member.", variant: "destructive" });
+      addNotification({
+        title: "Contact Add Failed",
+        message: `Could not add contact: "${memberName}"`,
+        type: "destructive",
+      });
+    } finally {
+      setIsAddingQuickMember(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!groupName.trim()) {
@@ -198,12 +261,17 @@ export default function CreateGroupPage() {
     setIsSubmitting(true);
 
     let photoURLToSave = '';
-    if (groupPhoto && groupPhotoPreview) {
-      // Placeholder: Real implementation would upload to Firebase Storage
-      // For now, we'll assume groupPhotoPreview is a temporary URL or placeholder.
-      // In a real app: await uploadFileToFirebaseStorage(groupPhoto);
-      photoURLToSave = groupPhotoPreview; // This would be the public URL from storage
+    let dataAiHintToSave = '';
+    if (groupPhoto && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
+      console.warn("Group photo is a blob URL. In production, upload to Firebase Storage.");
+      photoURLToSave = ''; 
+    } else if (groupPhotoPreview && groupPhotoPreview.includes('placehold.co')) {
+      photoURLToSave = groupPhotoPreview;
+      dataAiHintToSave = 'group image'; // Default hint for placeholders
+    } else if (groupPhotoPreview) {
+       photoURLToSave = groupPhotoPreview;
     }
+
 
     const memberIds = selectedMembers.map(m => m.id);
     const uniqueMemberIds = Array.from(new Set(memberIds));
@@ -212,7 +280,7 @@ export default function CreateGroupPage() {
       name: groupName.trim(),
       description: groupDescription.trim(),
       photoUrl: photoURLToSave,
-      dataAiHint: '', 
+      dataAiHint: dataAiHintToSave,
       ownerId: currentUser.id,
       members: selectedMembers.map(m => ({ 
         id: m.id, 
@@ -222,6 +290,7 @@ export default function CreateGroupPage() {
       })),
       memberIds: uniqueMemberIds,
       visibility: groupVisibility,
+      category: groupCategory,
       createdAt: serverTimestamp() as Timestamp,
     };
 
@@ -291,10 +360,42 @@ export default function CreateGroupPage() {
               />
             </div>
             <div>
+              <Label>Group Category*</Label>
+              <RadioGroup
+                value={groupCategory}
+                onValueChange={(value) => setGroupCategory(value as GroupCategory)}
+                className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3"
+                disabled={isSubmitting}
+              >
+                {(Object.keys(groupCategoryIcons) as GroupCategory[]).map((cat) => {
+                  const IconComponent = groupCategoryIcons[cat];
+                  return (
+                    <div key={cat}>
+                      <RadioGroupItem value={cat} id={`category-${cat}`} className="peer sr-only" disabled={isSubmitting} />
+                      <Label
+                        htmlFor={`category-${cat}`}
+                        className={`flex flex-col items-center justify-center rounded-md border-2 border-muted bg-popover p-3 h-full hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                      >
+                        <IconComponent className="mb-1.5 h-5 w-5" />
+                        <span className="text-xs text-center">{cat.charAt(0) + cat.slice(1).toLowerCase()}</span>
+                      </Label>
+                    </div>
+                  );
+                })}
+              </RadioGroup>
+            </div>
+            <div>
               <Label htmlFor="groupPhoto">Group Photo (Optional)</Label>
               <div className="mt-1 flex items-center gap-4">
                 {groupPhotoPreview ? (
-                  <NextImage data-ai-hint="group photo" src={groupPhotoPreview} alt="Group photo preview" width={80} height={80} className="rounded-md object-cover h-20 w-20" />
+                  <NextImage 
+                    src={groupPhotoPreview} 
+                    alt="Group photo preview" 
+                    width={80} 
+                    height={80} 
+                    className="rounded-md object-cover h-20 w-20"
+                    {...(groupPhoto ? {} : (groupPhotoPreview.includes('placehold.co') ? { 'data-ai-hint': 'group image' } : {}))}
+                  />
                 ) : (
                   <div className="h-20 w-20 bg-muted rounded-md flex items-center justify-center">
                     <ImageIcon className="h-10 w-10 text-muted-foreground" />
@@ -307,6 +408,7 @@ export default function CreateGroupPage() {
                 </Button>
                 <input id="group-photo-upload" type="file" className="hidden" accept="image/*" onChange={handlePhotoChange} disabled={isSubmitting} />
               </div>
+               <p className="text-xs text-muted-foreground mt-1">Note: Photo upload to server requires Firebase Storage integration (not fully implemented in this demo).</p>
             </div>
 
             <div>
@@ -321,7 +423,7 @@ export default function CreateGroupPage() {
                   <RadioGroupItem value="private" id="private" className="peer sr-only" />
                   <Label
                     htmlFor="private"
-                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 h-full hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                   >
                     <Lock className="mb-2 h-6 w-6" />
                     Private
@@ -332,7 +434,7 @@ export default function CreateGroupPage() {
                   <RadioGroupItem value="public" id="public" className="peer sr-only" />
                   <Label
                     htmlFor="public"
-                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 h-full hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                   >
                     <Unlock className="mb-2 h-6 w-6" />
                     Public
@@ -343,35 +445,65 @@ export default function CreateGroupPage() {
             </div>
 
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <Label>Add Members (from App Contacts)</Label>
+              <div className="flex justify-between items-center mb-2">
+                <Label>Add Members</Label>
                 <Button type="button" variant="outline" size="sm" onClick={handleImportDeviceContacts} disabled={isImportingContacts || isSubmitting}>
                   <Contact className="mr-2 h-4 w-4" />
                   {isImportingContacts ? "Importing..." : "Import from Device Contacts"}
                 </Button>
               </div>
+              
+              <Card className="mb-4 border-dashed">
+                <CardContent className="p-3 space-y-2">
+                  <Label htmlFor="quickMemberName" className="text-sm font-medium">Quick Add New Member</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="quickMemberName"
+                      value={newQuickMemberName}
+                      onChange={(e) => setNewQuickMemberName(e.target.value)}
+                      placeholder="Enter new member's name"
+                      disabled={isAddingQuickMember || isSubmitting}
+                      className="h-9"
+                    />
+                    <Button 
+                      type="button" 
+                      size="sm"
+                      onClick={handleQuickAddMember} 
+                      disabled={isAddingQuickMember || isSubmitting || !newQuickMemberName.trim()}
+                    >
+                      {isAddingQuickMember ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      <span className="ml-1.5">{isAddingQuickMember ? "Adding..." : "Add & Select"}</span>
+                    </Button>
+                  </div>
+                   <p className="text-xs text-muted-foreground">Adds to your app contacts and selects for this group.</p>
+                </CardContent>
+              </Card>
+              
               <Card className="mt-1">
-                <CardContent className="p-4 max-h-60 overflow-y-auto space-y-2">
+                <CardHeader className="p-3 border-b">
+                  <CardTitle className="text-base">Select from App Contacts</CardTitle>
+                </CardHeader>
+                <CardContent className="p-2 max-h-60 overflow-y-auto space-y-1">
                   {currentUser && (
-                     <div key={currentUser.id} className="flex items-center justify-between p-2 rounded-md bg-muted cursor-not-allowed">
+                     <div key={currentUser.id} className="flex items-center justify-between p-2 rounded-md bg-muted/50 cursor-not-allowed">
                         <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
                             <AvatarImage src={currentUser.avatarUrl || undefined} alt={currentUser.name || ''} />
                             <AvatarFallback>{getInitials(currentUser.name)}</AvatarFallback>
                             </Avatar>
-                            <span>{currentUser.name} (You - Admin)</span>
+                            <span className="text-sm">{currentUser.name} (You - Admin)</span>
                         </div>
                         <Users className="h-5 w-5 text-primary" />
                     </div>
                   )}
                   {isLoadingPotentialMembers ? (
                      <div className="flex items-center justify-center p-4"> <Loader2 className="h-6 w-6 animate-spin text-primary"/> <span className="ml-2 text-muted-foreground">Loading contacts...</span></div>
-                  ) : allPotentialMembers.length === 0 && selectedMembers.length <=1 ? ( // only current user selected
-                    <p className="text-sm text-muted-foreground text-center py-3">No other app contacts found. You can add them in the 'Members' section.</p>
+                  ) : allPotentialMembers.length === 0 && selectedMembers.length <=1 ? (
+                    <p className="text-sm text-muted-foreground text-center py-3">No other app contacts found. Use "Quick Add" or "Import".</p>
                   ): (
                     allPotentialMembers.map(user => (
                         <div key={user.id} 
-                            className={`flex items-center justify-between p-2 rounded-md ${isSubmitting ? 'cursor-not-allowed opacity-70' : 'hover:bg-accent cursor-pointer'}`}
+                            className={`flex items-center justify-between p-2 rounded-md text-sm ${isSubmitting ? 'cursor-not-allowed opacity-70' : 'hover:bg-accent cursor-pointer'} ${selectedMembers.find(m => m.id === user.id) ? 'bg-accent/70' : ''}`}
                             onClick={() => !isSubmitting && toggleMemberSelection(user)}>
                         <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
@@ -389,7 +521,7 @@ export default function CreateGroupPage() {
                   )}
                    {selectedMembers.filter(sm => sm.id !== currentUser?.id && !allPotentialMembers.some(pm => pm.id === sm.id)).map(user => (
                      <div key={user.id} 
-                          className={`flex items-center justify-between p-2 rounded-md bg-accent/50 ${isSubmitting ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+                          className={`flex items-center justify-between p-2 rounded-md text-sm bg-accent/70 ${isSubmitting ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
                           onClick={() => !isSubmitting && toggleMemberSelection(user)}>
                        <div className="flex items-center gap-3">
                          <Avatar className="h-8 w-8">
@@ -406,13 +538,13 @@ export default function CreateGroupPage() {
                   ))}
                 </CardContent>
               </Card>
-              <p className="text-xs text-muted-foreground mt-1">
-                Selected members: {selectedMembers.map(m => m.name).join(', ') || 'None (besides you)'}
+              <p className="text-xs text-muted-foreground mt-2">
+                Selected for group: {selectedMembers.length > 0 ? selectedMembers.map(m => m.name || `User ${m.id.substring(0,4)}`).join(', ') : 'None'}
               </p>
             </div>
           </CardContent>
           <CardFooter className="border-t px-6 py-4">
-            <Button type="submit" className="ml-auto" disabled={isImportingContacts || isSubmitting}>
+            <Button type="submit" className="ml-auto" disabled={isAddingQuickMember || isImportingContacts || isSubmitting}>
               {isSubmitting ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (

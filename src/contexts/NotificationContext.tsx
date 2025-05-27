@@ -9,7 +9,7 @@ interface NotificationContextType {
   notifications: NotificationItem[];
   addNotification: (details: { title: string; message: string; type: NotificationType; href?: string }) => void;
   markAsRead: (id: string) => void;
-  clearAllNotifications: () => void; // Renamed for clarity
+  clearAllNotifications: () => void; 
   unreadCount: number;
 }
 
@@ -40,7 +40,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const clearAllNotifications = useCallback(() => {
-    setNotifications([]); // Simply clear all notifications from the list
+    setNotifications([]); 
   }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;

@@ -19,11 +19,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
+import { useNotification } from '@/contexts/NotificationContext'; 
 import { formatDistanceToNow, parseISO } from 'date-fns';
-import type { NotificationType as CustomNotificationType } from '@/types'; // Use CustomNotificationType alias
+import type { NotificationType as CustomNotificationType } from '@/types'; 
 
 const NotificationIcon = ({ type }: { type: CustomNotificationType }) => {
   if (type === 'alert') return <AlertCircle className="h-4 w-4 text-yellow-500" />;
@@ -36,7 +36,15 @@ export function AppHeader() {
   const { currentUser, logout } = useUser();
   const { translate } = useLanguage();
   const router = useRouter();
-  const { notifications, markAsRead, clearAllNotifications, unreadCount } = useNotification(); // Use notification context
+  const { notifications, markAsRead, clearAllNotifications, unreadCount } = useNotification(); 
+  const [isWebShareSupported, setIsWebShareSupported] = useState(false);
+
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      setIsWebShareSupported(true);
+    }
+  }, []);
 
   const handleLogout = async () => {
     await logout(); 

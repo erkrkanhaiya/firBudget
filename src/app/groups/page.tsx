@@ -5,14 +5,28 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, Users, ArrowRight, AlertTriangle, Eye, Lock, Loader2 } from 'lucide-react';
+import { PlusCircle, Users, ArrowRight, AlertTriangle, Eye, Lock, Loader2, Plane, Home as HomeIcon, Heart, PartyPopper, Shapes } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, Timestamp, or } from 'firebase/firestore';
-import type { Group as GroupType } from '@/types'; // Ensure Group type is imported
+import type { Group as GroupType, GroupCategory } from '@/types'; 
+
+const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
+  TRIP: Plane,
+  HOME: HomeIcon,
+  COUPLE: Heart,
+  PARTY: PartyPopper,
+  OTHER: Shapes,
+};
+
+const CategoryIconDisplay = ({ category }: { category?: GroupCategory }) => {
+  const IconComponent = category ? groupCategoryIcons[category] : groupCategoryIcons['OTHER'];
+  return <IconComponent className="h-16 w-16 text-muted-foreground" />;
+};
+
 
 export default function GroupsPage() {
   const { currentUser, isLoadingAuth } = useUser();
@@ -22,11 +36,10 @@ export default function GroupsPage() {
 
   useEffect(() => {
     const fetchGroups = async () => {
-      if (isLoadingAuth) return; // Wait for auth state to be determined
+      if (isLoadingAuth) return; 
 
       if (!currentUser) {
         setIsLoadingGroups(false);
-        // No need to fetch if user is not logged in; page will show access denied.
         return;
       }
 
@@ -35,45 +48,32 @@ export default function GroupsPage() {
       try {
         const groupsCollectionRef = collection(db, 'groups');
         
-        // Query for public groups OR private groups where the current user is a member.
-        // Firestore allows 'array-contains' for checking membership in an array of IDs.
-        const publicGroupsQuery = query(groupsCollectionRef, where("visibility", "==", "public"));
-        const privateMemberGroupsQuery = query(groupsCollectionRef, 
-          where("visibility", "==", "private"),
-          where("memberIds", "array-contains", currentUser.id)
+        const q = query(groupsCollectionRef, 
+          or(
+            where("visibility", "==", "public"),
+            where("memberIds", "array-contains", currentUser.id)
+          )
         );
-
-        const [publicSnapshot, privateMemberSnapshot] = await Promise.all([
-          getDocs(publicGroupsQuery),
-          getDocs(privateMemberGroupsQuery)
-        ]);
-
+        const querySnapshot = await getDocs(q);
+        
         const groupsMap = new Map<string, GroupType>();
 
-        publicSnapshot.forEach((doc) => {
+        querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(data.createdAt).toISOString();
+          // Filter out private groups that the user is not a member of, 
+          // even if 'or' query brings them, just to be safe.
+          if (data.visibility === 'private' && !data.memberIds?.includes(currentUser.id)) {
+            return;
+          }
+          const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(data.createdAt?.seconds * 1000 || Date.now()).toISOString();
           groupsMap.set(doc.id, { 
             id: doc.id, 
             ...data,
-            members: data.members || [], // Ensure members array exists
-            memberIds: data.memberIds || [], // Ensure memberIds array exists
-            createdAt
+            members: data.members || [], 
+            memberIds: data.memberIds || [], 
+            createdAt,
+            category: data.category || 'OTHER',
           } as GroupType);
-        });
-
-        privateMemberSnapshot.forEach((doc) => {
-          if (!groupsMap.has(doc.id)) { // Avoid duplicates if a group is somehow public AND user is member
-            const data = doc.data();
-            const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(data.createdAt).toISOString();
-            groupsMap.set(doc.id, { 
-              id: doc.id, 
-              ...data,
-              members: data.members || [],
-              memberIds: data.memberIds || [],
-              createdAt
-            } as GroupType);
-          }
         });
         
         const sortedGroups = Array.from(groupsMap.values()).sort((a, b) => 
@@ -173,12 +173,12 @@ export default function GroupsPage() {
                         sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                         className="object-cover"
                         data-ai-hint={group.dataAiHint || "group image"}
-                        priority={false} // Set to true for above-the-fold images if any
+                        priority={false} 
                       />
                     </div>
                   ) : (
                      <div className="relative aspect-video w-full mb-4 rounded-md overflow-hidden bg-muted flex items-center justify-center">
-                        <Users className="h-16 w-16 text-muted-foreground" />
+                        <CategoryIconDisplay category={group.category} />
                      </div>
                   )}
                   <CardTitle className="text-xl">{group.name}</CardTitle>

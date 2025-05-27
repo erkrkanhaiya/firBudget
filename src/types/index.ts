@@ -7,6 +7,7 @@ export interface User {
 }
 
 export type GroupVisibility = 'public' | 'private';
+export type GroupCategory = 'TRIP' | 'HOME' | 'COUPLE' | 'PARTY' | 'OTHER';
 
 export interface Group {
   id: string;
@@ -19,6 +20,7 @@ export interface Group {
   ownerId: string; // Firebase UID of the owner
   createdAt: string; // ISO string or Firestore Timestamp
   visibility: GroupVisibility;
+  category?: GroupCategory;
 }
 
 export interface ExpenseParticipant {
@@ -59,6 +61,9 @@ export interface ActivityLog {
   relatedExpenseId?: string;
   relatedPaymentId?: string;
   relatedUserId?: string;
+  actorName?: string; // Added for easier display in activity feed
+  actorAvatarUrl?: string | null; // Added for easier display
+  groupName?: string; // Added for easier display
 }
 
 export interface Balance {
