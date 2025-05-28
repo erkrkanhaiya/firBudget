@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { AlertTriangle, UserPlus, Users2, Loader2 } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where } from 'firebase/firestore'; // Added where
 import type { AppMemberContact } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
@@ -35,9 +35,10 @@ export default function MembersPage() {
 
     setIsLoadingMembers(true);
     const membersCollectionRef = collection(db, 'appMemberContacts');
-    // Reverted: Removed where("addedByUid", "==", currentUser.id)
+    // Query for contacts added by the current user, ordered by creation date
     const q = query(
       membersCollectionRef,
+      where("addedByUid", "==", currentUser.id), // Filter by current user's ID
       orderBy('createdAt', 'desc')
     );
 
@@ -55,7 +56,7 @@ export default function MembersPage() {
       setIsLoadingMembers(false);
     }, (error) => {
       console.error("Error fetching members:", error);
-      toast({ title: "Error", description: "Could not fetch your contacts.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not fetch your contacts. Ensure Firestore indexes are set up if prompted.", variant: "destructive" });
       setIsLoadingMembers(false);
     });
 
@@ -74,7 +75,7 @@ export default function MembersPage() {
     try {
       await addDoc(collection(db, 'appMemberContacts'), {
         name: memberName,
-        addedByUid: currentUser.id, // Still set who added it
+        addedByUid: currentUser.id,
         createdAt: serverTimestamp(),
       });
       toast({ title: "Member Added", description: `"${memberName}" has been added to your contacts.` });
@@ -114,7 +115,7 @@ export default function MembersPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Manage Your Contacts</h1>
-        <p className="text-muted-foreground">Add and view contacts you've saved to the application.</p>
+        <p className="text-muted-foreground">Add and view contacts you've saved to the application. Only contacts you added are shown here.</p>
       </div>
 
       <Card>
@@ -151,7 +152,7 @@ export default function MembersPage() {
       <Card>
         <CardHeader>
           <CardTitle>Your Contact List</CardTitle>
-          <CardDescription>Contacts you have added.</CardDescription>
+          <CardDescription>Contacts you have added. These are private to you.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoadingMembers ? (

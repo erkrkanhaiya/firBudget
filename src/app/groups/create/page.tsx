@@ -17,7 +17,7 @@ import type { User, GroupVisibility, Group, AppMemberContact, GroupCategory } fr
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import NextImage from 'next/image';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where, orderBy } from 'firebase/firestore'; // Added where and orderBy
 import { useNotification } from '@/contexts/NotificationContext';
 import React from 'react';
 
@@ -82,8 +82,11 @@ export default function CreateGroupPage() {
       setIsLoadingPotentialMembers(true);
       try {
         const contactsCollectionRef = collection(db, "appMemberContacts");
-        // Reverted: Removed where("addedByUid", "==", currentUser.id)
-        const q = query(contactsCollectionRef); 
+        const q = query(
+          contactsCollectionRef, 
+          where("addedByUid", "==", currentUser.id), // Filter by current user
+          orderBy("name", "asc") // Optionally order by name
+        ); 
         const contactsSnapshot = await getDocs(q);
 
         const contactsList = contactsSnapshot.docs
@@ -101,7 +104,7 @@ export default function CreateGroupPage() {
         setAllPotentialMembers(contactsList);
       } catch (error) {
         console.error("Error fetching app member contacts:", error);
-        toast({ title: "Error", description: "Could not load your contacts.", variant: "destructive" });
+        toast({ title: "Error", description: "Could not load your contacts. Ensure Firestore indexes are set if prompted.", variant: "destructive" });
       } finally {
         setIsLoadingPotentialMembers(false);
       }
@@ -220,7 +223,7 @@ export default function CreateGroupPage() {
         avatarUrl: undefined,
       };
 
-      setAllPotentialMembers(prev => [newContact, ...prev]); 
+      setAllPotentialMembers(prev => [newContact, ...prev].sort((a,b) => (a.name || "").localeCompare(b.name || ""))); 
       setSelectedMembers(prev => {
         if (!prev.some(m => m.id === newContact.id)) {
           return [...prev, newContact];
@@ -399,7 +402,8 @@ export default function CreateGroupPage() {
                     width={80} 
                     height={80} 
                     className="rounded-md object-cover h-20 w-20"
-                    {...(groupPhoto ? {} : (groupPhotoPreview.includes('placehold.co') ? { 'data-ai-hint': 'group image' } : {}))}
+                    {...(groupPhoto || (groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) ? {} : { 'data-ai-hint': 'group image' })}
+
                   />
                 ) : (
                   <div className="h-20 w-20 bg-muted rounded-md flex items-center justify-center">
