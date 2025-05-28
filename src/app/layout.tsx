@@ -27,7 +27,7 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
         <link rel="icon" href="/icons/icon-192x192.png" type="image/png" />
-        <link rel="icon" href="/favicon.ico" /> 
+        <link rel="icon" href="/icons/favicon.ico" /> 
         </head>
       <body className={`${GeistSans.variable} font-sans antialiased`}>
         <ThemeProvider>
