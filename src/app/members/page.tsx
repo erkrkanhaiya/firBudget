@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { AlertTriangle, UserPlus, Users2, Loader2 } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where } from 'firebase/firestore';
 import type { AppMemberContact } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
@@ -35,7 +35,12 @@ export default function MembersPage() {
 
     setIsLoadingMembers(true);
     const membersCollectionRef = collection(db, 'appMemberContacts');
-    const q = query(membersCollectionRef, orderBy('createdAt', 'desc'));
+    // Query for members added by the current user
+    const q = query(
+      membersCollectionRef,
+      where("addedByUid", "==", currentUser.id),
+      orderBy('createdAt', 'desc')
+    );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedMembers = snapshot.docs.map(doc => {
@@ -51,7 +56,7 @@ export default function MembersPage() {
       setIsLoadingMembers(false);
     }, (error) => {
       console.error("Error fetching members:", error);
-      toast({ title: "Error", description: "Could not fetch members.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not fetch your contacts.", variant: "destructive" });
       setIsLoadingMembers(false);
     });
 
@@ -73,7 +78,7 @@ export default function MembersPage() {
         addedByUid: currentUser.id,
         createdAt: serverTimestamp(),
       });
-      toast({ title: "Member Added", description: `"${memberName}" has been added.` });
+      toast({ title: "Member Added", description: `"${memberName}" has been added to your contacts.` });
       addNotification({
         title: "New Contact Added",
         message: `You added "${memberName}" to your contacts.`,
@@ -109,23 +114,23 @@ export default function MembersPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Manage Members</h1>
-        <p className="text-muted-foreground">Add and view contacts within the application.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Manage Your Contacts</h1>
+        <p className="text-muted-foreground">Add and view contacts you've saved to the application.</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Add New Member</CardTitle>
+          <CardTitle>Add New Contact</CardTitle>
         </CardHeader>
         <form onSubmit={handleAddMember}>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="memberName">Member Name*</Label>
+              <Label htmlFor="memberName">Contact Name*</Label>
               <Input
                 id="memberName"
                 value={newMemberName}
                 onChange={(e) => setNewMemberName(e.target.value)}
-                placeholder="Enter member's name"
+                placeholder="Enter contact's name"
                 required
                 disabled={isSubmitting}
               />
@@ -138,7 +143,7 @@ export default function MembersPage() {
               ) : (
                 <UserPlus className="mr-2 h-4 w-4" />
               )}
-              {isSubmitting ? "Adding..." : "Add Member"}
+              {isSubmitting ? "Adding..." : "Add Contact"}
             </Button>
           </CardFooter>
         </form>
@@ -146,8 +151,8 @@ export default function MembersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Member List</CardTitle>
-          <CardDescription>All members added to the application.</CardDescription>
+          <CardTitle>Your Contact List</CardTitle>
+          <CardDescription>Contacts you have added.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoadingMembers ? (
@@ -178,7 +183,7 @@ export default function MembersPage() {
           ) : (
             <div className="text-center py-10">
               <Users2 className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No members added yet. Add one using the form above.</p>
+              <p className="text-muted-foreground">You haven't added any contacts yet. Add one using the form above.</p>
             </div>
           )}
         </CardContent>

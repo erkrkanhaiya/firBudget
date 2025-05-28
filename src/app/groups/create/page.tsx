@@ -81,23 +81,27 @@ export default function CreateGroupPage() {
       }
       setIsLoadingPotentialMembers(true);
       try {
-        const contactsSnapshot = await getDocs(collection(db, "appMemberContacts"));
+        const contactsCollectionRef = collection(db, "appMemberContacts");
+        // Query for contacts added by the current user
+        const q = query(contactsCollectionRef, where("addedByUid", "==", currentUser.id));
+        const contactsSnapshot = await getDocs(q);
+
         const contactsList = contactsSnapshot.docs
           .map(doc => {
             const data = doc.data() as AppMemberContact;
             return {
               id: doc.id, 
               name: data.name,
-              email: null, 
-              avatarUrl: undefined, 
+              email: null, // AppMemberContact doesn't store email
+              avatarUrl: undefined, // AppMemberContact doesn't store avatar
             } as User; 
           })
-          .filter(contact => contact.id !== currentUser.id); 
+          .filter(contact => contact.id !== currentUser.id); // Exclude self if accidentally added as contact
 
         setAllPotentialMembers(contactsList);
       } catch (error) {
         console.error("Error fetching app member contacts:", error);
-        toast({ title: "Error", description: "Could not load member contacts.", variant: "destructive" });
+        toast({ title: "Error", description: "Could not load your contacts.", variant: "destructive" });
       } finally {
         setIsLoadingPotentialMembers(false);
       }
@@ -111,7 +115,7 @@ export default function CreateGroupPage() {
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
         <Loader2 className="w-16 h-16 text-primary animate-spin mb-4" />
         <p className="text-lg text-muted-foreground">
-            {isLoadingAuth ? "Loading user data..." : "Loading member contacts..."}
+            {isLoadingAuth ? "Loading user data..." : "Loading your contacts..."}
         </p>
       </div>
     )
@@ -159,7 +163,9 @@ export default function CreateGroupPage() {
       const deviceContacts = await (navigator as any).contacts.select(['name', 'email', 'tel', 'icon'], { multiple: true });
       if (deviceContacts.length > 0) {
         const newMembersFromDevice: User[] = deviceContacts.map((contact: any, index: number) => ({
-          id: contact.email?.[0] || `imported-${Date.now()}-${index}`, 
+          // Attempt to use email as ID, otherwise generate a temporary one for selection purposes
+          // This ID won't be saved to appMemberContacts; the quick-add flow does that.
+          id: contact.email?.[0] || `imported-device-${Date.now()}-${index}`, 
           name: contact.name?.[0] || 'Unknown Contact',
           email: contact.email?.[0] || null,
           avatarUrl: contact.icon?.[0] ? URL.createObjectURL(contact.icon[0]) : undefined,
@@ -168,7 +174,9 @@ export default function CreateGroupPage() {
         setSelectedMembers(prevSelected => {
           const updatedMembers = [...prevSelected];
           newMembersFromDevice.forEach(newMember => {
-            if (newMember.id !== currentUser.id && !updatedMembers.some(m => m.id === newMember.id || (m.email && newMember.email && m.email === newMember.email))) {
+            // Check against current user and existing selections by ID or email if available
+            if (newMember.id !== currentUser.id && 
+                !updatedMembers.some(m => m.id === newMember.id || (m.email && newMember.email && m.email === newMember.email))) {
               updatedMembers.push(newMember);
             }
           });
@@ -177,7 +185,7 @@ export default function CreateGroupPage() {
 
         toast({
           title: "Contacts Processed",
-          description: `${newMembersFromDevice.length} contact(s) from device processed. Review selected members.`,
+          description: `${newMembersFromDevice.length} contact(s) from device processed. Review selected members. These are not saved to app contacts yet.`,
         });
       } else {
         toast({ title: "No Contacts Selected from Device" });
@@ -209,7 +217,7 @@ export default function CreateGroupPage() {
       });
 
       const newContact: User = {
-        id: docRef.id,
+        id: docRef.id, // This is the Firestore ID of the appMemberContacts document
         name: memberName,
         email: null,
         avatarUrl: undefined,
@@ -223,7 +231,7 @@ export default function CreateGroupPage() {
         return prev;
       });
 
-      toast({ title: "Member Added & Selected", description: `"${memberName}" added to contacts and selected for this group.` });
+      toast({ title: "Contact Added & Selected", description: `"${memberName}" added to your contacts and selected for this group.` });
       addNotification({
         title: "New Contact Added",
         message: `You added "${memberName}" to your contacts.`,
@@ -232,7 +240,7 @@ export default function CreateGroupPage() {
       setNewQuickMemberName('');
     } catch (error) {
       console.error("Error quick adding member:", error);
-      toast({ title: "Error", description: "Could not add member.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not add member to your contacts.", variant: "destructive" });
       addNotification({
         title: "Contact Add Failed",
         message: `Could not add contact: "${memberName}"`,
@@ -267,7 +275,7 @@ export default function CreateGroupPage() {
       photoURLToSave = ''; 
     } else if (groupPhotoPreview && groupPhotoPreview.includes('placehold.co')) {
       photoURLToSave = groupPhotoPreview;
-      dataAiHintToSave = 'group image'; // Default hint for placeholders
+      dataAiHintToSave = 'group image'; 
     } else if (groupPhotoPreview) {
        photoURLToSave = groupPhotoPreview;
     }
@@ -283,9 +291,9 @@ export default function CreateGroupPage() {
       dataAiHint: dataAiHintToSave,
       ownerId: currentUser.id,
       members: selectedMembers.map(m => ({ 
-        id: m.id, 
+        id: m.id, // This will be Firebase UID for the owner, and appMemberContact ID for others
         name: m.name, 
-        email: m.email, 
+        email: m.email, // Email is usually only present for the Firebase Auth user (owner)
         avatarUrl: m.avatarUrl || '' 
       })),
       memberIds: uniqueMemberIds,
@@ -334,7 +342,7 @@ export default function CreateGroupPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Create New Group</CardTitle>
-          <CardDescription>Set up a new group to share expenses. Members can be chosen from your app contacts.</CardDescription>
+          <CardDescription>Set up a new group to share expenses. Members can be chosen from your contacts.</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-6">
@@ -446,7 +454,7 @@ export default function CreateGroupPage() {
 
             <div>
               <div className="flex justify-between items-center mb-2">
-                <Label>Add Members</Label>
+                <Label>Add Members to Group</Label>
                 <Button type="button" variant="outline" size="sm" onClick={handleImportDeviceContacts} disabled={isImportingContacts || isSubmitting}>
                   <Contact className="mr-2 h-4 w-4" />
                   {isImportingContacts ? "Importing..." : "Import from Device Contacts"}
@@ -455,13 +463,13 @@ export default function CreateGroupPage() {
               
               <Card className="mb-4 border-dashed">
                 <CardContent className="p-3 space-y-2">
-                  <Label htmlFor="quickMemberName" className="text-sm font-medium">Quick Add New Member</Label>
+                  <Label htmlFor="quickMemberName" className="text-sm font-medium">Quick Add New Contact & Select</Label>
                   <div className="flex gap-2">
                     <Input
                       id="quickMemberName"
                       value={newQuickMemberName}
                       onChange={(e) => setNewQuickMemberName(e.target.value)}
-                      placeholder="Enter new member's name"
+                      placeholder="Enter new contact's name"
                       disabled={isAddingQuickMember || isSubmitting}
                       className="h-9"
                     />
@@ -481,7 +489,7 @@ export default function CreateGroupPage() {
               
               <Card className="mt-1">
                 <CardHeader className="p-3 border-b">
-                  <CardTitle className="text-base">Select from App Contacts</CardTitle>
+                  <CardTitle className="text-base">Select from Your Contacts</CardTitle>
                 </CardHeader>
                 <CardContent className="p-2 max-h-60 overflow-y-auto space-y-1">
                   {currentUser && (
@@ -497,9 +505,9 @@ export default function CreateGroupPage() {
                     </div>
                   )}
                   {isLoadingPotentialMembers ? (
-                     <div className="flex items-center justify-center p-4"> <Loader2 className="h-6 w-6 animate-spin text-primary"/> <span className="ml-2 text-muted-foreground">Loading contacts...</span></div>
-                  ) : allPotentialMembers.length === 0 && selectedMembers.length <=1 ? (
-                    <p className="text-sm text-muted-foreground text-center py-3">No other app contacts found. Use "Quick Add" or "Import".</p>
+                     <div className="flex items-center justify-center p-4"> <Loader2 className="h-6 w-6 animate-spin text-primary"/> <span className="ml-2 text-muted-foreground">Loading your contacts...</span></div>
+                  ) : allPotentialMembers.length === 0 && selectedMembers.filter(sm => sm.id !== currentUser?.id).length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-3">No other contacts found. Use "Quick Add" or "Import".</p>
                   ): (
                     allPotentialMembers.map(user => (
                         <div key={user.id} 
@@ -507,7 +515,7 @@ export default function CreateGroupPage() {
                             onClick={() => !isSubmitting && toggleMemberSelection(user)}>
                         <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
-                            <AvatarImage src={user.avatarUrl || undefined} alt={user.name || ''} />
+                            {/* AppMemberContacts don't have avatars, so always fallback */}
                             <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                             </Avatar>
                             <span>{user.name}</span>
@@ -519,6 +527,7 @@ export default function CreateGroupPage() {
                         </div>
                     ))
                   )}
+                   {/* Display members selected via device import if they aren't in appMemberContacts yet */}
                    {selectedMembers.filter(sm => sm.id !== currentUser?.id && !allPotentialMembers.some(pm => pm.id === sm.id)).map(user => (
                      <div key={user.id} 
                           className={`flex items-center justify-between p-2 rounded-md text-sm bg-accent/70 ${isSubmitting ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
