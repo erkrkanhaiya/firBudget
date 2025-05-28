@@ -1,6 +1,7 @@
 
-import Image from 'next/image';
+import { Coins } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image'; // Keep Image import if other parts of app use it, but AppLogo won't
 
 interface AppLogoProps {
   className?: string;
@@ -11,14 +12,8 @@ interface AppLogoProps {
 export function AppLogo({ className, iconSize = 28, textSize = "text-2xl" }: AppLogoProps) {
   return (
     <Link href="/" className={`flex items-center gap-2 ${className}`}>
-      <Image 
-        src="/logo.png" // Path relative to the 'public' directory
-        alt="HisabKaro Logo"
-        width={iconSize} 
-        height={iconSize}
-        className="object-contain"
-        priority // Adding priority might help if it's LCP
-      />
+      {/* Reverted to Coins icon */}
+      <Coins className="text-primary" size={iconSize} /> 
       <h1 className={`font-bold ${textSize} text-primary`}>HisabKaro</h1>
     </Link>
   );
