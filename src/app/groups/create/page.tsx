@@ -82,8 +82,8 @@ export default function CreateGroupPage() {
       setIsLoadingPotentialMembers(true);
       try {
         const contactsCollectionRef = collection(db, "appMemberContacts");
-        // Query for contacts added by the current user
-        const q = query(contactsCollectionRef, where("addedByUid", "==", currentUser.id));
+        // Reverted: Removed where("addedByUid", "==", currentUser.id)
+        const q = query(contactsCollectionRef); 
         const contactsSnapshot = await getDocs(q);
 
         const contactsList = contactsSnapshot.docs
@@ -92,11 +92,11 @@ export default function CreateGroupPage() {
             return {
               id: doc.id, 
               name: data.name,
-              email: null, // AppMemberContact doesn't store email
-              avatarUrl: undefined, // AppMemberContact doesn't store avatar
+              email: null, 
+              avatarUrl: undefined, 
             } as User; 
           })
-          .filter(contact => contact.id !== currentUser.id); // Exclude self if accidentally added as contact
+          .filter(contact => contact.id !== currentUser.id); 
 
         setAllPotentialMembers(contactsList);
       } catch (error) {
@@ -163,8 +163,6 @@ export default function CreateGroupPage() {
       const deviceContacts = await (navigator as any).contacts.select(['name', 'email', 'tel', 'icon'], { multiple: true });
       if (deviceContacts.length > 0) {
         const newMembersFromDevice: User[] = deviceContacts.map((contact: any, index: number) => ({
-          // Attempt to use email as ID, otherwise generate a temporary one for selection purposes
-          // This ID won't be saved to appMemberContacts; the quick-add flow does that.
           id: contact.email?.[0] || `imported-device-${Date.now()}-${index}`, 
           name: contact.name?.[0] || 'Unknown Contact',
           email: contact.email?.[0] || null,
@@ -174,7 +172,6 @@ export default function CreateGroupPage() {
         setSelectedMembers(prevSelected => {
           const updatedMembers = [...prevSelected];
           newMembersFromDevice.forEach(newMember => {
-            // Check against current user and existing selections by ID or email if available
             if (newMember.id !== currentUser.id && 
                 !updatedMembers.some(m => m.id === newMember.id || (m.email && newMember.email && m.email === newMember.email))) {
               updatedMembers.push(newMember);
@@ -217,7 +214,7 @@ export default function CreateGroupPage() {
       });
 
       const newContact: User = {
-        id: docRef.id, // This is the Firestore ID of the appMemberContacts document
+        id: docRef.id, 
         name: memberName,
         email: null,
         avatarUrl: undefined,
@@ -291,9 +288,9 @@ export default function CreateGroupPage() {
       dataAiHint: dataAiHintToSave,
       ownerId: currentUser.id,
       members: selectedMembers.map(m => ({ 
-        id: m.id, // This will be Firebase UID for the owner, and appMemberContact ID for others
+        id: m.id, 
         name: m.name, 
-        email: m.email, // Email is usually only present for the Firebase Auth user (owner)
+        email: m.email, 
         avatarUrl: m.avatarUrl || '' 
       })),
       memberIds: uniqueMemberIds,
@@ -515,7 +512,6 @@ export default function CreateGroupPage() {
                             onClick={() => !isSubmitting && toggleMemberSelection(user)}>
                         <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
-                            {/* AppMemberContacts don't have avatars, so always fallback */}
                             <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                             </Avatar>
                             <span>{user.name}</span>
@@ -527,7 +523,6 @@ export default function CreateGroupPage() {
                         </div>
                     ))
                   )}
-                   {/* Display members selected via device import if they aren't in appMemberContacts yet */}
                    {selectedMembers.filter(sm => sm.id !== currentUser?.id && !allPotentialMembers.some(pm => pm.id === sm.id)).map(user => (
                      <div key={user.id} 
                           className={`flex items-center justify-between p-2 rounded-md text-sm bg-accent/70 ${isSubmitting ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}

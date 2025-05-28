@@ -10,17 +10,17 @@ import { Label } from '@/components/ui/label';
 import { AlertTriangle, UserPlus, Users2, Loader2 } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 import type { AppMemberContact } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
+import { useNotification } from '@/contexts/NotificationContext';
 
 export default function MembersPage() {
   const { currentUser } = useUser();
   const { toast } = useToast();
-  const { addNotification } = useNotification(); // Use notification context
+  const { addNotification } = useNotification();
 
   const [members, setMembers] = useState<AppMemberContact[]>([]);
   const [newMemberName, setNewMemberName] = useState('');
@@ -35,10 +35,9 @@ export default function MembersPage() {
 
     setIsLoadingMembers(true);
     const membersCollectionRef = collection(db, 'appMemberContacts');
-    // Query for members added by the current user
+    // Reverted: Removed where("addedByUid", "==", currentUser.id)
     const q = query(
       membersCollectionRef,
-      where("addedByUid", "==", currentUser.id),
       orderBy('createdAt', 'desc')
     );
 
@@ -71,11 +70,11 @@ export default function MembersPage() {
     }
 
     setIsSubmitting(true);
-    const memberName = newMemberName.trim(); // Store for notification
+    const memberName = newMemberName.trim();
     try {
       await addDoc(collection(db, 'appMemberContacts'), {
         name: memberName,
-        addedByUid: currentUser.id,
+        addedByUid: currentUser.id, // Still set who added it
         createdAt: serverTimestamp(),
       });
       toast({ title: "Member Added", description: `"${memberName}" has been added to your contacts.` });
