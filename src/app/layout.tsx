@@ -22,7 +22,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head><meta name="theme-color" content="#5DADE2" /><link rel="manifest" href="/manifest.json" /><link rel="apple-touch-icon" href="/icons/icon-192x192.png" /><link rel="icon" href="/icons/icon-192x192.png" type="image/png" /></head>
+      <head>
+        <meta name="theme-color" content="#5DADE2" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+        <link rel="icon" href="/icons/icon-192x192.png" type="image/png" />
+        <link rel="icon" href="/favicon.ico" /> 
+        </head>
       <body className={`${GeistSans.variable} font-sans antialiased`}>
         <ThemeProvider>
           <UserProvider>
