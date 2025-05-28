@@ -51,13 +51,15 @@ export default function LandingPage() {
         {/* Hero Section */}
         <section className="py-20 md:py-32 bg-gradient-to-b from-background to-muted/50">
           <div className="container mx-auto text-center">
-            <Image
-              src="/icon-512x512.png"
-              width={200}
-              height={200}
-              alt="Picture of the author"
-              className="mb-6 text-center items-center"
-            />
+            <div className="flex justify-center">
+              <Image
+                src="/icon-512x512.png"
+                width={200}
+                height={200}
+                alt="Picture of the author"
+                className="mb-6"
+              />
+            </div>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6">
               Effortless Expense Sharing with HisabKaro
             </h1>
