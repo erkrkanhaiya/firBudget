@@ -7,15 +7,26 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { AlertTriangle, UserPlus, Users2, Loader2 } from 'lucide-react';
+import { AlertTriangle, UserPlus, Users2, Loader2, Trash2 } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where } from 'firebase/firestore'; // Added where
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where, doc, deleteDoc } from 'firebase/firestore';
 import type { AppMemberContact } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useNotification } from '@/contexts/NotificationContext';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function MembersPage() {
   const { currentUser } = useUser();
@@ -26,6 +37,8 @@ export default function MembersPage() {
   const [newMemberName, setNewMemberName] = useState('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<AppMemberContact | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (!currentUser) {
@@ -35,10 +48,9 @@ export default function MembersPage() {
 
     setIsLoadingMembers(true);
     const membersCollectionRef = collection(db, 'appMemberContacts');
-    // Query for contacts added by the current user, ordered by creation date
     const q = query(
       membersCollectionRef,
-      where("addedByUid", "==", currentUser.id), // Filter by current user's ID
+      where("addedByUid", "==", currentUser.id),
       orderBy('createdAt', 'desc')
     );
 
@@ -78,7 +90,7 @@ export default function MembersPage() {
         addedByUid: currentUser.id,
         createdAt: serverTimestamp(),
       });
-      toast({ title: "Member Added", description: `"${memberName}" has been added to your contacts.` });
+      toast({ title: "Contact Added", description: `"${memberName}" has been added to your contacts.` });
       addNotification({
         title: "New Contact Added",
         message: `You added "${memberName}" to your contacts.`,
@@ -97,6 +109,43 @@ export default function MembersPage() {
       setIsSubmitting(false);
     }
   };
+
+  const handleDeleteContact = async () => {
+    if (!contactToDelete || !currentUser) {
+      toast({ title: "Error", description: "No contact selected for deletion or user not authenticated.", variant: "destructive" });
+      return;
+    }
+    if (contactToDelete.addedByUid !== currentUser.id) {
+      toast({ title: "Permission Denied", description: "You can only delete contacts you added.", variant: "destructive" });
+      setContactToDelete(null);
+      return;
+    }
+
+    setIsDeleting(true);
+    const contactName = contactToDelete.name;
+    try {
+      const contactDocRef = doc(db, 'appMemberContacts', contactToDelete.id);
+      await deleteDoc(contactDocRef);
+      toast({ title: "Contact Deleted", description: `"${contactName}" has been removed from your contacts.` });
+      addNotification({
+        title: "Contact Deleted",
+        message: `You removed "${contactName}" from your contacts.`,
+        type: "info", // Using 'info' for deletion, could be 'success'
+      });
+      setContactToDelete(null); // Close dialog by resetting state
+    } catch (error) {
+      console.error("Error deleting contact:", error);
+      toast({ title: "Error", description: "Could not delete contact.", variant: "destructive" });
+      addNotification({
+        title: "Contact Deletion Failed",
+        message: `Could not delete contact: "${contactName}"`,
+        type: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
 
   if (!currentUser && !isLoadingMembers) {
     return (
@@ -163,6 +212,7 @@ export default function MembersPage() {
                     <Skeleton className="h-5 w-32" />
                     <Skeleton className="h-3 w-40" />
                   </div>
+                   <Skeleton className="h-8 w-8 rounded-md" />
                 </div>
               ))}
             </div>
@@ -176,7 +226,32 @@ export default function MembersPage() {
                       Added on: {format(new Date(member.createdAt), "MMMM d, yyyy 'at' h:mm a")}
                     </p>
                   </div>
-                  {/* Placeholder for future actions like edit/delete */}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={() => setContactToDelete(member)} disabled={isDeleting}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <span className="sr-only">Delete {member.name}</span>
+                      </Button>
+                    </AlertDialogTrigger>
+                    {/* AlertDialogContent will only render if contactToDelete is set and matches */}
+                    {contactToDelete && contactToDelete.id === member.id && (
+                        <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the contact
+                            "{contactToDelete.name}" from your private contact list. This will not remove them from any groups they are already in.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => setContactToDelete(null)} disabled={isDeleting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteContact} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete"}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                        </AlertDialogContent>
+                    )}
+                  </AlertDialog>
                 </li>
               ))}
             </ul>
@@ -191,3 +266,4 @@ export default function MembersPage() {
     </div>
   );
 }
+
