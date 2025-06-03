@@ -100,3 +100,6 @@ export interface NotificationItem {
   read: boolean;
   href?: string;
 }
+
+// For AI Expense Detail Extraction
+export const PREDEFINED_EXPENSE_CATEGORIES: ExpenseCategory[] = ["Food", "Travel", "Utilities", "Entertainment", "Shopping", "Other"];
