@@ -605,7 +605,8 @@ export default function GroupDetailPage() {
       newMemberObjects.forEach(member => {
         const logEntry: Omit<ActivityLog, 'id' | 'timestamp'> = {
           groupId: groupId,
-          userId: currentUser.id,
+          userId: currentUser.id, // The admin performing the action
+          actorName: currentUser.name, // Name of the admin
           actionType: 'member_added',
           description: `${currentUser.name || 'Admin'} added ${member.name || 'a new member'} to the group.`,
           relatedUserId: member.id,
@@ -1097,5 +1098,3 @@ export default function GroupDetailPage() {
   );
 }
 
-
-    

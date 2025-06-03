@@ -63,9 +63,9 @@ export interface ActivityLog {
   relatedExpenseId?: string;
   relatedPaymentId?: string;
   relatedUserId?: string; // e.g., for member_added/removed, the ID of the member affected
-  actorName?: string; // Added for easier display in activity feed
-  actorAvatarUrl?: string | null; // Added for easier display
-  groupName?: string; // Added for easier display
+  actorName?: string | null; // Name of the user who performed the action
+  actorAvatarUrl?: string | null;
+  groupName?: string;
 }
 
 export interface Balance {
@@ -97,3 +97,4 @@ export interface NotificationItem {
   read: boolean;
   href?: string;
 }
+
