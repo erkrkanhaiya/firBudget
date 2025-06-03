@@ -21,9 +21,10 @@ import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase'; // Import storage
 import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch, type DocumentData, type SetOptions } from 'firebase/firestore';
-import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Import storage functions
+import { useNotification } from '@/contexts/NotificationContext'; 
 
 interface StoredExpenseData {
   groupId: string;
@@ -154,7 +155,10 @@ export default function AddExpensePage() {
 
           for (const storedExp of expensesToSyncForThisGroup) {
             const expenseColRef = collection(db, 'groups', storedExp.groupId, 'expenses');
-            const newExpenseDocRef = doc(expenseColRef);
+            // For synced expenses, we assume the ID was already generated if it was truly offline,
+            // or we generate one if it was a tempId. Here, we'll assume a new ID for simplicity
+            // as we don't have true offline file upload for receipts yet.
+            const newExpenseDocRef = doc(expenseColRef); 
 
             const expenseDataForFirestore: DocumentData = {
               groupId: storedExp.groupId,
@@ -165,10 +169,8 @@ export default function AddExpensePage() {
               participants: storedExp.participants,
               createdAt: serverTimestamp()
             };
-            if (storedExp.receiptUrl !== undefined) {
-              expenseDataForFirestore.receiptUrl = storedExp.receiptUrl;
-            }
-            if (storedExp.receiptFileName !== undefined) {
+            // For offline expenses, receiptUrl won't be available as upload didn't happen
+            if (storedExp.receiptFileName) {
               expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
             }
             batch.set(newExpenseDocRef, expenseDataForFirestore);
@@ -357,14 +359,35 @@ export default function AddExpensePage() {
 
     const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
 
+    // Generate Expense ID first
+    const expenseColRef = collection(db, 'groups', groupId, 'expenses');
+    const newExpenseDocRef = doc(expenseColRef);
+    const expenseId = newExpenseDocRef.id;
+
     let receiptUrlToStore: string | undefined = undefined;
     let receiptFileNameToStore: string | undefined = undefined;
 
-    if (receiptFile) {
-        console.warn("Receipt file selected, but actual upload to Firebase Storage is not yet implemented.");
-        toast({ title: "Receipt Upload (Demo)", description: "Receipt file selected. Actual cloud upload is pending implementation.", variant: "default"});
+    if (receiptFile && isOnline) {
+      try {
+        const filePath = `receipts/${groupId}/${expenseId}/${receiptFile.name}`;
+        const fileStorageRef = storageRef(storage, filePath);
+        const uploadTask = uploadBytesResumable(fileStorageRef, receiptFile);
+
+        await uploadTask; // Wait for upload to complete
+        receiptUrlToStore = await getDownloadURL(uploadTask.snapshot.ref);
         receiptFileNameToStore = receiptFile.name;
+        toast({ title: "Receipt Uploaded", description: "Receipt successfully uploaded to Firebase Storage.", variant: "default" });
+      } catch (uploadError) {
+        console.error("Error uploading receipt to Firebase Storage:", uploadError);
+        toast({ title: "Receipt Upload Failed", description: "Could not upload receipt. Expense will be added without it.", variant: "destructive" });
+        // Continue to add expense without receipt if upload fails
+      }
+    } else if (receiptFile && !isOnline) {
+      // Offline with a receipt selected - store filename, URL will be undefined.
+      receiptFileNameToStore = receiptFile.name;
+      toast({ title: "Offline Receipt", description: "Receipt file noted. Will need manual upload later if required.", variant: "default" });
     }
+
 
     const expenseDataForStorage: StoredExpenseData = {
       groupId,
@@ -373,7 +396,7 @@ export default function AddExpensePage() {
       paidByUserId,
       date: expenseDate.toISOString(),
       participants: expenseParticipants,
-      tempId: `pending-${Date.now()}`,
+      tempId: `pending-${Date.now()}`, // Still used for local storage keying if offline initially
       actorNameForLog: actor?.name || 'User',
       receiptUrl: receiptUrlToStore,
       receiptFileName: receiptFileNameToStore,
@@ -381,7 +404,9 @@ export default function AddExpensePage() {
 
     if (!isOnline) {
       const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
-      pending.push(expenseDataForStorage);
+      // For true offline, we won't have the expenseId from Firestore yet, so tempId is key.
+      // For simplicity, we'll assume the tempId is enough for now.
+      pending.push({...expenseDataForStorage, tempId: `offline-${expenseId}` });
       localStorage.setItem('pendingExpenses', JSON.stringify(pending));
       toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
       addNotification({
@@ -394,10 +419,8 @@ export default function AddExpensePage() {
       return;
     }
 
+    // Online submission
     try {
-      const expenseColRef = collection(db, 'groups', groupId, 'expenses');
-      const newExpenseDocRef = doc(expenseColRef);
-
       const dataToSetInFirestore: DocumentData = {
         groupId: expenseDataForStorage.groupId,
         description: expenseDataForStorage.description,
@@ -408,10 +431,10 @@ export default function AddExpensePage() {
         createdAt: serverTimestamp()
       };
 
-      if (expenseDataForStorage.receiptUrl !== undefined) {
+      if (expenseDataForStorage.receiptUrl) { // Only add if URL exists
         dataToSetInFirestore.receiptUrl = expenseDataForStorage.receiptUrl;
       }
-      if (expenseDataForStorage.receiptFileName !== undefined) {
+      if (expenseDataForStorage.receiptFileName) { // Only add if filename exists
         dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
       }
 
@@ -421,11 +444,11 @@ export default function AddExpensePage() {
         userId: expenseDataForStorage.paidByUserId,
         actionType: 'expense_added',
         description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
-        relatedExpenseId: newExpenseDocRef.id,
+        relatedExpenseId: expenseId, // Use the pre-generated expenseId
       };
 
       const batch = writeBatch(db);
-      batch.set(newExpenseDocRef, dataToSetInFirestore);
+      batch.set(newExpenseDocRef, dataToSetInFirestore); // Use the pre-generated doc ref
       batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
 
       await batch.commit();
@@ -546,7 +569,7 @@ export default function AddExpensePage() {
               <Input
                 id="receipt"
                 type="file"
-                accept="image/*,.pdf"
+                accept="image/*,.pdf" // Keep PDF for future, though preview is image-only for now
                 onChange={handleReceiptFileChange}
                 disabled={isSubmitting}
                 className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
@@ -569,7 +592,7 @@ export default function AddExpensePage() {
                   </div>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground mt-1">Max file size: 5MB. Images or PDF.</p>
+              <p className="text-xs text-muted-foreground mt-1">Max file size: 5MB. Images recommended for preview.</p>
             </div>
 
             <div>
