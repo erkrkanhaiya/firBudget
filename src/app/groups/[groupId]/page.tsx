@@ -8,7 +8,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment } from '@/types';
 import { useUser } from '@/contexts/UserContext';
@@ -767,6 +767,7 @@ export default function GroupDetailPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
             <TabsList>
               <TabsTrigger value="expenses"><CreditCard className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
+              <TabsTrigger value="payments"><HandCoins className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Payments</TabsTrigger>
               <TabsTrigger value="balances"><ListChecks className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Balances</TabsTrigger>
               <TabsTrigger value="members"><Users className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Members</TabsTrigger>
               <TabsTrigger value="activity"><ActivityIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
@@ -892,6 +893,50 @@ export default function GroupDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          
+          <TabsContent value="payments">
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment History</CardTitle>
+                <CardDescription>All settlement payments recorded in this group from Firestore.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {firestorePayments.length > 0 ? (
+                  <ul className="space-y-4">
+                    {firestorePayments.map(payment => {
+                      const payer = memberDetailsMap.get(payment.paidByUserId);
+                      const payee = memberDetailsMap.get(payment.paidToUserId);
+                      return (
+                        <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md hover:bg-muted/50">
+                          <div className="flex items-center gap-3 mb-2 sm:mb-0 flex-1 min-w-0">
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name}/>
+                              <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">
+                                {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method}
+                              </p>
+                              {payment.notes && <p className="text-xs text-muted-foreground italic">Note: {payment.notes}</p>}
+                            </div>
+                          </div>
+                          <div className="text-left sm:text-right sm:ml-2">
+                            <p className="text-lg font-semibold">{getCurrencySymbol()}{payment.amount.toFixed(2)}</p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No payments recorded yet in Firestore for this group.</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
 
           <TabsContent value="balances">
             <Card>
