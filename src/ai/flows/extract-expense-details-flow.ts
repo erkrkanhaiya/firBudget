@@ -4,32 +4,20 @@
  * @fileOverview An AI flow to extract expense details from a receipt image and suggest a category.
  *
  * - extractExpenseDetails - A function that extracts amount, description, date, and suggests a category for an expense.
- * - ExtractExpenseDetailsInput - The input type for the extractExpenseDetails function.
- * - ExtractExpenseDetailsOutput - The return type for the extractExpenseDetails function.
+ * - ExtractExpenseDetailsInput - The input type for the extractExpenseDetails function (imported from @/types).
+ * - ExtractExpenseDetailsOutput - The return type for the extractExpenseDetails function (imported from @/types).
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { PREDEFINED_EXPENSE_CATEGORIES, type ExpenseCategory } from '@/types';
-
-export const ExtractExpenseDetailsInputSchema = z.object({
-  receiptDataUri: z
-    .string()
-    .optional()
-    .describe(
-      "A photo of a receipt, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
-    ),
-  userDescription: z.string().optional().describe('Optional user-provided description for the expense, used as a hint or for categorization if no image is provided.'),
-});
-export type ExtractExpenseDetailsInput = z.infer<typeof ExtractExpenseDetailsInputSchema>;
-
-export const ExtractExpenseDetailsOutputSchema = z.object({
-  extractedDescription: z.string().optional().describe('The vendor name or main item from the receipt (e.g., "Starbucks", "Train Ticket").'),
-  extractedAmount: z.number().optional().describe('The total amount from the receipt. Should be a positive number.'),
-  extractedDate: z.string().optional().describe('The date of the transaction from the receipt, ideally in YYYY-MM-DD format.'),
-  suggestedCategory: z.string().optional().describe(`Suggested category for the expense. Should be one of: ${PREDEFINED_EXPENSE_CATEGORIES.join(", ")}. If none match well, suggest "Other".`),
-});
-export type ExtractExpenseDetailsOutput = z.infer<typeof ExtractExpenseDetailsOutputSchema>;
+import { 
+  PREDEFINED_EXPENSE_CATEGORIES, 
+  type ExpenseCategory,
+  ExtractExpenseDetailsInputSchema, // Import schema
+  type ExtractExpenseDetailsInput,    // Import type
+  ExtractExpenseDetailsOutputSchema, // Import schema
+  type ExtractExpenseDetailsOutput   // Import type
+} from '@/types';
 
 export async function extractExpenseDetails(input: ExtractExpenseDetailsInput): Promise<ExtractExpenseDetailsOutput> {
   return extractExpenseDetailsGenkitFlow(input);
