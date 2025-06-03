@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, FormEvent, ChangeEvent, useCallback } from 'react';
+import React, { useState, useEffect, FormEvent, ChangeEvent, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -74,7 +74,7 @@ export default function AddExpensePage() {
         setPaidByUserId(currentUser.id);
         setSelectedParticipantIds(group.members.map(m => m.id));
         const initialCustomAmounts: Record<string, string> = {};
-        group.members.forEach(id => { initialCustomAmounts[id.id] = ''; }); 
+        group.members.forEach(memberUser => { initialCustomAmounts[memberUser.id] = ''; }); 
         setCustomSplitAmounts(initialCustomAmounts);
     } else if (currentUser) {
         setPaidByUserId(currentUser.id);
@@ -194,7 +194,8 @@ export default function AddExpensePage() {
             if (storedExp.receiptFileName) {
               expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
             }
-            if (storedExp.receiptUrl) {
+            // For offline, receiptUrl might be missing. If it exists (e.g., was somehow added before going offline or feature enhancement) include it.
+            if (storedExp.receiptUrl) { 
               expenseDataForFirestore.receiptUrl = storedExp.receiptUrl;
             }
 
@@ -338,175 +339,176 @@ export default function AddExpensePage() {
     event.preventDefault();
     setIsSubmitting(true);
 
-    if (!description.trim() || !amount || parseFloat(amount) <= 0 || !paidByUserId || selectedParticipantIds.length === 0 || !expenseDate) {
-      toast({ title: "Missing Information", description: "Please fill all required fields, ensure amount is positive, and at least one participant is selected.", variant: "destructive" });
-      setIsSubmitting(false);
-      return;
-    }
+    try {
+        if (!description.trim() || !amount || parseFloat(amount) <= 0 || !paidByUserId || selectedParticipantIds.length === 0 || !expenseDate) {
+        toast({ title: "Missing Information", description: "Please fill all required fields, ensure amount is positive, and at least one participant is selected.", variant: "destructive" });
+        setIsSubmitting(false);
+        return;
+        }
 
-    const numericAmount = parseFloat(amount);
-    let expenseParticipants: ExpenseParticipant[];
+        const numericAmount = parseFloat(amount);
+        let expenseParticipants: ExpenseParticipant[];
 
-    if (splitEqually) {
-      const share = numericAmount / selectedParticipantIds.length;
-      expenseParticipants = selectedParticipantIds.map(userId => ({
-        userId,
-        amountOwed: parseFloat(share.toFixed(2)),
-      }));
-    } else {
-      let currentTotalCustomSplit = 0;
-      expenseParticipants = [];
+        if (splitEqually) {
+        const share = numericAmount / selectedParticipantIds.length;
+        expenseParticipants = selectedParticipantIds.map(userId => ({
+            userId,
+            amountOwed: parseFloat(share.toFixed(2)),
+        }));
+        } else {
+        let currentTotalCustomSplit = 0;
+        expenseParticipants = [];
 
-      for (const userId of selectedParticipantIds) {
-        const customAmountStr = customSplitAmounts[userId];
-        if (customAmountStr === undefined || customAmountStr.trim() === '') {
-            toast({ title: "Custom Split Error", description: `Please enter an amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
+        for (const userId of selectedParticipantIds) {
+            const customAmountStr = customSplitAmounts[userId];
+            if (customAmountStr === undefined || customAmountStr.trim() === '') {
+                toast({ title: "Custom Split Error", description: `Please enter an amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
+                setIsSubmitting(false);
+                return;
+            }
+            const customAmount = parseFloat(customAmountStr);
+            if (isNaN(customAmount) || customAmount < 0) {
+            toast({ title: "Invalid Amount", description: `Please enter a valid, non-negative amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
+            setIsSubmitting(false);
+            return;
+            }
+            expenseParticipants.push({ userId, amountOwed: parseFloat(customAmount.toFixed(2)) });
+            currentTotalCustomSplit += customAmount;
+        }
+
+        currentTotalCustomSplit = parseFloat(currentTotalCustomSplit.toFixed(2));
+        const totalExpenseAmount = parseFloat(numericAmount.toFixed(2));
+
+        if (Math.abs(currentTotalCustomSplit - totalExpenseAmount) > 0.005) {
+            toast({
+            title: "Custom Split Mismatch",
+            description: `The sum of custom shares (${getCurrencySymbol()}${currentTotalCustomSplit.toFixed(2)}) must equal the total expense amount (${getCurrencySymbol()}${totalExpenseAmount.toFixed(2)}). Remaining: ${getCurrencySymbol()}${(totalExpenseAmount - currentTotalCustomSplit).toFixed(2)}`,
+            variant: "destructive",
+            });
             setIsSubmitting(false);
             return;
         }
-        const customAmount = parseFloat(customAmountStr);
-        if (isNaN(customAmount) || customAmount < 0) {
-          toast({ title: "Invalid Amount", description: `Please enter a valid, non-negative amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
-          setIsSubmitting(false);
-          return;
         }
-        expenseParticipants.push({ userId, amountOwed: parseFloat(customAmount.toFixed(2)) });
-        currentTotalCustomSplit += customAmount;
-      }
 
-      currentTotalCustomSplit = parseFloat(currentTotalCustomSplit.toFixed(2));
-      const totalExpenseAmount = parseFloat(numericAmount.toFixed(2));
+        const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
+        
+        const expenseColRef = collection(db, 'groups', groupId, 'expenses');
+        const newExpenseDocRef = doc(expenseColRef); // Generate ID upfront
+        const expenseId = newExpenseDocRef.id;
 
-      if (Math.abs(currentTotalCustomSplit - totalExpenseAmount) > 0.005) {
-        toast({
-          title: "Custom Split Mismatch",
-          description: `The sum of custom shares (${getCurrencySymbol()}${currentTotalCustomSplit.toFixed(2)}) must equal the total expense amount (${getCurrencySymbol()}${totalExpenseAmount.toFixed(2)}). Remaining: ${getCurrencySymbol()}${(totalExpenseAmount - currentTotalCustomSplit).toFixed(2)}`,
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-    }
+        let receiptUrlToStore: string | undefined = undefined;
+        let receiptFileNameToStore: string | undefined = undefined;
 
-    const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
-    
-    const expenseColRef = collection(db, 'groups', groupId, 'expenses');
-    const newExpenseDocRef = doc(expenseColRef);
-    const expenseId = newExpenseDocRef.id;
+        if (receiptFile && isOnline) {
+        toast({ title: "Uploading Receipt", description: "Please wait...", variant: "default" });
+        try {
+            const filePath = `receipts/${groupId}/${expenseId}/${receiptFile.name}`;
+            const fileStorageRef = storageRef(storage, filePath);
+            const uploadTask = uploadBytesResumable(fileStorageRef, receiptFile);
 
-    let receiptUrlToStore: string | undefined = undefined;
-    let receiptFileNameToStore: string | undefined = undefined;
-
-    if (receiptFile && isOnline) {
-      toast({ title: "Uploading Receipt", description: "Please wait...", variant: "default" });
-      try {
-        const filePath = `receipts/${groupId}/${expenseId}/${receiptFile.name}`;
-        const fileStorageRef = storageRef(storage, filePath);
-        const uploadTask = uploadBytesResumable(fileStorageRef, receiptFile);
-
-        await uploadTask; 
-        receiptUrlToStore = await getDownloadURL(uploadTask.snapshot.ref);
-        receiptFileNameToStore = receiptFile.name;
-        toast({ title: "Receipt Uploaded", description: "Receipt successfully uploaded to Firebase Storage.", variant: "default" });
-      } catch (uploadError: any) {
-        console.error("Error uploading receipt to Firebase Storage:", uploadError);
-        let errorDescription = "Could not upload receipt. Expense will be added without it.";
-        if (uploadError.code) { 
-            errorDescription += ` (Error: ${uploadError.code}). Please check Firebase Storage rules.`;
-        }
-        toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive", duration: 7000 });
-        if (receiptFile) {
+            await uploadTask; 
+            receiptUrlToStore = await getDownloadURL(uploadTask.snapshot.ref);
             receiptFileNameToStore = receiptFile.name;
+            toast({ title: "Receipt Uploaded", description: "Receipt successfully uploaded to Firebase Storage.", variant: "default" });
+        } catch (uploadError: any) {
+            console.error("Error uploading receipt to Firebase Storage:", uploadError);
+            let errorDescription = "Could not upload receipt. Expense will be added without it.";
+             if (uploadError.code) { 
+                errorDescription += ` (Error: ${uploadError.code}). Please check Firebase Storage rules.`;
+            }
+            toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive", duration: 7000 });
+            // Don't return, save expense without URL, but keep filename if file was selected
+            if (receiptFile) {
+                receiptFileNameToStore = receiptFile.name; 
+            }
         }
-      }
-    } else if (receiptFile && !isOnline) {
-      receiptFileNameToStore = receiptFile.name;
-      toast({ title: "Offline Receipt", description: "Receipt file noted. Will attempt upload when online.", variant: "default" });
-    }
+        } else if (receiptFile && !isOnline) {
+        receiptFileNameToStore = receiptFile.name; // Store filename for offline
+        toast({ title: "Offline Receipt", description: "Receipt file noted. Will attempt upload when online if feature is enhanced.", variant: "default" });
+        }
 
-    const expenseDataForStorage: StoredExpenseData = {
-      groupId,
-      description: description.trim(),
-      amount: numericAmount,
-      paidByUserId,
-      date: expenseDate.toISOString(),
-      participants: expenseParticipants,
-      tempId: `pending-${Date.now()}`, 
-      actorNameForLog: actor?.name || 'User',
-      receiptUrl: receiptUrlToStore, 
-      receiptFileName: receiptFileNameToStore,
-    };
+        const expenseDataForStorage: StoredExpenseData = {
+        groupId,
+        description: description.trim(),
+        amount: numericAmount,
+        paidByUserId,
+        date: expenseDate.toISOString(),
+        participants: expenseParticipants,
+        tempId: isOnline ? expenseId : `offline-${Date.now()}`, 
+        actorNameForLog: actor?.name || 'User',
+        receiptUrl: receiptUrlToStore, 
+        receiptFileName: receiptFileNameToStore,
+        };
 
-    if (!isOnline) {
-      const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
-      pending.push({...expenseDataForStorage, tempId: `offline-${expenseId}` }); 
-      localStorage.setItem('pendingExpenses', JSON.stringify(pending));
-      toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
-      addNotification({
-        title: "Expense Saved Offline",
-        message: `"${description.trim()}" for group "${group.name}" saved locally.`,
-        type: "info",
-      });
-      resetFormFields(); 
-      setIsSubmitting(false);
-      router.push(`/groups/${groupId}`);
-      return;
-    }
+        if (!isOnline) {
+        const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
+        pending.push(expenseDataForStorage); 
+        localStorage.setItem('pendingExpenses', JSON.stringify(pending));
+        toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
+        addNotification({
+            title: "Expense Saved Offline",
+            message: `"${description.trim()}" for group "${group.name}" saved locally.`,
+            type: "info",
+        });
+        resetFormFields();
+        router.push(`/groups/${groupId}`);
+        return; // setIsSubmitting will be handled by finally
+        }
 
-    try {
-      const dataToSetInFirestore: DocumentData = {
-        groupId: expenseDataForStorage.groupId,
-        description: expenseDataForStorage.description,
-        amount: expenseDataForStorage.amount,
-        paidByUserId: expenseDataForStorage.paidByUserId,
-        date: expenseDataForStorage.date,
-        participants: expenseDataForStorage.participants,
-        createdAt: serverTimestamp()
-      };
+        // Online submission
+        const dataToSetInFirestore: DocumentData = {
+            groupId: expenseDataForStorage.groupId,
+            description: expenseDataForStorage.description,
+            amount: expenseDataForStorage.amount,
+            paidByUserId: expenseDataForStorage.paidByUserId,
+            date: expenseDataForStorage.date,
+            participants: expenseDataForStorage.participants,
+            createdAt: serverTimestamp()
+        };
 
-      if (expenseDataForStorage.receiptUrl) {
-        dataToSetInFirestore.receiptUrl = expenseDataForStorage.receiptUrl;
-      }
-      if (expenseDataForStorage.receiptFileName) {
-        dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
-      }
+        if (expenseDataForStorage.receiptUrl) {
+            dataToSetInFirestore.receiptUrl = expenseDataForStorage.receiptUrl;
+        }
+        if (expenseDataForStorage.receiptFileName) {
+            dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
+        }
 
-      const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
-      const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
-        groupId: expenseDataForStorage.groupId,
-        userId: expenseDataForStorage.paidByUserId,
-        actionType: 'expense_added',
-        description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
-        relatedExpenseId: expenseId,
-      };
+        const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
+        const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
+            groupId: expenseDataForStorage.groupId,
+            userId: expenseDataForStorage.paidByUserId,
+            actionType: 'expense_added',
+            description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
+            relatedExpenseId: expenseId,
+        };
 
-      const batch = writeBatch(db);
-      batch.set(newExpenseDocRef, dataToSetInFirestore);
-      batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
+        const batch = writeBatch(db);
+        batch.set(newExpenseDocRef, dataToSetInFirestore); // Use the pre-generated doc ref
+        batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
 
-      await batch.commit();
+        await batch.commit();
 
-      toast({
-        title: "Expense Added to Firestore!",
-        description: `Expense "${description}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been added.`,
-      });
-      addNotification({
-        title: "Expense Added",
-        message: `You added "${description.trim()}" to group "${group.name}".`,
-        type: "success",
-        href: `/groups/${groupId}`,
-      });
-      resetFormFields(); 
-      await new Promise(resolve => setTimeout(resolve, 300));
-      router.push(`/groups/${groupId}?refresh=${Date.now()}`);
+        toast({
+            title: "Expense Added to Firestore!",
+            description: `Expense "${description}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been added.`,
+        });
+        addNotification({
+            title: "Expense Added",
+            message: `You added "${description.trim()}" to group "${group.name}".`,
+            type: "success",
+            href: `/groups/${groupId}`,
+        });
+        resetFormFields();
+        await new Promise(resolve => setTimeout(resolve, 300)); // Small delay for toast
+        router.push(`/groups/${groupId}?refresh=${Date.now()}`);
 
     } catch (error) {
-        console.error("Error adding expense to Firestore:", error);
-        toast({ title: "Firestore Error", description: "Could not save expense. Please try again.", variant: "destructive" });
+        console.error("Error in handleSubmit:", error);
+        toast({ title: "Submission Error", description: "Could not save expense. Please try again.", variant: "destructive" });
         addNotification({
-          title: "Expense Add Failed",
-          message: `Could not add "${description.trim()}" to group "${group.name}".`,
-          type: "destructive",
+        title: "Expense Add Failed",
+        message: `Could not add "${description.trim()}" to group "${group.name}".`,
+        type: "destructive",
         });
     } finally {
         setIsSubmitting(false);
@@ -719,3 +721,4 @@ export default function AddExpensePage() {
     </div>
   );
 }
+
