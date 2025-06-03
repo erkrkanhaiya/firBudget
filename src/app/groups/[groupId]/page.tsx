@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact } from '@/types';
+import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment } from '@/types';
 import { useUser } from '@/contexts/UserContext';
 import { format, parseISO } from 'date-fns';
 import {
@@ -49,7 +49,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/firebase'; 
-import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction, updateDoc, arrayUnion, writeBatch, serverTimestamp, where } from 'firebase/firestore'; // Added 'where'
+import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction, updateDoc, arrayUnion, writeBatch, serverTimestamp, where } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext'; 
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -90,6 +90,7 @@ export default function GroupDetailPage() {
 
   const [group, setGroup] = useState<Group | null>(null);
   const [firestoreExpenses, setFirestoreExpenses] = useState<Expense[]>([]);
+  const [firestorePayments, setFirestorePayments] = useState<Payment[]>([]); // State for payments
   const [firestoreActivityLogs, setFirestoreActivityLogs] = useState<ActivityLog[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,6 +109,70 @@ export default function GroupDetailPage() {
     group.members.forEach(member => map.set(member.id, member));
     return map;
   }, [group]);
+
+  // Updated balance calculation to include payments
+  const calculateGroupBalances = (
+    currentGroup: Group | null, 
+    groupExpenses: Expense[], 
+    groupPayments: Payment[], // Add payments here
+    groupMembers: UserType[]
+  ): Balance[] => {
+    if (!currentGroup || groupMembers.length === 0) return [];
+    const memberBalances: Record<string, { owes: Record<string, number>, owedBy: Record<string, number>, netBalance: number }> = {};
+    
+    groupMembers.forEach(member => { 
+        memberBalances[member.id] = { owes: {}, owedBy: {}, netBalance: 0 };
+    });
+
+    // Process expenses
+    groupExpenses.forEach(expense => {
+        const payerId = expense.paidByUserId;
+        if (!memberBalances[payerId] && groupMembers.find(m => m.id === payerId)) { 
+             memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
+        }
+
+        expense.participants.forEach(participant => {
+            const debtorId = participant.userId;
+            const amountOwedByDebtor = participant.amountOwed;
+
+            if (debtorId === payerId) return; 
+            
+            if(!memberBalances[debtorId] && groupMembers.find(m => m.id === debtorId)) {
+                memberBalances[debtorId] = { owes: {}, owedBy: {}, netBalance: 0 };
+            }
+            
+            if (memberBalances[debtorId] && memberBalances[payerId]) {
+                memberBalances[debtorId].owes[payerId] = (memberBalances[debtorId].owes[payerId] || 0) + amountOwedByDebtor;
+                memberBalances[debtorId].netBalance -= amountOwedByDebtor;
+                memberBalances[payerId].owedBy[debtorId] = (memberBalances[payerId].owedBy[debtorId] || 0) + amountOwedByDebtor;
+                memberBalances[payerId].netBalance += amountOwedByDebtor;
+            }
+        });
+    });
+
+    // Process payments
+    groupPayments.forEach(payment => {
+        const payerId = payment.paidByUserId;
+        const payeeId = payment.paidToUserId;
+        const amount = payment.amount;
+
+        if (memberBalances[payerId] && memberBalances[payeeId]) {
+            // Payer's debt to payee decreases (or they are credited if they overpaid)
+            memberBalances[payerId].owes[payeeId] = (memberBalances[payerId].owes[payeeId] || 0) - amount;
+            memberBalances[payerId].netBalance += amount; 
+
+            // Payee's amount owed by payer decreases (or they are debited if they received more)
+            memberBalances[payeeId].owedBy[payerId] = (memberBalances[payeeId].owedBy[payerId] || 0) - amount;
+            memberBalances[payeeId].netBalance -= amount;
+        }
+    });
+
+    return Object.entries(memberBalances).map(([userId, balanceData]) => ({
+        userId,
+        ...balanceData
+    })).filter(b => groupMembers.some(m => m.id === b.userId)); 
+  };
+
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
     if (!currentUser || !groupId) {
@@ -156,6 +221,22 @@ export default function GroupDetailPage() {
         });
         setFirestoreExpenses(fetchedExpenses);
 
+        // Fetch payments
+        const paymentsColRef = collection(db, 'groups', groupId, 'payments');
+        const paymentsQuery = query(paymentsColRef, orderBy('date', 'desc'));
+        const paymentsSnapshot = await getDocs(paymentsQuery);
+        const fetchedPayments = paymentsSnapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            return {
+                id: docSnap.id,
+                ...data,
+                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
+                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+            } as Payment;
+        });
+        setFirestorePayments(fetchedPayments);
+
+
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
         const activityLogQuery = query(activityLogColRef, orderBy('timestamp', 'desc'));
         const activityLogSnapshot = await getDocs(activityLogQuery);
@@ -169,7 +250,8 @@ export default function GroupDetailPage() {
         });
         setFirestoreActivityLogs(fetchedActivityLogs);
         
-        const calculatedBalances = calculateGroupBalances(fetchedGroup, fetchedExpenses, fetchedGroup.members);
+        // Pass fetchedPayments to calculateGroupBalances
+        const calculatedBalances = calculateGroupBalances(fetchedGroup, fetchedExpenses, fetchedPayments, fetchedGroup.members);
         setBalances(calculatedBalances);
 
       } else {
@@ -194,44 +276,6 @@ export default function GroupDetailPage() {
       setIsWebShareSupported(true);
     }
   }, []);
-
-  const calculateGroupBalances = (currentGroup: Group | null, groupExpenses: Expense[], groupMembers: UserType[]): Balance[] => {
-    if (!currentGroup || groupMembers.length === 0) return [];
-    const memberBalances: Record<string, { owes: Record<string, number>, owedBy: Record<string, number>, netBalance: number }> = {};
-    
-    groupMembers.forEach(member => { 
-        memberBalances[member.id] = { owes: {}, owedBy: {}, netBalance: 0 };
-    });
-
-    groupExpenses.forEach(expense => {
-        const payerId = expense.paidByUserId;
-        if (!memberBalances[payerId] && groupMembers.find(m => m.id === payerId)) { 
-             memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
-        }
-
-        expense.participants.forEach(participant => {
-            const debtorId = participant.userId;
-            const amountOwedByDebtor = participant.amountOwed;
-
-            if (debtorId === payerId) return; 
-            
-            if(!memberBalances[debtorId] && groupMembers.find(m => m.id === debtorId)) {
-                memberBalances[debtorId] = { owes: {}, owedBy: {}, netBalance: 0 };
-            }
-            
-            if (memberBalances[debtorId] && memberBalances[payerId]) {
-                memberBalances[debtorId].owes[payerId] = (memberBalances[debtorId].owes[payerId] || 0) + amountOwedByDebtor;
-                memberBalances[debtorId].netBalance -= amountOwedByDebtor;
-                memberBalances[payerId].owedBy[debtorId] = (memberBalances[payerId].owedBy[debtorId] || 0) + amountOwedByDebtor;
-                memberBalances[payerId].netBalance += amountOwedByDebtor;
-            }
-        });
-    });
-    return Object.entries(memberBalances).map(([userId, balanceData]) => ({
-        userId,
-        ...balanceData
-    })).filter(b => groupMembers.some(m => m.id === b.userId)); 
-  };
 
   const handleDownloadPdf = () => {
     if (!group || !currentUser) return;
@@ -300,9 +344,36 @@ export default function GroupDetailPage() {
       yPos += 10;
     }
 
+    if (firestorePayments.length > 0) {
+      doc.setFontSize(14);
+      doc.text("Recorded Payments (Settlements)", 14, yPos);
+      yPos += 2;
+      const paymentData = firestorePayments.map(p => {
+        const payer = memberDetailsMap.get(p.paidByUserId);
+        const payee = memberDetailsMap.get(p.paidToUserId);
+        return [
+          format(parseISO(p.date), "MMM d, yyyy"),
+          `${payer?.name || p.paidByUserId.substring(0,6)} paid ${payee?.name || p.paidToUserId.substring(0,6)}`,
+          `${currencySymbol}${p.amount.toFixed(2)}`,
+          p.method,
+          p.notes || ""
+        ];
+      });
+      doc.autoTable({
+        startY: yPos,
+        head: [['Date', 'Transaction', 'Amount', 'Method', 'Notes']],
+        body: paymentData,
+        theme: 'striped',
+        headStyles: { fillColor: [40, 116, 166] }, // Different color for payments
+        margin: { top: yPos }
+      });
+      yPos = doc.autoTable.previous.finalY + 10;
+    }
+
+
     if (balances.length > 0) {
       doc.setFontSize(14);
-      doc.text("Net Balances", 14, yPos);
+      doc.text("Net Balances (After All Transactions)", 14, yPos);
       yPos += 8;
       doc.setFontSize(11);
       const balanceSummary: string[][] = [];
@@ -333,10 +404,15 @@ export default function GroupDetailPage() {
       balances.forEach(balance => {
         const user = memberDetailsMap.get(balance.userId);
         if (!user) return;
-        const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({
+        // Filter out zero or negligible amounts for owes
+        const owedToList = Object.entries(balance.owes)
+          .filter(([, amount]) => amount > 0.005) // Only show if they actually owe
+          .map(([owedToId, amount]) => ({
             user: memberDetailsMap.get(owedToId),
             amount
-        })).filter(item => item.user && item.amount > 0.005);
+          }))
+          .filter(item => item.user);
+          
         if (owedToList.length > 0) {
             detailedOwesText += `${user.name || balance.userId.substring(0,6)} owes:\n`;
             owedToList.forEach(item => {
@@ -347,8 +423,7 @@ export default function GroupDetailPage() {
       });
       
       if (detailedOwesText) {
-        doc.addPage(); 
-        yPos = 20;
+        if (yPos > 250) { doc.addPage(); yPos = 20; } // Check for page break
         doc.setFontSize(14);
         doc.text("Settlement Suggestions (Who Owes Whom)", 14, yPos);
         yPos += 10;
@@ -420,6 +495,10 @@ export default function GroupDetailPage() {
         const expensesSnapshot = await getDocs(query(expensesColRef)); 
         expensesSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
 
+        const paymentsColRef = collection(db, 'groups', groupId, 'payments');
+        const paymentsSnapshot = await getDocs(query(paymentsColRef));
+        paymentsSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
+
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
         const activityLogSnapshot = await getDocs(query(activityLogColRef)); 
         activityLogSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
@@ -471,7 +550,7 @@ export default function GroupDetailPage() {
       setPotentialNewMembers(contactsList);
     } catch (error) {
       console.error("Error fetching potential new members:", error);
-      toast({ title: "Error", description: "Could not load your contacts. Ensure Firestore indexes are set.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not load your contacts. Ensure Firestore indexes are set if prompted.", variant: "destructive" });
     } finally {
       setIsLoadingPotentialMembers(false);
     }
@@ -666,7 +745,7 @@ export default function GroupDetailPage() {
                     <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                     <AlertDialogDescription>
                       This action cannot be undone. This will permanently delete the group
-                      "{group.name}" and all its associated data (expenses, activity logs) from Firestore.
+                      "{group.name}" and all its associated data (expenses, activity logs, payments) from Firestore.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -790,7 +869,7 @@ export default function GroupDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Balances</CardTitle>
-              <CardDescription>Who owes whom in this group, calculated from Firestore expenses.</CardDescription>
+              <CardDescription>Who owes whom in this group, calculated from Firestore expenses and recorded payments.</CardDescription>
             </CardHeader>
             <CardContent>
               {balances.length > 0 ? (
@@ -849,7 +928,7 @@ export default function GroupDetailPage() {
                   })}
                 </ul>
               ) : (
-                 <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses yet in Firestore.</p>
+                 <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses/payments yet in Firestore.</p>
               )}
             </CardContent>
           </Card>
