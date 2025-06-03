@@ -28,6 +28,8 @@ export interface ExpenseParticipant {
   amountOwed: number;
 }
 
+export type ExpenseCategory = "Food" | "Travel" | "Utilities" | "Entertainment" | "Shopping" | "Other";
+
 export interface Expense {
   id:string;
   groupId: string;
@@ -39,6 +41,7 @@ export interface Expense {
   createdAt: string;
   receiptUrl?: string; // URL of the uploaded receipt in Firebase Storage
   receiptFileName?: string; // Original name of the uploaded receipt file
+  category?: ExpenseCategory | string; // Allow predefined or custom string
 }
 
 export interface Payment {
@@ -97,4 +100,3 @@ export interface NotificationItem {
   read: boolean;
   href?: string;
 }
-
