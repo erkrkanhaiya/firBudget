@@ -49,7 +49,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/firebase'; 
-import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction, updateDoc, arrayUnion, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction, updateDoc, arrayUnion, writeBatch, serverTimestamp, where } from 'firebase/firestore'; // Added 'where'
 import { useNotification } from '@/contexts/NotificationContext'; 
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -462,11 +462,11 @@ export default function GroupDetailPage() {
           return {
             id: docSnap.id,
             name: data.name,
-            email: null, // AppMemberContact doesn't store email
-            avatarUrl: undefined, // AppMemberContact doesn't store avatar
+            email: null, 
+            avatarUrl: undefined, 
           } as UserType;
         })
-        .filter(contact => !group.memberIds.includes(contact.id)); // Filter out existing members
+        .filter(contact => !group.memberIds.includes(contact.id)); 
       
       setPotentialNewMembers(contactsList);
     } catch (error) {
@@ -481,7 +481,7 @@ export default function GroupDetailPage() {
     setIsAddMemberDialogOpen(open);
     if (open) {
       fetchPotentialNewMembers();
-      setSelectedContactsToAdd([]); // Reset selection
+      setSelectedContactsToAdd([]); 
     }
   };
 
@@ -510,7 +510,7 @@ export default function GroupDetailPage() {
           newMemberObjects.push({
             id: contact.id,
             name: contact.name,
-            email: null, // Or fetch more details if AppMemberContact had them
+            email: null, 
             avatarUrl: contact.avatarUrl || '',
           });
         }
@@ -532,20 +532,18 @@ export default function GroupDetailPage() {
         };
         batch.set(doc(activityLogColRef), { ...logEntry, timestamp: serverTimestamp() });
 
-        // Add notification for the current user (admin)
         addNotification({
           title: "Member Added to Group",
           message: `You added ${member.name || 'a new member'} to "${group.name}".`,
           type: "success",
           href: `/groups/${groupId}`,
         });
-         // TODO: In a real app, you might also send a notification to the newly added member.
       });
 
       await batch.commit();
       toast({ title: "Members Added!", description: `${newMemberObjects.length} member(s) added to the group.` });
       setIsAddMemberDialogOpen(false);
-      fetchGroupData(false); // Refresh group data without full page load spinner
+      fetchGroupData(false); 
 
     } catch (error) {
       console.error("Error adding members to group:", error);
@@ -944,7 +942,6 @@ export default function GroupDetailPage() {
                     </div>
                     <div>
                         {member.id === group.ownerId && <Badge variant="outline" className="text-primary">Admin</Badge>}
-                        {/* TODO: Add kick member functionality if needed */}
                     </div>
                   </li>
                 ))}
@@ -963,7 +960,7 @@ export default function GroupDetailPage() {
               {firestoreActivityLogs.length > 0 ? (
                 <ul className="space-y-4">
                   {firestoreActivityLogs.map(log => {
-                    const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); // Fallback for newly added members not yet in memberDetailsMap
+                    const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); 
                     return (
                     <li key={log.id} className="flex items-start gap-3 text-sm p-2 border rounded-md">
                         <Avatar className="h-8 w-8 mt-1">
@@ -975,7 +972,7 @@ export default function GroupDetailPage() {
                                 <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span>
                                 {log.description.includes(actor?.name || 'User') 
                                     ? log.description.substring((actor?.name || 'User').length).trim() 
-                                    : ` ${log.description}` /* Added space for better formatting if actor name not in desc */}
+                                    : ` ${log.description}`} 
                             </p>
                             <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p>
                         </div>
@@ -992,3 +989,4 @@ export default function GroupDetailPage() {
     </div>
   );
 }
+
