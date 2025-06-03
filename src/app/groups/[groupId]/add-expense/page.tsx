@@ -169,8 +169,12 @@ export default function AddExpensePage() {
             
             if (storedExp.receiptFileName) {
               expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
-              // No receiptUrl if it was an offline entry, as upload didn't happen
             }
+             // Important: Only include receiptUrl if it exists (meaning it was uploaded before going offline)
+            if (storedExp.receiptUrl) {
+              expenseDataForFirestore.receiptUrl = storedExp.receiptUrl;
+            }
+
             batch.set(newExpenseDocRef, expenseDataForFirestore);
 
             const activityLogColRef = collection(db, 'groups', storedExp.groupId, 'activityLog');
@@ -276,6 +280,9 @@ export default function AddExpensePage() {
       const file = event.target.files[0];
       if (file.size > 5 * 1024 * 1024) { // Max 5MB
         toast({ title: "File too large", description: "Receipt image cannot exceed 5MB.", variant: "destructive"});
+        event.target.value = ""; // Clear the input
+        setReceiptFile(null);
+        setReceiptPreview(null);
         return;
       }
       if (!file.type.startsWith("image/")) {
@@ -377,15 +384,18 @@ export default function AddExpensePage() {
         receiptUrlToStore = await getDownloadURL(uploadTask.snapshot.ref);
         receiptFileNameToStore = receiptFile.name;
         toast({ title: "Receipt Uploaded", description: "Receipt successfully uploaded to Firebase Storage.", variant: "default" });
-      } catch (uploadError) {
+      } catch (uploadError: any) {
         console.error("Error uploading receipt to Firebase Storage:", uploadError);
-        toast({ title: "Receipt Upload Failed", description: "Could not upload receipt. Expense will be added without it.", variant: "destructive" });
+        let errorDescription = "Could not upload receipt. Expense will be added without it.";
+        if (uploadError.code) { // Firebase storage errors have a 'code' property
+          errorDescription += ` (Error: ${uploadError.code})`;
+        }
+        toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive" });
       }
     } else if (receiptFile && !isOnline) {
       receiptFileNameToStore = receiptFile.name;
       toast({ title: "Offline Receipt", description: "Receipt file noted. Will be processed when online.", variant: "default" });
     }
-
 
     const expenseDataForStorage: StoredExpenseData = {
       groupId,
@@ -402,7 +412,7 @@ export default function AddExpensePage() {
 
     if (!isOnline) {
       const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
-      pending.push({...expenseDataForStorage, tempId: `offline-${expenseId}` });
+      pending.push({...expenseDataForStorage, tempId: `offline-${expenseId}` }); // Use original expenseId for tempId if offline first
       localStorage.setItem('pendingExpenses', JSON.stringify(pending));
       toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
       addNotification({
@@ -426,11 +436,11 @@ export default function AddExpensePage() {
         createdAt: serverTimestamp()
       };
 
-      if (expenseDataForStorage.receiptUrl) {
-        dataToSetInFirestore.receiptUrl = expenseDataForStorage.receiptUrl;
+      if (receiptUrlToStore) {
+        dataToSetInFirestore.receiptUrl = receiptUrlToStore;
       }
-      if (expenseDataForStorage.receiptFileName) {
-        dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
+      if (receiptFileNameToStore) {
+        dataToSetInFirestore.receiptFileName = receiptFileNameToStore;
       }
 
       const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
