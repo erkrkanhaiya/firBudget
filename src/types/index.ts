@@ -37,6 +37,8 @@ export interface Expense {
   date: string; // ISO string format
   participants: ExpenseParticipant[];
   createdAt: string;
+  receiptUrl?: string; // URL of the uploaded receipt in Firebase Storage
+  receiptFileName?: string; // Original name of the uploaded receipt file
 }
 
 export interface Payment {

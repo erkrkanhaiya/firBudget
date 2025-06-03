@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertTriangle, CreditCard, Users, CalendarDays, DollarSign as DollarSignIcon, ArrowRight, Loader2 } from 'lucide-react';
+import { AlertTriangle, CreditCard, Users, CalendarDays, DollarSign as DollarSignIcon, ArrowRight, Loader2, Paperclip } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
 import type { Expense, User as UserType, Group as GroupType } from '@/types';
@@ -15,6 +15,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, collectionGroup, query, where, getDocs, Timestamp, doc, getDoc } from 'firebase/firestore';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
 
 const getInitials = (name: string | undefined | null) => {
   if (!name) return "U";
@@ -84,8 +86,6 @@ export default function MyExpensesPage() {
         const allExpensesPromises: Promise<QuerySnapshot<Expense>>[] = [];
         const expenseQueries = userGroupIds.map(groupId => {
           const expensesColRef = collection(db, 'groups', groupId, 'expenses');
-          // We fetch all expenses for groups user is in, then filter client-side by participant or payer.
-          // More complex queries (OR on paidByUserId and participants array) are hard with Firestore subcollections directly.
           return getDocs(query(expensesColRef));
         });
         
@@ -110,7 +110,9 @@ export default function MyExpensesPage() {
                 createdAt: (expenseData.createdAt instanceof Timestamp ? expenseData.createdAt.toDate().toISOString() : new Date().toISOString()),
                 groupName: group?.name,
                 payerName: payer?.name,
-                payerAvatarUrl: payer?.avatarUrl
+                payerAvatarUrl: payer?.avatarUrl,
+                receiptUrl: expenseData.receiptUrl,
+                receiptFileName: expenseData.receiptFileName,
               });
             }
           });
@@ -182,47 +184,63 @@ export default function MyExpensesPage() {
         </div>
       ) : userInvolvedExpenses.length > 0 ? (
         <div className="space-y-6">
-          {userInvolvedExpenses.map((expense) => {
-            const currentUserParticipantInfo = expense.participants.find(p => p.userId === currentUser!.id);
-            return (
-              <Card key={expense.id} className="overflow-hidden">
-                <CardHeader className="flex flex-row items-start bg-muted/50 gap-4 p-4">
-                  <Avatar className="h-12 w-12 border">
-                    <AvatarImage src={expense.payerAvatarUrl || undefined} alt={expense.payerName} />
-                    <AvatarFallback>{getInitials(expense.payerName)}</AvatarFallback>
-                  </Avatar>
-                  <div className="grid gap-0.5 flex-1">
-                    <CardTitle className="text-lg group flex items-center gap-2">
-                      {expense.description}
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      Paid by {expense.paidByUserId === currentUser!.id ? "You" : expense.payerName || 'Unknown User'} on {format(parseISO(expense.date), "MMMM d, yyyy")}
-                    </CardDescription>
-                     {expense.groupName && expense.groupId && (
-                        <p className="text-xs text-muted-foreground">
-                            In group: <Link href={`/groups/${expense.groupId}`} className="text-primary hover:underline">{expense.groupName}</Link>
-                        </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                     <div className="text-xl font-bold flex items-center">
-                        <span className="mr-1 text-muted-foreground">{getCurrencySymbol()}</span>
-                        {expense.amount.toFixed(2)}
+          <TooltipProvider>
+            {userInvolvedExpenses.map((expense) => {
+              const currentUserParticipantInfo = expense.participants.find(p => p.userId === currentUser!.id);
+              return (
+                <Card key={expense.id} className="overflow-hidden">
+                  <CardHeader className="flex flex-row items-start bg-muted/50 gap-4 p-4">
+                    <Avatar className="h-12 w-12 border">
+                      <AvatarImage src={expense.payerAvatarUrl || undefined} alt={expense.payerName} />
+                      <AvatarFallback>{getInitials(expense.payerName)}</AvatarFallback>
+                    </Avatar>
+                    <div className="grid gap-0.5 flex-1">
+                      <CardTitle className="text-lg group flex items-center gap-2">
+                        {expense.description}
+                        {expense.receiptFileName && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              {/* In a real scenario, this might be a link to view the receipt */}
+                              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary">
+                                <Paperclip className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Receipt: {expense.receiptFileName}</p>
+                              <p className="text-xs">(View/Download not yet implemented)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Paid by {expense.paidByUserId === currentUser!.id ? "You" : expense.payerName || 'Unknown User'} on {format(parseISO(expense.date), "MMMM d, yyyy")}
+                      </CardDescription>
+                       {expense.groupName && expense.groupId && (
+                          <p className="text-xs text-muted-foreground">
+                              In group: <Link href={`/groups/${expense.groupId}`} className="text-primary hover:underline">{expense.groupName}</Link>
+                          </p>
+                      )}
                     </div>
-                    {currentUserParticipantInfo && expense.paidByUserId !== currentUser!.id && (
-                        <Badge variant="outline" className="mt-1 text-xs">Your share: {getCurrencySymbol()}{currentUserParticipantInfo.amountOwed.toFixed(2)}</Badge>
-                    )}
-                    {expense.paidByUserId === currentUser!.id && expense.participants.length > 1 && (
-                         <Badge variant="secondary" className="mt-1 text-xs">You paid</Badge>
-                    )}
-                     {expense.paidByUserId === currentUser!.id && expense.participants.length === 1 && expense.participants[0].userId === currentUser!.id && (
-                         <Badge variant="outline" className="mt-1 text-xs">Personal Expense</Badge>
-                    )}
-                  </div>
-                </CardHeader>
-              </Card>
-            );
-          })}
+                    <div className="text-right">
+                       <div className="text-xl font-bold flex items-center">
+                          <span className="mr-1 text-muted-foreground">{getCurrencySymbol()}</span>
+                          {expense.amount.toFixed(2)}
+                      </div>
+                      {currentUserParticipantInfo && expense.paidByUserId !== currentUser!.id && (
+                          <Badge variant="outline" className="mt-1 text-xs">Your share: {getCurrencySymbol()}{currentUserParticipantInfo.amountOwed.toFixed(2)}</Badge>
+                      )}
+                      {expense.paidByUserId === currentUser!.id && expense.participants.length > 1 && (
+                           <Badge variant="secondary" className="mt-1 text-xs">You paid</Badge>
+                      )}
+                       {expense.paidByUserId === currentUser!.id && expense.participants.length === 1 && expense.participants[0].userId === currentUser!.id && (
+                           <Badge variant="outline" className="mt-1 text-xs">Personal Expense</Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                </Card>
+              );
+            })}
+          </TooltipProvider>
         </div>
       ) : (
         <Card>
@@ -238,5 +256,3 @@ export default function MyExpensesPage() {
     </div>
   );
 }
-
-    

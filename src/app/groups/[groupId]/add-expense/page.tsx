@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info, Loader2 } from 'lucide-react';
+import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info, Loader2, Paperclip, XCircle, Image as ImageIconLucide } from 'lucide-react';
+import NextImage from 'next/image';
 import { useUser } from '@/contexts/UserContext';
 import type { Group, User as UserType, ExpenseParticipant, Expense, ActivityLog } from '@/types';
 import { useToast } from "@/hooks/use-toast";
@@ -32,8 +33,9 @@ interface StoredExpenseData {
   date: string; // ISO string
   participants: ExpenseParticipant[];
   tempId: string; // For UI identification before sync
-  // Store necessary info to reconstruct actor for activity log if needed
   actorNameForLog: string | null; 
+  receiptUrl?: string;
+  receiptFileName?: string;
 }
 
 export default function AddExpensePage() {
@@ -43,7 +45,7 @@ export default function AddExpensePage() {
   const { toast } = useToast();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
-  const { addNotification } = useNotification(); // Use notification context
+  const { addNotification } = useNotification(); 
 
   const [group, setGroup] = useState<Group | null>(null);
   const [description, setDescription] = useState('');
@@ -54,6 +56,9 @@ export default function AddExpensePage() {
   const [splitEqually, setSplitEqually] = useState(true);
   const [customSplitAmounts, setCustomSplitAmounts] = useState<Record<string, string>>({});
   
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+
   const [sumOfCustomShares, setSumOfCustomShares] = useState<number>(0);
   const [remainingToAllocate, setRemainingToAllocate] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -149,15 +154,17 @@ export default function AddExpensePage() {
 
           for (const storedExp of expensesToSyncForThisGroup) {
             const expenseColRef = collection(db, 'groups', storedExp.groupId, 'expenses');
-            const newExpenseDocRef = doc(expenseColRef); // Auto-generate ID
+            const newExpenseDocRef = doc(expenseColRef); 
             
             const expenseForFirestore: Omit<Expense, 'id' | 'createdAt'> = {
               groupId: storedExp.groupId,
               description: storedExp.description,
               amount: storedExp.amount,
               paidByUserId: storedExp.paidByUserId,
-              date: storedExp.date, // Already ISO string
+              date: storedExp.date, 
               participants: storedExp.participants,
+              receiptUrl: storedExp.receiptUrl, // Actual upload will happen if this is a blob or needs processing
+              receiptFileName: storedExp.receiptFileName,
             };
             batch.set(newExpenseDocRef, { ...expenseForFirestore, createdAt: serverTimestamp() });
 
@@ -172,7 +179,6 @@ export default function AddExpensePage() {
             batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
             syncedCount++;
             
-            // Add notification for synced expense
             addNotification({
               title: "Offline Expense Synced",
               message: `Expense "${storedExp.description}" for group "${group.name}" submitted.`,
@@ -260,6 +266,36 @@ export default function AddExpensePage() {
     }
   };
 
+  const handleReceiptFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      if (file.size > 5 * 1024 * 1024) { // Max 5MB
+        toast({ title: "File too large", description: "Receipt image cannot exceed 5MB.", variant: "destructive"});
+        return;
+      }
+      setReceiptFile(file);
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setReceiptPreview(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setReceiptPreview(null); // Not an image, no preview
+      }
+    } else {
+      setReceiptFile(null);
+      setReceiptPreview(null);
+    }
+  };
+
+  const removeReceiptFile = () => {
+    setReceiptFile(null);
+    setReceiptPreview(null);
+    const fileInput = document.getElementById('receipt') as HTMLInputElement;
+    if (fileInput) fileInput.value = "";
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
@@ -316,6 +352,18 @@ export default function AddExpensePage() {
     
     const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
 
+    // Placeholder for actual receipt upload logic
+    let receiptUrlToStore: string | undefined = undefined;
+    let receiptFileNameToStore: string | undefined = undefined;
+
+    if (receiptFile) {
+        console.warn("Receipt file selected, but actual upload to Firebase Storage is not yet implemented.");
+        toast({ title: "Receipt Upload (Demo)", description: "Receipt file selected. Actual cloud upload is pending implementation.", variant: "default"});
+        receiptFileNameToStore = receiptFile.name;
+        // In a real scenario, you'd upload `receiptFile` to Firebase Storage here and get `receiptUrlToStore`.
+        // For now, it will be undefined in Firestore.
+    }
+
     const expenseDataForStorage: StoredExpenseData = {
       groupId,
       description: description.trim(),
@@ -324,7 +372,9 @@ export default function AddExpensePage() {
       date: expenseDate.toISOString(),
       participants: expenseParticipants,
       tempId: `pending-${Date.now()}`,
-      actorNameForLog: actor?.name || 'User'
+      actorNameForLog: actor?.name || 'User',
+      receiptUrl: receiptUrlToStore, // Will be undefined for now
+      receiptFileName: receiptFileNameToStore,
     };
 
     if (!isOnline) {
@@ -353,6 +403,8 @@ export default function AddExpensePage() {
         paidByUserId: expenseDataForStorage.paidByUserId,
         date: expenseDataForStorage.date, 
         participants: expenseDataForStorage.participants,
+        receiptUrl: expenseDataForStorage.receiptUrl,
+        receiptFileName: expenseDataForStorage.receiptFileName,
       };
       
       const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
@@ -480,6 +532,38 @@ export default function AddExpensePage() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div>
+              <Label htmlFor="receipt">Receipt (Optional)</Label>
+              <Input
+                id="receipt"
+                type="file"
+                accept="image/*,.pdf"
+                onChange={handleReceiptFileChange}
+                disabled={isSubmitting}
+                className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+              />
+              {receiptFile && (
+                <div className="mt-2 p-2 border rounded-md bg-muted/50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                      {receiptPreview ? (
+                        <NextImage src={receiptPreview} alt="Receipt preview" width={32} height={32} className="h-8 w-8 object-cover rounded" />
+                      ) : (
+                        <Paperclip className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      <span className="truncate max-w-[200px]">{receiptFile.name}</span>
+                      <span className="text-xs text-muted-foreground">({(receiptFile.size / 1024).toFixed(1)} KB)</span>
+                    </div>
+                    <Button type="button" variant="ghost" size="icon" onClick={removeReceiptFile} disabled={isSubmitting} className="h-7 w-7">
+                      <XCircle className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">Max file size: 5MB. Images or PDF.</p>
+            </div>
+
             <div>
               <Label>Participants*</Label>
               <p className="text-xs text-muted-foreground mb-2">Select who this expense should be split amongst.</p>

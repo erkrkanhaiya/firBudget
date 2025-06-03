@@ -8,7 +8,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment } from '@/types';
 import { useUser } from '@/contexts/UserContext';
@@ -53,6 +53,7 @@ import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs,
 import { useNotification } from '@/contexts/NotificationContext'; 
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -216,7 +217,9 @@ export default function GroupDetailPage() {
                 id: docSnap.id, 
                 ...data,
                 date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
-                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt as string)
+                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt as string),
+                receiptUrl: data.receiptUrl,
+                receiptFileName: data.receiptFileName,
             } as Expense;
         });
         setFirestoreExpenses(fetchedExpenses);
@@ -250,7 +253,6 @@ export default function GroupDetailPage() {
         });
         setFirestoreActivityLogs(fetchedActivityLogs);
         
-        // Pass fetchedPayments to calculateGroupBalances
         const calculatedBalances = calculateGroupBalances(fetchedGroup, fetchedExpenses, fetchedPayments, fetchedGroup.members);
         setBalances(calculatedBalances);
 
@@ -324,7 +326,7 @@ export default function GroupDetailPage() {
         const payer = memberDetailsMap.get(exp.paidByUserId);
         return [
           format(parseISO(exp.date), "MMM d, yyyy"),
-          exp.description,
+          exp.description + (exp.receiptFileName ? ` (Receipt: ${exp.receiptFileName.substring(0,15)}...)` : ""),
           payer?.name || exp.paidByUserId.substring(0,6), 
           `${currencySymbol}${exp.amount.toFixed(2)}`
         ];
@@ -364,7 +366,7 @@ export default function GroupDetailPage() {
         head: [['Date', 'Transaction', 'Amount', 'Method', 'Notes']],
         body: paymentData,
         theme: 'striped',
-        headStyles: { fillColor: [40, 116, 166] }, // Different color for payments
+        headStyles: { fillColor: [40, 116, 166] }, 
         margin: { top: yPos }
       });
       yPos = doc.autoTable.previous.finalY + 10;
@@ -404,9 +406,8 @@ export default function GroupDetailPage() {
       balances.forEach(balance => {
         const user = memberDetailsMap.get(balance.userId);
         if (!user) return;
-        // Filter out zero or negligible amounts for owes
         const owedToList = Object.entries(balance.owes)
-          .filter(([, amount]) => amount > 0.005) // Only show if they actually owe
+          .filter(([, amount]) => amount > 0.005) 
           .map(([owedToId, amount]) => ({
             user: memberDetailsMap.get(owedToId),
             amount
@@ -423,7 +424,7 @@ export default function GroupDetailPage() {
       });
       
       if (detailedOwesText) {
-        if (yPos > 250) { doc.addPage(); yPos = 20; } // Check for page break
+        if (yPos > 250) { doc.addPage(); yPos = 20; } 
         doc.setFontSize(14);
         doc.text("Settlement Suggestions (Who Owes Whom)", 14, yPos);
         yPos += 10;
@@ -760,312 +761,328 @@ export default function GroupDetailPage() {
           )}
         </CardHeader>
       </Card>
-
-      <Tabs defaultValue="expenses" className="w-full">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-          <TabsList>
-            <TabsTrigger value="expenses"><CreditCard className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
-            <TabsTrigger value="balances"><ListChecks className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Balances</TabsTrigger>
-            <TabsTrigger value="members"><Users className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Members</TabsTrigger>
-            <TabsTrigger value="activity"><ActivityIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
-          </TabsList>
-           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            {isMember && ( 
-              <>
-                <Button asChild className="flex-1 sm:flex-none">
-                  <Link href={`/groups/${groupId}/add-expense`}>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Expense
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild className="flex-1 sm:flex-none">
-                  <Link href={`/groups/${groupId}/settle-up`}>
-                    <DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up
-                  </Link>
-                </Button>
-              </>
-            )}
-             <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 sm:flex-none">
-                <Download className="mr-2 h-4 w-4" /> Download PDF
-            </Button>
-            {(group.visibility === 'public' || isMember) && ( 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="flex-1 sm:flex-none">
-                      <Share2 className="mr-2 h-4 w-4" /> Share Group
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {isWebShareSupported && (
-                      <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer">
-                        <Share2 className="mr-2 h-4 w-4" /> Share via System
+      <TooltipProvider>
+        <Tabs defaultValue="expenses" className="w-full">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+            <TabsList>
+              <TabsTrigger value="expenses"><CreditCard className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
+              <TabsTrigger value="balances"><ListChecks className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Balances</TabsTrigger>
+              <TabsTrigger value="members"><Users className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Members</TabsTrigger>
+              <TabsTrigger value="activity"><ActivityIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
+            </TabsList>
+             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              {isMember && ( 
+                <>
+                  <Button asChild className="flex-1 sm:flex-none">
+                    <Link href={`/groups/${groupId}/add-expense`}>
+                      <PlusCircle className="mr-2 h-4 w-4" /> Add Expense
+                    </Link>
+                  </Button>
+                  <Button variant="outline" asChild className="flex-1 sm:flex-none">
+                    <Link href={`/groups/${groupId}/settle-up`}>
+                      <DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up
+                    </Link>
+                  </Button>
+                </>
+              )}
+               <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 sm:flex-none">
+                  <Download className="mr-2 h-4 w-4" /> Download PDF
+              </Button>
+              {(group.visibility === 'public' || isMember) && ( 
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="flex-1 sm:flex-none">
+                        <Share2 className="mr-2 h-4 w-4" /> Share Group
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {isWebShareSupported && (
+                        <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer">
+                          <Share2 className="mr-2 h-4 w-4" /> Share via System
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer">
+                        <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link
                       </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer">
-                      <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer">
-                      <MessageCircle className="mr-2 h-4 w-4" /> Share on WhatsApp
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer">
-                      <Facebook className="mr-2 h-4 w-4" /> Share on Facebook
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer">
-                      <Twitter className="mr-2 h-4 w-4" /> Share on Twitter
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer">
-                      <Mail className="mr-2 h-4 w-4" /> Share via Email
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-            )}
+                      <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer">
+                        <MessageCircle className="mr-2 h-4 w-4" /> Share on WhatsApp
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer">
+                        <Facebook className="mr-2 h-4 w-4" /> Share on Facebook
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer">
+                        <Twitter className="mr-2 h-4 w-4" /> Share on Twitter
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer">
+                        <Mail className="mr-2 h-4 w-4" /> Share via Email
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+              )}
+            </div>
           </div>
-        </div>
 
-        <TabsContent value="expenses">
-          <Card>
-            <CardHeader>
-              <CardTitle>Expenses</CardTitle>
-              <CardDescription>All expenses recorded in this group from Firestore.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {firestoreExpenses.length > 0 ? (
-                <ul className="space-y-4">
-                  {firestoreExpenses.map(expense => {
-                    const payer = memberDetailsMap.get(expense.paidByUserId);
-                    const currentUserShare = expense.participants.find(p => p.userId === currentUser.id);
-                    return (
-                    <li key={expense.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                            <AvatarImage src={payer?.avatarUrl || undefined} />
-                            <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                            <p className="font-medium">{expense.description}</p>
-                            <p className="text-sm text-muted-foreground">
-                                Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")}
-                            </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold">{getCurrencySymbol()}{expense.amount.toFixed(2)}</p>
-                        {isMember && currentUserShare && (
-                           <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {getCurrencySymbol()}{currentUserShare.amountOwed.toFixed(2)}</p>
-                        )}
-                      </div>
-                    </li>
-                  )})}
-                </ul>
-              ) : (
-                <p className="text-muted-foreground text-center py-4">No expenses recorded yet in Firestore for this group.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="balances">
-          <Card>
-            <CardHeader>
-              <CardTitle>Balances</CardTitle>
-              <CardDescription>Who owes whom in this group, calculated from Firestore expenses and recorded payments.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {balances.length > 0 ? (
-                <ul className="space-y-3">
-                  {balances.map(balance => {
-                    const user = memberDetailsMap.get(balance.userId);
-                    if (!user) return null;
-
-                    const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({
-                        user: memberDetailsMap.get(owedToId),
-                        amount
-                    })).filter(item => item.user && item.amount > 0.005); 
-                    
-                    const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({
-                        user: memberDetailsMap.get(owedById),
-                        amount
-                    })).filter(item => item.user && item.amount > 0.005); 
-
-                    return (
-                        <li key={balance.userId} className="p-3 border rounded-md">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Avatar className="h-8 w-8">
-                                    <AvatarImage src={user.avatarUrl || undefined} />
-                                    <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-                                </Avatar>
-                                <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Balance:</span>
-                                <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                                    {getCurrencySymbol()}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed" : balance.netBalance < -0.005 ? "owes" : "is settled"}
-                                </span>
-                            </div>
-                            {owedToList.length > 0 && (
-                                <div className="pl-4 text-sm">
-                                    <p className="text-red-600 dark:text-red-400">Owes:</p>
-                                    <ul className="list-disc list-inside ml-2">
-                                        {owedToList.map(item => (
-                                            <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                            {owedByList.length > 0 && (
-                                 <div className="pl-4 text-sm mt-1">
-                                    <p className="text-green-600 dark:text-green-400">Is owed by:</p>
-                                    <ul className="list-disc list-inside ml-2">
-                                        {owedByList.map(item => (
-                                            <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} from ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                             {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( 
-                                 <p className="pl-4 text-sm text-muted-foreground">All settled up!</p>
-                             )}
-                        </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                 <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses/payments yet in Firestore.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="members">
-          <Card>
-            <CardHeader className="flex flex-row justify-between items-center">
-                <div>
-                    <CardTitle>Members ({group.members.length})</CardTitle>
-                    <CardDescription>People participating in this group (from Firestore).</CardDescription>
-                </div>
-                 {isOwner && (
-                    <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}>
-                        <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                                <UserPlus className="mr-2 h-4 w-4"/>Add Member
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[480px]">
-                            <DialogHeader>
-                                <DialogTitle>Add Members to "{group.name}"</DialogTitle>
-                                <DialogDescription>
-                                    Select contacts to add to this group. Only contacts not already in the group are shown.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="py-4">
-                                {isLoadingPotentialMembers ? (
-                                    <div className="space-y-2">
-                                        {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)}
-                                    </div>
-                                ) : potentialNewMembers.length > 0 ? (
-                                   <ScrollArea className="h-[250px] pr-3">
-                                        <div className="space-y-2">
-                                            {potentialNewMembers.map(contact => (
-                                                <label
-                                                    key={contact.id}
-                                                    htmlFor={`contact-${contact.id}`}
-                                                    className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer"
-                                                >
-                                                    <Checkbox
-                                                        id={`contact-${contact.id}`}
-                                                        checked={selectedContactsToAdd.includes(contact.id)}
-                                                        onCheckedChange={() => handleToggleContactSelection(contact.id)}
-                                                    />
-                                                    <Avatar className="h-8 w-8">
-                                                        <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} />
-                                                        <AvatarFallback>{getInitials(contact.name)}</AvatarFallback>
-                                                    </Avatar>
-                                                    <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </ScrollArea>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground text-center py-4">
-                                        No new contacts available to add, or all your contacts are already in this group.
-                                    </p>
+          <TabsContent value="expenses">
+            <Card>
+              <CardHeader>
+                <CardTitle>Expenses</CardTitle>
+                <CardDescription>All expenses recorded in this group from Firestore.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {firestoreExpenses.length > 0 ? (
+                  <ul className="space-y-4">
+                    {firestoreExpenses.map(expense => {
+                      const payer = memberDetailsMap.get(expense.paidByUserId);
+                      const currentUserShare = expense.participants.find(p => p.userId === currentUser.id);
+                      return (
+                      <li key={expense.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <Avatar className="h-10 w-10">
+                              <AvatarImage src={payer?.avatarUrl || undefined} />
+                              <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-medium truncate">{expense.description}</p>
+                                {expense.receiptFileName && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      {/* In a real scenario, this might be a link to view the receipt */}
+                                      <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0">
+                                        <Paperclip className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Receipt: {expense.receiptFileName}</p>
+                                      <p className="text-xs">(View/Download not yet implemented)</p>
+                                    </TooltipContent>
+                                  </Tooltip>
                                 )}
-                            </div>
-                            <DialogFooter>
-                                <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}>
-                                    Cancel
-                                </Button>
-                                <Button 
-                                    onClick={handleAddSelectedMembers} 
-                                    disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers}
-                                >
-                                    {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                                    {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`}
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                 )}
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-3">
-                {group.members.map(member => ( 
-                  <li key={member.id} className="flex items-center justify-between p-2 border rounded-md">
-                    <div className="flex items-center gap-3">
-                        <Avatar>
-                            <AvatarImage src={member.avatarUrl || undefined} />
-                            <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                            <p className="font-medium">{member.name || member.id.substring(0,10)}</p>
-                            <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                  Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")}
+                              </p>
+                          </div>
                         </div>
-                    </div>
-                    <div>
-                        {member.id === group.ownerId && <Badge variant="outline" className="text-primary">Admin</Badge>}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                        <div className="text-right ml-2">
+                          <p className="text-lg font-semibold">{getCurrencySymbol()}{expense.amount.toFixed(2)}</p>
+                          {isMember && currentUserShare && (
+                             <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {getCurrencySymbol()}{currentUserShare.amountOwed.toFixed(2)}</p>
+                          )}
+                        </div>
+                      </li>
+                    )})}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No expenses recorded yet in Firestore for this group.</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        <TabsContent value="activity">
-          <Card>
-            <CardHeader>
-              <CardTitle>Activity Log</CardTitle>
-              <CardDescription>Recent actions within this group from Firestore.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {firestoreActivityLogs.length > 0 ? (
-                <ul className="space-y-4">
-                  {firestoreActivityLogs.map(log => {
-                    const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); 
-                    return (
-                    <li key={log.id} className="flex items-start gap-3 text-sm p-2 border rounded-md">
-                        <Avatar className="h-8 w-8 mt-1">
-                            <AvatarImage src={actor?.avatarUrl || undefined} />
-                            <AvatarFallback>{getInitials(actor?.name)}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                             <p>
-                                <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span>
-                                {log.description.includes(actor?.name || 'User') 
-                                    ? log.description.substring((actor?.name || 'User').length).trim() 
-                                    : ` ${log.description}`} 
-                            </p>
-                            <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p>
-                        </div>
+          <TabsContent value="balances">
+            <Card>
+              <CardHeader>
+                <CardTitle>Balances</CardTitle>
+                <CardDescription>Who owes whom in this group, calculated from Firestore expenses and recorded payments.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {balances.length > 0 ? (
+                  <ul className="space-y-3">
+                    {balances.map(balance => {
+                      const user = memberDetailsMap.get(balance.userId);
+                      if (!user) return null;
+
+                      const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({
+                          user: memberDetailsMap.get(owedToId),
+                          amount
+                      })).filter(item => item.user && item.amount > 0.005); 
+                      
+                      const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({
+                          user: memberDetailsMap.get(owedById),
+                          amount
+                      })).filter(item => item.user && item.amount > 0.005); 
+
+                      return (
+                          <li key={balance.userId} className="p-3 border rounded-md">
+                              <div className="flex items-center gap-2 mb-2">
+                                  <Avatar className="h-8 w-8">
+                                      <AvatarImage src={user.avatarUrl || undefined} />
+                                      <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                                  </Avatar>
+                                  <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Balance:</span>
+                                  <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                      {getCurrencySymbol()}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed" : balance.netBalance < -0.005 ? "owes" : "is settled"}
+                                  </span>
+                              </div>
+                              {owedToList.length > 0 && (
+                                  <div className="pl-4 text-sm">
+                                      <p className="text-red-600 dark:text-red-400">Owes:</p>
+                                      <ul className="list-disc list-inside ml-2">
+                                          {owedToList.map(item => (
+                                              <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
+                                          ))}
+                                      </ul>
+                                  </div>
+                              )}
+                              {owedByList.length > 0 && (
+                                   <div className="pl-4 text-sm mt-1">
+                                      <p className="text-green-600 dark:text-green-400">Is owed by:</p>
+                                      <ul className="list-disc list-inside ml-2">
+                                          {owedByList.map(item => (
+                                              <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} from ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
+                                          ))}
+                                      </ul>
+                                  </div>
+                              )}
+                               {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( 
+                                   <p className="pl-4 text-sm text-muted-foreground">All settled up!</p>
+                               )}
+                          </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                   <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses/payments yet in Firestore.</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="members">
+            <Card>
+              <CardHeader className="flex flex-row justify-between items-center">
+                  <div>
+                      <CardTitle>Members ({group.members.length})</CardTitle>
+                      <CardDescription>People participating in this group (from Firestore).</CardDescription>
+                  </div>
+                   {isOwner && (
+                      <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}>
+                          <DialogTrigger asChild>
+                              <Button variant="outline" size="sm">
+                                  <UserPlus className="mr-2 h-4 w-4"/>Add Member
+                              </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-[480px]">
+                              <DialogHeader>
+                                  <DialogTitle>Add Members to "{group.name}"</DialogTitle>
+                                  <DialogDescription>
+                                      Select contacts to add to this group. Only contacts not already in the group are shown.
+                                  </DialogDescription>
+                              </DialogHeader>
+                              <div className="py-4">
+                                  {isLoadingPotentialMembers ? (
+                                      <div className="space-y-2">
+                                          {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)}
+                                      </div>
+                                  ) : potentialNewMembers.length > 0 ? (
+                                     <ScrollArea className="h-[250px] pr-3">
+                                          <div className="space-y-2">
+                                              {potentialNewMembers.map(contact => (
+                                                  <label
+                                                      key={contact.id}
+                                                      htmlFor={`contact-${contact.id}`}
+                                                      className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer"
+                                                  >
+                                                      <Checkbox
+                                                          id={`contact-${contact.id}`}
+                                                          checked={selectedContactsToAdd.includes(contact.id)}
+                                                          onCheckedChange={() => handleToggleContactSelection(contact.id)}
+                                                      />
+                                                      <Avatar className="h-8 w-8">
+                                                          <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} />
+                                                          <AvatarFallback>{getInitials(contact.name)}</AvatarFallback>
+                                                      </Avatar>
+                                                      <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span>
+                                                  </label>
+                                              ))}
+                                          </div>
+                                      </ScrollArea>
+                                  ) : (
+                                      <p className="text-sm text-muted-foreground text-center py-4">
+                                          No new contacts available to add, or all your contacts are already in this group.
+                                      </p>
+                                  )}
+                              </div>
+                              <DialogFooter>
+                                  <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}>
+                                      Cancel
+                                  </Button>
+                                  <Button 
+                                      onClick={handleAddSelectedMembers} 
+                                      disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers}
+                                  >
+                                      {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                                      {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`}
+                                  </Button>
+                              </DialogFooter>
+                          </DialogContent>
+                      </Dialog>
+                   )}
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-3">
+                  {group.members.map(member => ( 
+                    <li key={member.id} className="flex items-center justify-between p-2 border rounded-md">
+                      <div className="flex items-center gap-3">
+                          <Avatar>
+                              <AvatarImage src={member.avatarUrl || undefined} />
+                              <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                              <p className="font-medium">{member.name || member.id.substring(0,10)}</p>
+                              <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p>
+                          </div>
+                      </div>
+                      <div>
+                          {member.id === group.ownerId && <Badge variant="outline" className="text-primary">Admin</Badge>}
+                      </div>
                     </li>
-                  )})}
+                  ))}
                 </ul>
-              ) : (
-                 <p className="text-muted-foreground text-center py-4">No activity recorded yet in Firestore for this group.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="activity">
+            <Card>
+              <CardHeader>
+                <CardTitle>Activity Log</CardTitle>
+                <CardDescription>Recent actions within this group from Firestore.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {firestoreActivityLogs.length > 0 ? (
+                  <ul className="space-y-4">
+                    {firestoreActivityLogs.map(log => {
+                      const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); 
+                      return (
+                      <li key={log.id} className="flex items-start gap-3 text-sm p-2 border rounded-md">
+                          <Avatar className="h-8 w-8 mt-1">
+                              <AvatarImage src={actor?.avatarUrl || undefined} />
+                              <AvatarFallback>{getInitials(actor?.name)}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                               <p>
+                                  <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span>
+                                  {log.description.includes(actor?.name || 'User') 
+                                      ? log.description.substring((actor?.name || 'User').length).trim() 
+                                      : ` ${log.description}`} 
+                              </p>
+                              <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p>
+                          </div>
+                      </li>
+                    )})}
+                  </ul>
+                ) : (
+                   <p className="text-muted-foreground text-center py-4">No activity recorded yet in Firestore for this group.</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </TooltipProvider>
     </div>
   );
 }
-
