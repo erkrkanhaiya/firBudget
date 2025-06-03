@@ -170,8 +170,7 @@ export default function AddExpensePage() {
             if (storedExp.receiptFileName) {
               expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
             }
-             // Important: Only include receiptUrl if it exists (meaning it was uploaded before going offline)
-            if (storedExp.receiptUrl) {
+            if (storedExp.receiptUrl) { // Only if it was successfully uploaded before going offline
               expenseDataForFirestore.receiptUrl = storedExp.receiptUrl;
             }
 
@@ -280,14 +279,14 @@ export default function AddExpensePage() {
       const file = event.target.files[0];
       if (file.size > 5 * 1024 * 1024) { // Max 5MB
         toast({ title: "File too large", description: "Receipt image cannot exceed 5MB.", variant: "destructive"});
-        event.target.value = ""; // Clear the input
+        event.target.value = ""; 
         setReceiptFile(null);
         setReceiptPreview(null);
         return;
       }
       if (!file.type.startsWith("image/")) {
         toast({ title: "Invalid File Type", description: "Only image files are accepted for receipts.", variant: "destructive"});
-        event.target.value = ""; // Clear the input
+        event.target.value = ""; 
         setReceiptFile(null);
         setReceiptPreview(null);
         return;
@@ -375,6 +374,7 @@ export default function AddExpensePage() {
     let receiptFileNameToStore: string | undefined = undefined;
 
     if (receiptFile && isOnline) {
+      toast({ title: "Uploading Receipt", description: "Please wait...", variant: "default" });
       try {
         const filePath = `receipts/${groupId}/${expenseId}/${receiptFile.name}`;
         const fileStorageRef = storageRef(storage, filePath);
@@ -387,14 +387,18 @@ export default function AddExpensePage() {
       } catch (uploadError: any) {
         console.error("Error uploading receipt to Firebase Storage:", uploadError);
         let errorDescription = "Could not upload receipt. Expense will be added without it.";
-        if (uploadError.code) { // Firebase storage errors have a 'code' property
-          errorDescription += ` (Error: ${uploadError.code})`;
+        if (uploadError.code) { 
+          errorDescription += ` (Error: ${uploadError.code}). Please check Firebase Storage rules.`;
         }
-        toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive" });
+        toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive", duration: 7000 });
+        // Keep receiptFileNameToStore if file was selected, even if upload fails
+        if (receiptFile) {
+            receiptFileNameToStore = receiptFile.name;
+        }
       }
     } else if (receiptFile && !isOnline) {
       receiptFileNameToStore = receiptFile.name;
-      toast({ title: "Offline Receipt", description: "Receipt file noted. Will be processed when online.", variant: "default" });
+      toast({ title: "Offline Receipt", description: "Receipt file noted. Will attempt upload when online.", variant: "default" });
     }
 
     const expenseDataForStorage: StoredExpenseData = {
@@ -406,13 +410,13 @@ export default function AddExpensePage() {
       participants: expenseParticipants,
       tempId: `pending-${Date.now()}`, 
       actorNameForLog: actor?.name || 'User',
-      receiptUrl: receiptUrlToStore,
+      receiptUrl: receiptUrlToStore, // This will be undefined if upload failed or offline
       receiptFileName: receiptFileNameToStore,
     };
 
     if (!isOnline) {
       const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
-      pending.push({...expenseDataForStorage, tempId: `offline-${expenseId}` }); // Use original expenseId for tempId if offline first
+      pending.push({...expenseDataForStorage, tempId: `offline-${expenseId}` }); 
       localStorage.setItem('pendingExpenses', JSON.stringify(pending));
       toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
       addNotification({
@@ -436,11 +440,11 @@ export default function AddExpensePage() {
         createdAt: serverTimestamp()
       };
 
-      if (receiptUrlToStore) {
-        dataToSetInFirestore.receiptUrl = receiptUrlToStore;
+      if (expenseDataForStorage.receiptUrl) { // Only add if successfully uploaded
+        dataToSetInFirestore.receiptUrl = expenseDataForStorage.receiptUrl;
       }
-      if (receiptFileNameToStore) {
-        dataToSetInFirestore.receiptFileName = receiptFileNameToStore;
+      if (expenseDataForStorage.receiptFileName) { // Always add filename if a file was selected
+        dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
       }
 
       const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
@@ -691,3 +695,4 @@ export default function AddExpensePage() {
   );
 }
 
+    
