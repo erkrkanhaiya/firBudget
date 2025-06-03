@@ -11,40 +11,35 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, DollarSign as DollarSignIcon, Send, CalendarDays, User, Loader2, AlertTriangle } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
-import type { Group, User as UserType, Balance, Expense } from '@/types';
+import type { Group, User as UserType, Balance, Expense, Payment, ActivityLog } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format, parseISO } from 'date-fns';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, query, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, getDocs, Timestamp, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { useNotification } from '@/contexts/NotificationContext';
 
-// Helper to calculate balances (can be moved to utils if used elsewhere)
-const calculateGroupBalancesForSettleUp = (groupMembers: UserType[], groupExpenses: Expense[]): Balance[] => {
+// Helper to calculate balances considering expenses and payments
+const calculateBalancesWithPayments = (groupMembers: UserType[], expenses: Expense[], payments: Payment[]): Balance[] => {
     if (groupMembers.length === 0) return [];
     const memberBalances: Record<string, { owes: Record<string, number>, owedBy: Record<string, number>, netBalance: number }> = {};
-    
+
     groupMembers.forEach(member => {
         memberBalances[member.id] = { owes: {}, owedBy: {}, netBalance: 0 };
     });
 
-    groupExpenses.forEach(expense => {
+    // Process expenses
+    expenses.forEach(expense => {
         const payerId = expense.paidByUserId;
-        if (!memberBalances[payerId] && groupMembers.find(m => m.id === payerId)) {
-             memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
+        if (!memberBalances[payerId] && groupMembers.some(m => m.id === payerId)) {
+            memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
         }
-
         expense.participants.forEach(participant => {
             const debtorId = participant.userId;
             const amountOwedByDebtor = participant.amountOwed;
-
-            if (debtorId === payerId) return; 
-            
-            if(!memberBalances[debtorId] && groupMembers.find(m => m.id === debtorId)) {
-                memberBalances[debtorId] = { owes: {}, owedBy: {}, netBalance: 0 };
-            }
-            
+            if (debtorId === payerId) return;
             if (memberBalances[debtorId] && memberBalances[payerId]) {
                 memberBalances[debtorId].owes[payerId] = (memberBalances[debtorId].owes[payerId] || 0) + amountOwedByDebtor;
                 memberBalances[debtorId].netBalance -= amountOwedByDebtor;
@@ -53,6 +48,24 @@ const calculateGroupBalancesForSettleUp = (groupMembers: UserType[], groupExpens
             }
         });
     });
+
+    // Process payments
+    payments.forEach(payment => {
+        const payerId = payment.paidByUserId;
+        const payeeId = payment.paidToUserId;
+        const amount = payment.amount;
+
+        if (memberBalances[payerId] && memberBalances[payeeId]) {
+            // Payer's debt to payee decreases
+            memberBalances[payerId].owes[payeeId] = (memberBalances[payerId].owes[payeeId] || 0) - amount;
+            memberBalances[payerId].netBalance += amount; // Net balance improves as they paid off debt
+
+            // Payee's amount owed by payer decreases
+            memberBalances[payeeId].owedBy[payerId] = (memberBalances[payeeId].owedBy[payerId] || 0) - amount;
+            memberBalances[payeeId].netBalance -= amount; // Net balance reduces as they received payment
+        }
+    });
+
     return Object.entries(memberBalances).map(([userId, balanceData]) => ({
         userId,
         ...balanceData
@@ -65,6 +78,7 @@ export default function SettleUpPage() {
   const router = useRouter();
   const { currentUser } = useUser();
   const { toast } = useToast();
+  const { addNotification } = useNotification();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
 
@@ -78,8 +92,9 @@ export default function SettleUpPage() {
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchGroupAndExpenses = useCallback(async () => {
+  const fetchGroupDataForSettlement = useCallback(async () => {
     if (!currentUser || !groupId) {
       setIsLoading(false);
       if(!currentUser) router.push('/login');
@@ -104,17 +119,15 @@ export default function SettleUpPage() {
 
         if (!fetchedGroup.memberIds.includes(currentUser.id)) {
           toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
-          setError("Access Denied."); // Set error for page display
+          setError("Access Denied.");
           setIsLoading(false);
-          // router.push('/groups'); // Or let the page show access denied message
           return;
         }
         setGroup(fetchedGroup);
         if (currentUser) setPayerId(currentUser.id);
 
-        // Fetch expenses for this group
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
-        const expensesQuery = query(expensesColRef); // No specific order needed for balance calculation
+        const expensesQuery = query(expensesColRef);
         const expensesSnapshot = await getDocs(expensesQuery);
         const fetchedExpenses = expensesSnapshot.docs.map(docSnap => {
             const data = docSnap.data();
@@ -122,16 +135,29 @@ export default function SettleUpPage() {
                 id: docSnap.id, 
                 ...data,
                 date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
+                 createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
             } as Expense;
         });
         
-        const calculatedBalances = calculateGroupBalancesForSettleUp(fetchedGroup.members, fetchedExpenses);
+        const paymentsColRef = collection(db, 'groups', groupId, 'payments');
+        const paymentsQuery = query(paymentsColRef);
+        const paymentsSnapshot = await getDocs(paymentsQuery);
+        const fetchedPayments = paymentsSnapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            return {
+                id: docSnap.id,
+                ...data,
+                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
+                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+            } as Payment;
+        });
+        
+        const calculatedBalances = calculateBalancesWithPayments(fetchedGroup.members, fetchedExpenses, fetchedPayments);
         setBalances(calculatedBalances);
         
       } else {
         toast({ title: "Group not found", variant: "destructive" });
         setError("Group not found.");
-        // router.push('/groups');
       }
     } catch (err) {
       console.error("Error fetching data for settle up:", err);
@@ -143,24 +169,24 @@ export default function SettleUpPage() {
   }, [groupId, currentUser, router, toast]);
   
   useEffect(() => {
-    fetchGroupAndExpenses();
-  }, [fetchGroupAndExpenses]);
+    fetchGroupDataForSettlement();
+  }, [fetchGroupDataForSettlement]);
   
   useEffect(() => {
     if (payerId && balances.length > 0 && group) {
       const payerBalance = balances.find(b => b.userId === payerId);
-      if (payerBalance && payerBalance.netBalance < -0.005) { // Payer owes money
+      if (payerBalance && payerBalance.netBalance < -0.005) { // Payer owes money overall
+        // Find who the payer owes the most to within the group
         const owesMostEntry = Object.entries(payerBalance.owes)
-                                    .filter(([,owedAmount]) => owedAmount > 0.005) // filter out negligible amounts
-                                    .sort(([,a],[,b]) => b - a)[0]; // who they owe the most
+                                    .filter(([, owedAmount]) => owedAmount > 0.005)
+                                    .sort(([,a],[,b]) => b - a)[0];
         if (owesMostEntry) {
           const suggestedPayeeId = owesMostEntry[0];
-          // Ensure suggested payee is actually a member of the current group and not the payer
           if (group.members.some(m => m.id === suggestedPayeeId) && suggestedPayeeId !== payerId) {
             setPayeeId(suggestedPayeeId);
-            setAmount(owesMostEntry[1].toFixed(2));
+            setAmount(Math.min(owesMostEntry[1], Math.abs(payerBalance.netBalance)).toFixed(2)); // Suggest paying up to what they owe this person, or their net debt if smaller
           } else {
-            setPayeeId(''); // Clear if no valid suggestion
+            setPayeeId('');
             setAmount('');
           }
         } else {
@@ -168,7 +194,6 @@ export default function SettleUpPage() {
           setAmount('');
         }
       } else {
-        // Payer is owed or settled, clear suggestions or suggest paying someone they are owed by if that's desired
         setPayeeId('');
         setAmount('');
       }
@@ -199,12 +224,12 @@ export default function SettleUpPage() {
     );
   }
   
-  if (!currentUser || !group) { // Should be caught by isLoading or error, but good to have
-    return <p>Loading or an error occurred...</p>;
+  if (!currentUser || !group) {
+    return <p className="text-center p-4">Loading group data or an error occurred...</p>;
   }
 
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!payerId || !payeeId || !amount || parseFloat(amount) <= 0 || !paymentDate || !paymentMethod) {
       toast({ title: "Missing Information", description: "Please fill all required fields for the payment.", variant: "destructive" });
@@ -215,26 +240,72 @@ export default function SettleUpPage() {
       return;
     }
 
-    // TODO: In a real app, send this to Firestore to record the payment
-    // This would likely involve creating a new document in a 'payments' subcollection
-    // or a specific type of 'activityLog' entry.
-    // After successful save, balances would need to be recalculated or adjusted.
-    console.log("Submitting payment (mock):", {
+    setIsSubmitting(true);
+    const numericAmount = parseFloat(amount);
+    const payerUser = group.members.find(m => m.id === payerId);
+    const payeeUser = group.members.find(m => m.id === payeeId);
+
+    if (!payerUser || !payeeUser) {
+        toast({ title: "User Not Found", description: "Payer or payee could not be identified in the group.", variant: "destructive"});
+        setIsSubmitting(false);
+        return;
+    }
+
+    const paymentForFirestore: Omit<Payment, 'id' | 'createdAt'> = {
       groupId,
       paidByUserId: payerId,
       paidToUserId: payeeId,
-      amount: parseFloat(amount),
+      amount: numericAmount,
       date: paymentDate.toISOString(),
-      method: paymentMethod,
-      notes,
-    });
+      method: paymentMethod as Payment['method'],
+      notes: notes.trim(),
+    };
 
-    toast({
-      title: "Payment Recorded (Mock)!",
-      description: `Payment of ${getCurrencySymbol()}${parseFloat(amount).toFixed(2)} from ${group.members.find(m=>m.id===payerId)?.name} to ${group.members.find(m=>m.id===payeeId)?.name} has been logged. Balance recalculation would happen next.`,
-    });
-    // Potentially clear form or redirect. For now, just show toast.
-    // router.push(`/groups/${groupId}?tab=balances`); // Redirect if payment was real
+    const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
+      groupId,
+      userId: payerId, // The user performing the action or central to it
+      actionType: 'payment_recorded',
+      description: `${payerUser.name || 'User'} paid ${getCurrencySymbol()}${numericAmount.toFixed(2)} to ${payeeUser.name || 'User'} via ${paymentMethod}. ${notes.trim() ? `Notes: ${notes.trim()}` : ''}`,
+      relatedPaymentId: '', // Will be set after payment doc is created
+      actorName: payerUser.name,
+    };
+    
+    try {
+        const batch = writeBatch(db);
+        
+        const paymentsColRef = collection(db, 'groups', groupId, 'payments');
+        const newPaymentDocRef = doc(paymentsColRef); // Auto-generate ID
+        activityLogForFirestore.relatedPaymentId = newPaymentDocRef.id; // Link activity log to payment
+
+        batch.set(newPaymentDocRef, { ...paymentForFirestore, createdAt: serverTimestamp() });
+        
+        const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
+        batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
+        
+        await batch.commit();
+
+      toast({
+        title: "Payment Recorded!",
+        description: `Payment of ${getCurrencySymbol()}${numericAmount.toFixed(2)} from ${payerUser.name} to ${payeeUser.name} has been saved to Firestore.`,
+      });
+      addNotification({
+          title: "Payment Recorded",
+          message: `You recorded a payment from ${payerUser.name} to ${payeeUser.name} in group "${group.name}".`,
+          type: "success",
+          href: `/groups/${groupId}?tab=balances`
+      });
+      router.push(`/groups/${groupId}?refresh=${Date.now()}&tab=balances`);
+    } catch (error) {
+        console.error("Error recording payment:", error);
+        toast({ title: "Error", description: "Could not record payment to Firestore.", variant: "destructive" });
+        addNotification({
+          title: "Payment Record Failed",
+          message: `Failed to record payment in group "${group.name}".`,
+          type: "destructive",
+      });
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   return (
@@ -247,14 +318,14 @@ export default function SettleUpPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Settle Up in "{group.name}"</CardTitle>
-          <CardDescription>Record a payment made to settle debts. Uses Firestore data for suggestions.</CardDescription>
+          <CardDescription>Record a payment made to settle debts. Uses Firestore data for suggestions. This will update group balances.</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="payerId">Who Paid?*</Label>
-                <Select value={payerId} onValueChange={setPayerId} required>
+                <Select value={payerId} onValueChange={setPayerId} required disabled={isSubmitting}>
                   <SelectTrigger id="payerId">
                      <User className="mr-2 h-4 w-4 text-muted-foreground inline-block" /> <SelectValue placeholder="Select payer" />
                   </SelectTrigger>
@@ -269,7 +340,7 @@ export default function SettleUpPage() {
               </div>
               <div>
                 <Label htmlFor="payeeId">To Whom?*</Label>
-                <Select value={payeeId} onValueChange={setPayeeId} required>
+                <Select value={payeeId} onValueChange={setPayeeId} required disabled={isSubmitting}>
                   <SelectTrigger id="payeeId">
                      <User className="mr-2 h-4 w-4 text-muted-foreground inline-block" /> <SelectValue placeholder="Select payee" />
                   </SelectTrigger>
@@ -299,6 +370,7 @@ export default function SettleUpPage() {
                         required
                         step="0.01"
                         min="0.01"
+                        disabled={isSubmitting}
                     />
                     </div>
                 </div>
@@ -309,6 +381,7 @@ export default function SettleUpPage() {
                             <Button
                             variant={"outline"}
                             className="w-full justify-start text-left font-normal"
+                            disabled={isSubmitting}
                             >
                             <CalendarDays className="mr-2 h-4 w-4" />
                             {paymentDate ? format(paymentDate, "PPP") : <span>Pick a date</span>}
@@ -320,6 +393,7 @@ export default function SettleUpPage() {
                             selected={paymentDate}
                             onSelect={setPaymentDate}
                             initialFocus
+                            disabled={isSubmitting}
                             />
                         </PopoverContent>
                     </Popover>
@@ -328,7 +402,7 @@ export default function SettleUpPage() {
 
             <div>
               <Label htmlFor="paymentMethod">Payment Method*</Label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod} required>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod} required disabled={isSubmitting}>
                 <SelectTrigger id="paymentMethod">
                   <SelectValue placeholder="Select method (e.g., Cash, UPI)" />
                 </SelectTrigger>
@@ -348,17 +422,23 @@ export default function SettleUpPage() {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="e.g., Settled for dinner, Reimbursement"
+                disabled={isSubmitting}
               />
             </div>
-            {payeeId && parseFloat(amount) > 0 && (
+            {payeeId && parseFloat(amount) > 0 && group.members.find(m => m.id === payerId) && group.members.find(m => m.id === payeeId) && (
               <p className="text-sm text-muted-foreground">
                 You are about to record a payment of <span className="font-semibold">{getCurrencySymbol()}{parseFloat(amount).toFixed(2)}</span> from <span className="font-semibold">{group.members.find(m => m.id === payerId)?.name || 'Payer'}</span> to <span className="font-semibold">{group.members.find(m => m.id === payeeId)?.name || 'Payee'}</span>.
               </p>
             )}
           </CardContent>
           <CardFooter className="border-t px-6 py-4">
-            <Button type="submit" className="ml-auto" disabled={!payerId || !payeeId || !amount || parseFloat(amount) <= 0}>
-              <Send className="mr-2 h-4 w-4" /> Record Payment
+            <Button type="submit" className="ml-auto" disabled={isSubmitting || !payerId || !payeeId || !amount || parseFloat(amount) <= 0}>
+              {isSubmitting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              {isSubmitting ? "Recording..." : "Record Payment"}
             </Button>
           </CardFooter>
         </form>
@@ -366,5 +446,3 @@ export default function SettleUpPage() {
     </div>
   );
 }
-
-    

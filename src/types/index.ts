@@ -46,21 +46,21 @@ export interface Payment {
   paidToUserId: string;
   amount: number;
   date: string; // ISO string format
-  method: 'cash' | 'upi' | 'bank_transfer' | 'paypal' | 'venmo' | 'other';
+  method: 'cash' | 'upi' | 'bank_transfer' | 'other'; // Simplified methods
   notes?: string;
-  createdAt: string;
+  createdAt: string; // ISO string format for Firestore serverTimestamp
 }
 
 export interface ActivityLog {
   id: string;
   groupId: string;
-  userId: string;
+  userId: string; // User who performed the action OR the user central to the action (e.g. paidByUserId for payment)
   actionType: 'expense_added' | 'expense_edited' | 'expense_deleted' | 'payment_recorded' | 'member_added' | 'member_removed' | 'group_created' | 'group_edited';
   timestamp: string; // ISO string format
   description: string;
   relatedExpenseId?: string;
   relatedPaymentId?: string;
-  relatedUserId?: string;
+  relatedUserId?: string; // e.g., for member_added/removed, the ID of the member affected
   actorName?: string; // Added for easier display in activity feed
   actorAvatarUrl?: string | null; // Added for easier display
   groupName?: string; // Added for easier display
@@ -68,9 +68,9 @@ export interface ActivityLog {
 
 export interface Balance {
   userId: string;
-  owes: { [key: string]: number };
-  owedBy: { [key: string]: number };
-  netBalance: number;
+  owes: { [key: string]: number }; // Key is userId of who they owe, value is amount
+  owedBy: { [key: string]: number }; // Key is userId of who owes them, value is amount
+  netBalance: number; // Positive if owed by others, negative if owes others
 }
 
 export type Currency = 'USD' | 'INR';
