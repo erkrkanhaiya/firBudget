@@ -22,7 +22,7 @@ import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch, type DocumentData, type SetOptions } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
 
 interface StoredExpenseData {
@@ -33,7 +33,7 @@ interface StoredExpenseData {
   date: string; // ISO string
   participants: ExpenseParticipant[];
   tempId: string; // For UI identification before sync
-  actorNameForLog: string | null; 
+  actorNameForLog: string | null;
   receiptUrl?: string;
   receiptFileName?: string;
 }
@@ -45,7 +45,7 @@ export default function AddExpensePage() {
   const { toast } = useToast();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
-  const { addNotification } = useNotification(); 
+  const { addNotification } = useNotification();
 
   const [group, setGroup] = useState<Group | null>(null);
   const [description, setDescription] = useState('');
@@ -55,7 +55,7 @@ export default function AddExpensePage() {
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [splitEqually, setSplitEqually] = useState(true);
   const [customSplitAmounts, setCustomSplitAmounts] = useState<Record<string, string>>({});
-  
+
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
@@ -154,31 +154,36 @@ export default function AddExpensePage() {
 
           for (const storedExp of expensesToSyncForThisGroup) {
             const expenseColRef = collection(db, 'groups', storedExp.groupId, 'expenses');
-            const newExpenseDocRef = doc(expenseColRef); 
-            
-            const expenseForFirestore: Omit<Expense, 'id' | 'createdAt'> = {
+            const newExpenseDocRef = doc(expenseColRef);
+
+            const expenseDataForFirestore: DocumentData = {
               groupId: storedExp.groupId,
               description: storedExp.description,
               amount: storedExp.amount,
               paidByUserId: storedExp.paidByUserId,
-              date: storedExp.date, 
+              date: storedExp.date,
               participants: storedExp.participants,
-              receiptUrl: storedExp.receiptUrl, // Actual upload will happen if this is a blob or needs processing
-              receiptFileName: storedExp.receiptFileName,
+              createdAt: serverTimestamp()
             };
-            batch.set(newExpenseDocRef, { ...expenseForFirestore, createdAt: serverTimestamp() });
+            if (storedExp.receiptUrl !== undefined) {
+              expenseDataForFirestore.receiptUrl = storedExp.receiptUrl;
+            }
+            if (storedExp.receiptFileName !== undefined) {
+              expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
+            }
+            batch.set(newExpenseDocRef, expenseDataForFirestore);
 
             const activityLogColRef = collection(db, 'groups', storedExp.groupId, 'activityLog');
             const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
               groupId: storedExp.groupId,
-              userId: storedExp.paidByUserId, 
+              userId: storedExp.paidByUserId,
               actionType: 'expense_added',
               description: `${storedExp.actorNameForLog || 'User'} added expense: ${storedExp.description} (synced from offline)`,
-              relatedExpenseId: newExpenseDocRef.id, 
+              relatedExpenseId: newExpenseDocRef.id,
             };
             batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
             syncedCount++;
-            
+
             addNotification({
               title: "Offline Expense Synced",
               message: `Expense "${storedExp.description}" for group "${group.name}" submitted.`,
@@ -199,7 +204,7 @@ export default function AddExpensePage() {
               title: "Back Online!",
               description: `${syncedCount} pending expense(s) for this group have been submitted to Firestore.`,
             });
-             router.refresh(); 
+             router.refresh();
           } catch (error) {
             console.error("Error syncing expenses to Firestore:", error);
             toast({ title: "Sync Error", description: "Some offline expenses could not be synced.", variant: "destructive" });
@@ -224,20 +229,20 @@ export default function AddExpensePage() {
       </div>
     );
   }
-  
+
   const handleParticipantChange = (userId: string, isChecked: boolean) => {
     setSelectedParticipantIds(prev => {
-        const newParticipants = isChecked 
-            ? [...prev, userId] 
+        const newParticipants = isChecked
+            ? [...prev, userId]
             : prev.filter(id => id !== userId);
 
         if (!splitEqually) {
             setCustomSplitAmounts(currentAmounts => {
                 const updatedAmounts = { ...currentAmounts };
-                if (!isChecked && userId in updatedAmounts) { 
-                    updatedAmounts[userId] = ''; 
-                } else if (isChecked && !(userId in updatedAmounts)) { 
-                    updatedAmounts[userId] = ''; 
+                if (!isChecked && userId in updatedAmounts) {
+                    updatedAmounts[userId] = '';
+                } else if (isChecked && !(userId in updatedAmounts)) {
+                    updatedAmounts[userId] = '';
                 }
                 return updatedAmounts;
             });
@@ -245,13 +250,13 @@ export default function AddExpensePage() {
         return newParticipants;
     });
   };
-  
+
   const handleSplitEquallyChange = (checked: boolean) => {
     setSplitEqually(checked);
-    if (!checked) { 
+    if (!checked) {
         const initialAmounts: Record<string, string> = {};
         selectedParticipantIds.forEach(pid => {
-            initialAmounts[pid] = ''; 
+            initialAmounts[pid] = '';
         });
         setCustomSplitAmounts(initialAmounts);
     }
@@ -335,11 +340,11 @@ export default function AddExpensePage() {
         expenseParticipants.push({ userId, amountOwed: parseFloat(customAmount.toFixed(2)) });
         currentTotalCustomSplit += customAmount;
       }
-      
+
       currentTotalCustomSplit = parseFloat(currentTotalCustomSplit.toFixed(2));
       const totalExpenseAmount = parseFloat(numericAmount.toFixed(2));
 
-      if (Math.abs(currentTotalCustomSplit - totalExpenseAmount) > 0.005) { 
+      if (Math.abs(currentTotalCustomSplit - totalExpenseAmount) > 0.005) {
         toast({
           title: "Custom Split Mismatch",
           description: `The sum of custom shares (${getCurrencySymbol()}${currentTotalCustomSplit.toFixed(2)}) must equal the total expense amount (${getCurrencySymbol()}${totalExpenseAmount.toFixed(2)}). Remaining: ${getCurrencySymbol()}${(totalExpenseAmount - currentTotalCustomSplit).toFixed(2)}`,
@@ -349,10 +354,9 @@ export default function AddExpensePage() {
         return;
       }
     }
-    
+
     const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
 
-    // Placeholder for actual receipt upload logic
     let receiptUrlToStore: string | undefined = undefined;
     let receiptFileNameToStore: string | undefined = undefined;
 
@@ -360,8 +364,6 @@ export default function AddExpensePage() {
         console.warn("Receipt file selected, but actual upload to Firebase Storage is not yet implemented.");
         toast({ title: "Receipt Upload (Demo)", description: "Receipt file selected. Actual cloud upload is pending implementation.", variant: "default"});
         receiptFileNameToStore = receiptFile.name;
-        // In a real scenario, you'd upload `receiptFile` to Firebase Storage here and get `receiptUrlToStore`.
-        // For now, it will be undefined in Firestore.
     }
 
     const expenseDataForStorage: StoredExpenseData = {
@@ -373,7 +375,7 @@ export default function AddExpensePage() {
       participants: expenseParticipants,
       tempId: `pending-${Date.now()}`,
       actorNameForLog: actor?.name || 'User',
-      receiptUrl: receiptUrlToStore, // Will be undefined for now
+      receiptUrl: receiptUrlToStore,
       receiptFileName: receiptFileNameToStore,
     };
 
@@ -394,32 +396,38 @@ export default function AddExpensePage() {
 
     try {
       const expenseColRef = collection(db, 'groups', groupId, 'expenses');
-      const newExpenseDocRef = doc(expenseColRef); 
+      const newExpenseDocRef = doc(expenseColRef);
 
-      const expenseForFirestore: Omit<Expense, 'id' | 'createdAt'> = {
+      const dataToSetInFirestore: DocumentData = {
         groupId: expenseDataForStorage.groupId,
         description: expenseDataForStorage.description,
         amount: expenseDataForStorage.amount,
         paidByUserId: expenseDataForStorage.paidByUserId,
-        date: expenseDataForStorage.date, 
+        date: expenseDataForStorage.date,
         participants: expenseDataForStorage.participants,
-        receiptUrl: expenseDataForStorage.receiptUrl,
-        receiptFileName: expenseDataForStorage.receiptFileName,
+        createdAt: serverTimestamp()
       };
-      
+
+      if (expenseDataForStorage.receiptUrl !== undefined) {
+        dataToSetInFirestore.receiptUrl = expenseDataForStorage.receiptUrl;
+      }
+      if (expenseDataForStorage.receiptFileName !== undefined) {
+        dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
+      }
+
       const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
       const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
         groupId: expenseDataForStorage.groupId,
-        userId: expenseDataForStorage.paidByUserId, 
+        userId: expenseDataForStorage.paidByUserId,
         actionType: 'expense_added',
         description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
-        relatedExpenseId: newExpenseDocRef.id, 
+        relatedExpenseId: newExpenseDocRef.id,
       };
-      
+
       const batch = writeBatch(db);
-      batch.set(newExpenseDocRef, { ...expenseForFirestore, createdAt: serverTimestamp() });
+      batch.set(newExpenseDocRef, dataToSetInFirestore);
       batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
-      
+
       await batch.commit();
 
       toast({
@@ -432,8 +440,8 @@ export default function AddExpensePage() {
         type: "success",
         href: `/groups/${groupId}`,
       });
-      await new Promise(resolve => setTimeout(resolve, 300)); 
-      router.push(`/groups/${groupId}?refresh=${Date.now()}`); 
+      await new Promise(resolve => setTimeout(resolve, 300));
+      router.push(`/groups/${groupId}?refresh=${Date.now()}`);
 
     } catch (error) {
         console.error("Error adding expense to Firestore:", error);
@@ -511,7 +519,7 @@ export default function AddExpensePage() {
                         selected={expenseDate}
                         onSelect={setExpenseDate}
                         initialFocus
-                        disabled={isSubmitting || !expenseDate} 
+                        disabled={isSubmitting || !expenseDate}
                         />
                     </PopoverContent>
                 </Popover>
