@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, FormEvent, ChangeEvent, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -70,15 +70,15 @@ export default function AddExpensePage() {
     setDescription('');
     setAmount('');
     setExpenseDate(new Date());
-    if (currentUser && group) { // Ensure currentUser and group are available
+    if (currentUser && group) { 
         setPaidByUserId(currentUser.id);
         setSelectedParticipantIds(group.members.map(m => m.id));
         const initialCustomAmounts: Record<string, string> = {};
-        group.members.forEach(id => { initialCustomAmounts[id.id] = ''; }); // Assuming group.members[x].id
+        group.members.forEach(id => { initialCustomAmounts[id.id] = ''; }); 
         setCustomSplitAmounts(initialCustomAmounts);
     } else if (currentUser) {
         setPaidByUserId(currentUser.id);
-        setSelectedParticipantIds([]); // Reset if group isn't loaded yet
+        setSelectedParticipantIds([]); 
         setCustomSplitAmounts({});
     }
 
@@ -447,7 +447,7 @@ export default function AddExpensePage() {
         message: `"${description.trim()}" for group "${group.name}" saved locally.`,
         type: "info",
       });
-      resetFormFields(); // Reset form after offline save
+      resetFormFields(); 
       setIsSubmitting(false);
       router.push(`/groups/${groupId}`);
       return;
@@ -496,7 +496,7 @@ export default function AddExpensePage() {
         type: "success",
         href: `/groups/${groupId}`,
       });
-      resetFormFields(); // Reset form after online save
+      resetFormFields(); 
       await new Promise(resolve => setTimeout(resolve, 300));
       router.push(`/groups/${groupId}?refresh=${Date.now()}`);
 
@@ -719,4 +719,3 @@ export default function AddExpensePage() {
     </div>
   );
 }
-
