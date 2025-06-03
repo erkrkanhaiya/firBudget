@@ -21,9 +21,9 @@ import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
-import { db, storage } from '@/lib/firebase'; // Import storage
+import { db, storage } from '@/lib/firebase';
 import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch, type DocumentData, type SetOptions } from 'firebase/firestore';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // Import storage functions
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useNotification } from '@/contexts/NotificationContext'; 
 
 interface StoredExpenseData {
@@ -65,6 +65,30 @@ export default function AddExpensePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingGroup, setIsLoadingGroup] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
+
+  const resetFormFields = useCallback(() => {
+    setDescription('');
+    setAmount('');
+    setExpenseDate(new Date());
+    if (currentUser && group) { // Ensure currentUser and group are available
+        setPaidByUserId(currentUser.id);
+        setSelectedParticipantIds(group.members.map(m => m.id));
+        const initialCustomAmounts: Record<string, string> = {};
+        group.members.forEach(id => { initialCustomAmounts[id.id] = ''; }); // Assuming group.members[x].id
+        setCustomSplitAmounts(initialCustomAmounts);
+    } else if (currentUser) {
+        setPaidByUserId(currentUser.id);
+        setSelectedParticipantIds([]); // Reset if group isn't loaded yet
+        setCustomSplitAmounts({});
+    }
+
+    setSplitEqually(true);
+    setReceiptFile(null);
+    setReceiptPreview(null);
+    const fileInput = document.getElementById('receipt') as HTMLInputElement;
+    if (fileInput) fileInput.value = "";
+  }, [currentUser, group]);
+
 
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
@@ -170,7 +194,7 @@ export default function AddExpensePage() {
             if (storedExp.receiptFileName) {
               expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
             }
-            if (storedExp.receiptUrl) { // Only if it was successfully uploaded before going offline
+            if (storedExp.receiptUrl) {
               expenseDataForFirestore.receiptUrl = storedExp.receiptUrl;
             }
 
@@ -277,7 +301,7 @@ export default function AddExpensePage() {
   const handleReceiptFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) { // Max 5MB
+      if (file.size > 5 * 1024 * 1024) { 
         toast({ title: "File too large", description: "Receipt image cannot exceed 5MB.", variant: "destructive"});
         event.target.value = ""; 
         setReceiptFile(null);
@@ -388,10 +412,9 @@ export default function AddExpensePage() {
         console.error("Error uploading receipt to Firebase Storage:", uploadError);
         let errorDescription = "Could not upload receipt. Expense will be added without it.";
         if (uploadError.code) { 
-          errorDescription += ` (Error: ${uploadError.code}). Please check Firebase Storage rules.`;
+            errorDescription += ` (Error: ${uploadError.code}). Please check Firebase Storage rules.`;
         }
         toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive", duration: 7000 });
-        // Keep receiptFileNameToStore if file was selected, even if upload fails
         if (receiptFile) {
             receiptFileNameToStore = receiptFile.name;
         }
@@ -410,7 +433,7 @@ export default function AddExpensePage() {
       participants: expenseParticipants,
       tempId: `pending-${Date.now()}`, 
       actorNameForLog: actor?.name || 'User',
-      receiptUrl: receiptUrlToStore, // This will be undefined if upload failed or offline
+      receiptUrl: receiptUrlToStore, 
       receiptFileName: receiptFileNameToStore,
     };
 
@@ -424,6 +447,7 @@ export default function AddExpensePage() {
         message: `"${description.trim()}" for group "${group.name}" saved locally.`,
         type: "info",
       });
+      resetFormFields(); // Reset form after offline save
       setIsSubmitting(false);
       router.push(`/groups/${groupId}`);
       return;
@@ -440,10 +464,10 @@ export default function AddExpensePage() {
         createdAt: serverTimestamp()
       };
 
-      if (expenseDataForStorage.receiptUrl) { // Only add if successfully uploaded
+      if (expenseDataForStorage.receiptUrl) {
         dataToSetInFirestore.receiptUrl = expenseDataForStorage.receiptUrl;
       }
-      if (expenseDataForStorage.receiptFileName) { // Always add filename if a file was selected
+      if (expenseDataForStorage.receiptFileName) {
         dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
       }
 
@@ -472,6 +496,7 @@ export default function AddExpensePage() {
         type: "success",
         href: `/groups/${groupId}`,
       });
+      resetFormFields(); // Reset form after online save
       await new Promise(resolve => setTimeout(resolve, 300));
       router.push(`/groups/${groupId}?refresh=${Date.now()}`);
 
@@ -695,4 +720,3 @@ export default function AddExpensePage() {
   );
 }
 
-    
