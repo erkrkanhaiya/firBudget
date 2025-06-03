@@ -155,9 +155,6 @@ export default function AddExpensePage() {
 
           for (const storedExp of expensesToSyncForThisGroup) {
             const expenseColRef = collection(db, 'groups', storedExp.groupId, 'expenses');
-            // For synced expenses, we assume the ID was already generated if it was truly offline,
-            // or we generate one if it was a tempId. Here, we'll assume a new ID for simplicity
-            // as we don't have true offline file upload for receipts yet.
             const newExpenseDocRef = doc(expenseColRef); 
 
             const expenseDataForFirestore: DocumentData = {
@@ -169,9 +166,10 @@ export default function AddExpensePage() {
               participants: storedExp.participants,
               createdAt: serverTimestamp()
             };
-            // For offline expenses, receiptUrl won't be available as upload didn't happen
+            
             if (storedExp.receiptFileName) {
               expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
+              // No receiptUrl if it was an offline entry, as upload didn't happen
             }
             batch.set(newExpenseDocRef, expenseDataForFirestore);
 
@@ -280,16 +278,19 @@ export default function AddExpensePage() {
         toast({ title: "File too large", description: "Receipt image cannot exceed 5MB.", variant: "destructive"});
         return;
       }
-      setReceiptFile(file);
-      if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setReceiptPreview(reader.result as string);
-        };
-        reader.readAsDataURL(file);
-      } else {
-        setReceiptPreview(null); // Not an image, no preview
+      if (!file.type.startsWith("image/")) {
+        toast({ title: "Invalid File Type", description: "Only image files are accepted for receipts.", variant: "destructive"});
+        event.target.value = ""; // Clear the input
+        setReceiptFile(null);
+        setReceiptPreview(null);
+        return;
       }
+      setReceiptFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setReceiptPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     } else {
       setReceiptFile(null);
       setReceiptPreview(null);
@@ -358,8 +359,7 @@ export default function AddExpensePage() {
     }
 
     const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
-
-    // Generate Expense ID first
+    
     const expenseColRef = collection(db, 'groups', groupId, 'expenses');
     const newExpenseDocRef = doc(expenseColRef);
     const expenseId = newExpenseDocRef.id;
@@ -373,19 +373,17 @@ export default function AddExpensePage() {
         const fileStorageRef = storageRef(storage, filePath);
         const uploadTask = uploadBytesResumable(fileStorageRef, receiptFile);
 
-        await uploadTask; // Wait for upload to complete
+        await uploadTask; 
         receiptUrlToStore = await getDownloadURL(uploadTask.snapshot.ref);
         receiptFileNameToStore = receiptFile.name;
         toast({ title: "Receipt Uploaded", description: "Receipt successfully uploaded to Firebase Storage.", variant: "default" });
       } catch (uploadError) {
         console.error("Error uploading receipt to Firebase Storage:", uploadError);
         toast({ title: "Receipt Upload Failed", description: "Could not upload receipt. Expense will be added without it.", variant: "destructive" });
-        // Continue to add expense without receipt if upload fails
       }
     } else if (receiptFile && !isOnline) {
-      // Offline with a receipt selected - store filename, URL will be undefined.
       receiptFileNameToStore = receiptFile.name;
-      toast({ title: "Offline Receipt", description: "Receipt file noted. Will need manual upload later if required.", variant: "default" });
+      toast({ title: "Offline Receipt", description: "Receipt file noted. Will be processed when online.", variant: "default" });
     }
 
 
@@ -396,7 +394,7 @@ export default function AddExpensePage() {
       paidByUserId,
       date: expenseDate.toISOString(),
       participants: expenseParticipants,
-      tempId: `pending-${Date.now()}`, // Still used for local storage keying if offline initially
+      tempId: `pending-${Date.now()}`, 
       actorNameForLog: actor?.name || 'User',
       receiptUrl: receiptUrlToStore,
       receiptFileName: receiptFileNameToStore,
@@ -404,8 +402,6 @@ export default function AddExpensePage() {
 
     if (!isOnline) {
       const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
-      // For true offline, we won't have the expenseId from Firestore yet, so tempId is key.
-      // For simplicity, we'll assume the tempId is enough for now.
       pending.push({...expenseDataForStorage, tempId: `offline-${expenseId}` });
       localStorage.setItem('pendingExpenses', JSON.stringify(pending));
       toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
@@ -419,7 +415,6 @@ export default function AddExpensePage() {
       return;
     }
 
-    // Online submission
     try {
       const dataToSetInFirestore: DocumentData = {
         groupId: expenseDataForStorage.groupId,
@@ -431,10 +426,10 @@ export default function AddExpensePage() {
         createdAt: serverTimestamp()
       };
 
-      if (expenseDataForStorage.receiptUrl) { // Only add if URL exists
+      if (expenseDataForStorage.receiptUrl) {
         dataToSetInFirestore.receiptUrl = expenseDataForStorage.receiptUrl;
       }
-      if (expenseDataForStorage.receiptFileName) { // Only add if filename exists
+      if (expenseDataForStorage.receiptFileName) {
         dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
       }
 
@@ -444,11 +439,11 @@ export default function AddExpensePage() {
         userId: expenseDataForStorage.paidByUserId,
         actionType: 'expense_added',
         description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
-        relatedExpenseId: expenseId, // Use the pre-generated expenseId
+        relatedExpenseId: expenseId,
       };
 
       const batch = writeBatch(db);
-      batch.set(newExpenseDocRef, dataToSetInFirestore); // Use the pre-generated doc ref
+      batch.set(newExpenseDocRef, dataToSetInFirestore);
       batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
 
       await batch.commit();
@@ -569,7 +564,7 @@ export default function AddExpensePage() {
               <Input
                 id="receipt"
                 type="file"
-                accept="image/*,.pdf" // Keep PDF for future, though preview is image-only for now
+                accept="image/*"
                 onChange={handleReceiptFileChange}
                 disabled={isSubmitting}
                 className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
@@ -581,7 +576,7 @@ export default function AddExpensePage() {
                       {receiptPreview ? (
                         <NextImage src={receiptPreview} alt="Receipt preview" width={32} height={32} className="h-8 w-8 object-cover rounded" />
                       ) : (
-                        <Paperclip className="h-5 w-5 text-muted-foreground" />
+                        <ImageIconLucide className="h-5 w-5 text-muted-foreground" />
                       )}
                       <span className="truncate max-w-[200px]">{receiptFile.name}</span>
                       <span className="text-xs text-muted-foreground">({(receiptFile.size / 1024).toFixed(1)} KB)</span>
@@ -592,7 +587,7 @@ export default function AddExpensePage() {
                   </div>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground mt-1">Max file size: 5MB. Images recommended for preview.</p>
+              <p className="text-xs text-muted-foreground mt-1">Max file size: 5MB. Only image files (JPEG, PNG, GIF, etc.) are accepted.</p>
             </div>
 
             <div>
@@ -685,3 +680,4 @@ export default function AddExpensePage() {
     </div>
   );
 }
+
