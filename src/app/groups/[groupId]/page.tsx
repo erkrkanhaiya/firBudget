@@ -849,14 +849,24 @@ export default function GroupDetailPage() {
                                 {expense.receiptFileName && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      {/* In a real scenario, this might be a link to view the receipt */}
-                                      <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0">
-                                        <Paperclip className="h-4 w-4" />
-                                      </Button>
+                                      {expense.receiptUrl ? (
+                                        <Link href={expense.receiptUrl} target="_blank" rel="noopener noreferrer" aria-label={`View receipt for ${expense.description}`}>
+                                          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0">
+                                            <Paperclip className="h-4 w-4" />
+                                          </Button>
+                                        </Link>
+                                      ) : (
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0 cursor-not-allowed" disabled>
+                                          <Paperclip className="h-4 w-4" />
+                                        </Button>
+                                      )}
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>Receipt: {expense.receiptFileName}</p>
-                                      <p className="text-xs">(View/Download not yet implemented)</p>
+                                      <p>
+                                        {expense.receiptUrl ? "View Receipt: " : "Receipt: "}
+                                        {expense.receiptFileName}
+                                      </p>
+                                      {!expense.receiptUrl && <p className="text-xs">(URL missing, offline entry or upload error)</p>}
                                     </TooltipContent>
                                   </Tooltip>
                                 )}
@@ -1086,3 +1096,6 @@ export default function GroupDetailPage() {
     </div>
   );
 }
+
+
+    
