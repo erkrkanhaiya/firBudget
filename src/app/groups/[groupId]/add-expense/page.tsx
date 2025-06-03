@@ -194,7 +194,6 @@ export default function AddExpensePage() {
             if (storedExp.receiptFileName) {
               expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
             }
-            // For offline, receiptUrl might be missing. If it exists (e.g., was somehow added before going offline or feature enhancement) include it.
             if (storedExp.receiptUrl) { 
               expenseDataForFirestore.receiptUrl = storedExp.receiptUrl;
             }
@@ -338,11 +337,13 @@ export default function AddExpensePage() {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
+    console.log("handleSubmit called, isSubmitting set to true");
 
     try {
         if (!description.trim() || !amount || parseFloat(amount) <= 0 || !paidByUserId || selectedParticipantIds.length === 0 || !expenseDate) {
         toast({ title: "Missing Information", description: "Please fill all required fields, ensure amount is positive, and at least one participant is selected.", variant: "destructive" });
         setIsSubmitting(false);
+        console.log("Validation failed, isSubmitting set to false");
         return;
         }
 
@@ -364,12 +365,14 @@ export default function AddExpensePage() {
             if (customAmountStr === undefined || customAmountStr.trim() === '') {
                 toast({ title: "Custom Split Error", description: `Please enter an amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
                 setIsSubmitting(false);
+                 console.log("Custom split error (missing amount), isSubmitting set to false");
                 return;
             }
             const customAmount = parseFloat(customAmountStr);
             if (isNaN(customAmount) || customAmount < 0) {
             toast({ title: "Invalid Amount", description: `Please enter a valid, non-negative amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
             setIsSubmitting(false);
+            console.log("Custom split error (invalid amount), isSubmitting set to false");
             return;
             }
             expenseParticipants.push({ userId, amountOwed: parseFloat(customAmount.toFixed(2)) });
@@ -386,6 +389,7 @@ export default function AddExpensePage() {
             variant: "destructive",
             });
             setIsSubmitting(false);
+            console.log("Custom split mismatch, isSubmitting set to false");
             return;
         }
         }
@@ -393,69 +397,80 @@ export default function AddExpensePage() {
         const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
         
         const expenseColRef = collection(db, 'groups', groupId, 'expenses');
-        const newExpenseDocRef = doc(expenseColRef); // Generate ID upfront
+        const newExpenseDocRef = doc(expenseColRef); 
         const expenseId = newExpenseDocRef.id;
 
         let receiptUrlToStore: string | undefined = undefined;
         let receiptFileNameToStore: string | undefined = undefined;
 
         if (receiptFile && isOnline) {
-        toast({ title: "Uploading Receipt", description: "Please wait...", variant: "default" });
-        try {
-            const filePath = `receipts/${groupId}/${expenseId}/${receiptFile.name}`;
-            const fileStorageRef = storageRef(storage, filePath);
-            const uploadTask = uploadBytesResumable(fileStorageRef, receiptFile);
+            toast({ title: "Uploading Receipt", description: "Please wait...", variant: "default" });
+            console.log("[AddExpense] Attempting to upload receipt file:", receiptFile.name);
+            try {
+                const filePath = `receipts/${groupId}/${expenseId}/${receiptFile.name}`;
+                const fileStorageRef = storageRef(storage, filePath);
+                console.log("[AddExpense] Created storage ref:", filePath);
+                const uploadTask = uploadBytesResumable(fileStorageRef, receiptFile);
+                console.log("[AddExpense] Upload task created. Awaiting completion...");
 
-            await uploadTask; 
-            receiptUrlToStore = await getDownloadURL(uploadTask.snapshot.ref);
-            receiptFileNameToStore = receiptFile.name;
-            toast({ title: "Receipt Uploaded", description: "Receipt successfully uploaded to Firebase Storage.", variant: "default" });
-        } catch (uploadError: any) {
-            console.error("Error uploading receipt to Firebase Storage:", uploadError);
-            let errorDescription = "Could not upload receipt. Expense will be added without it.";
-             if (uploadError.code) { 
-                errorDescription += ` (Error: ${uploadError.code}). Please check Firebase Storage rules.`;
+                await uploadTask; 
+                console.log("[AddExpense] Upload task completed.");
+                
+                receiptFileNameToStore = receiptFile.name; // Set filename here after successful upload too
+                console.log("[AddExpense] Attempting to get download URL...");
+                receiptUrlToStore = await getDownloadURL(uploadTask.snapshot.ref);
+                console.log("[AddExpense] Got download URL:", receiptUrlToStore);
+                
+                toast({ title: "Receipt Uploaded", description: "Receipt successfully uploaded to Firebase Storage.", variant: "default" });
+            } catch (uploadError: any) {
+                console.error("[AddExpense] Error during receipt upload or getting URL:", uploadError);
+                let errorDescription = "Could not upload receipt. Expense will be added without it.";
+                if (uploadError.code) { 
+                    errorDescription += ` (Error: ${uploadError.code}). Please check Firebase Storage rules.`;
+                }
+                toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive", duration: 7000 });
+                if (receiptFile) { // Still try to save filename if a file was chosen
+                    receiptFileNameToStore = receiptFile.name; 
+                }
             }
-            toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive", duration: 7000 });
-            // Don't return, save expense without URL, but keep filename if file was selected
-            if (receiptFile) {
-                receiptFileNameToStore = receiptFile.name; 
-            }
-        }
+            console.log("[AddExpense] Finished receipt processing block.");
         } else if (receiptFile && !isOnline) {
-        receiptFileNameToStore = receiptFile.name; // Store filename for offline
-        toast({ title: "Offline Receipt", description: "Receipt file noted. Will attempt upload when online if feature is enhanced.", variant: "default" });
+            receiptFileNameToStore = receiptFile.name; 
+            toast({ title: "Offline Receipt", description: "Receipt file noted. Upload will be attempted if/when app supports offline uploads.", variant: "default" });
+            console.log("[AddExpense] Receipt noted for offline mode, filename:", receiptFileNameToStore);
         }
+
 
         const expenseDataForStorage: StoredExpenseData = {
-        groupId,
-        description: description.trim(),
-        amount: numericAmount,
-        paidByUserId,
-        date: expenseDate.toISOString(),
-        participants: expenseParticipants,
-        tempId: isOnline ? expenseId : `offline-${Date.now()}`, 
-        actorNameForLog: actor?.name || 'User',
-        receiptUrl: receiptUrlToStore, 
-        receiptFileName: receiptFileNameToStore,
+            groupId,
+            description: description.trim(),
+            amount: numericAmount,
+            paidByUserId,
+            date: expenseDate.toISOString(),
+            participants: expenseParticipants,
+            tempId: isOnline ? expenseId : `offline-${Date.now()}`, 
+            actorNameForLog: actor?.name || 'User',
+            receiptUrl: receiptUrlToStore, 
+            receiptFileName: receiptFileNameToStore,
         };
 
         if (!isOnline) {
-        const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
-        pending.push(expenseDataForStorage); 
-        localStorage.setItem('pendingExpenses', JSON.stringify(pending));
-        toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
-        addNotification({
-            title: "Expense Saved Offline",
-            message: `"${description.trim()}" for group "${group.name}" saved locally.`,
-            type: "info",
-        });
-        resetFormFields();
-        router.push(`/groups/${groupId}`);
-        return; // setIsSubmitting will be handled by finally
+            const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
+            pending.push(expenseDataForStorage); 
+            localStorage.setItem('pendingExpenses', JSON.stringify(pending));
+            toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
+            addNotification({
+                title: "Expense Saved Offline",
+                message: `"${description.trim()}" for group "${group.name}" saved locally.`,
+                type: "info",
+            });
+            console.log("[AddExpense] Expense saved offline.");
+            resetFormFields();
+            router.push(`/groups/${groupId}`);
+            return; 
         }
 
-        // Online submission
+        console.log("[AddExpense] Preparing for online Firestore submission...");
         const dataToSetInFirestore: DocumentData = {
             groupId: expenseDataForStorage.groupId,
             description: expenseDataForStorage.description,
@@ -472,6 +487,7 @@ export default function AddExpensePage() {
         if (expenseDataForStorage.receiptFileName) {
             dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
         }
+        console.log("[AddExpense] Data for Firestore:", dataToSetInFirestore);
 
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
         const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
@@ -481,12 +497,15 @@ export default function AddExpensePage() {
             description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
             relatedExpenseId: expenseId,
         };
+        console.log("[AddExpense] Activity log data:", activityLogForFirestore);
 
         const batch = writeBatch(db);
-        batch.set(newExpenseDocRef, dataToSetInFirestore); // Use the pre-generated doc ref
+        batch.set(newExpenseDocRef, dataToSetInFirestore); 
         batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
 
+        console.log("[AddExpense] Committing batch write to Firestore...");
         await batch.commit();
+        console.log("[AddExpense] Batch write successful.");
 
         toast({
             title: "Expense Added to Firestore!",
@@ -499,11 +518,13 @@ export default function AddExpensePage() {
             href: `/groups/${groupId}`,
         });
         resetFormFields();
-        await new Promise(resolve => setTimeout(resolve, 300)); // Small delay for toast
+        console.log("[AddExpense] Form reset, preparing to navigate...");
+        await new Promise(resolve => setTimeout(resolve, 300)); 
         router.push(`/groups/${groupId}?refresh=${Date.now()}`);
+        console.log("[AddExpense] Navigation triggered.");
 
     } catch (error) {
-        console.error("Error in handleSubmit:", error);
+        console.error("[AddExpense] Error in handleSubmit:", error);
         toast({ title: "Submission Error", description: "Could not save expense. Please try again.", variant: "destructive" });
         addNotification({
         title: "Expense Add Failed",
@@ -512,6 +533,7 @@ export default function AddExpensePage() {
         });
     } finally {
         setIsSubmitting(false);
+        console.log("[AddExpense] handleSubmit finished, isSubmitting set to false in finally block.");
     }
   };
 
