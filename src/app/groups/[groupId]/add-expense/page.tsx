@@ -11,20 +11,22 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info, Loader2, Paperclip, XCircle, Image as ImageIconLucide } from 'lucide-react';
+import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info, Loader2, Paperclip, XCircle, Image as ImageIconLucide, Sparkles } from 'lucide-react';
 import NextImage from 'next/image';
 import { useUser } from '@/contexts/UserContext';
-import type { Group, User as UserType, ExpenseParticipant, Expense, ActivityLog } from '@/types';
+import type { Group, User as UserType, ExpenseParticipant, Expense, ActivityLog, ExpenseCategory } from '@/types';
+import { PREDEFINED_EXPENSE_CATEGORIES } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db, storage } from '@/lib/firebase';
 import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch, type DocumentData, type SetOptions } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useNotification } from '@/contexts/NotificationContext'; 
+import { extractExpenseDetails } from '@/ai/flows/extract-expense-details-flow';
 
 interface StoredExpenseData {
   groupId: string;
@@ -37,6 +39,7 @@ interface StoredExpenseData {
   actorNameForLog: string | null;
   receiptUrl?: string;
   receiptFileName?: string;
+  category?: ExpenseCategory | string;
 }
 
 export default function AddExpensePage() {
@@ -56,6 +59,8 @@ export default function AddExpensePage() {
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [splitEqually, setSplitEqually] = useState(true);
   const [customSplitAmounts, setCustomSplitAmounts] = useState<Record<string, string>>({});
+  const [selectedCategory, setSelectedCategory] = useState<ExpenseCategory | string>('');
+
 
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -66,10 +71,14 @@ export default function AddExpensePage() {
   const [isLoadingGroup, setIsLoadingGroup] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
 
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   const resetFormFields = useCallback(() => {
     setDescription('');
     setAmount('');
     setExpenseDate(new Date());
+    setSelectedCategory('');
     if (currentUser && group) { 
         setPaidByUserId(currentUser.id);
         setSelectedParticipantIds(group.members.map(m => m.id));
@@ -87,6 +96,7 @@ export default function AddExpensePage() {
     setReceiptPreview(null);
     const fileInput = document.getElementById('receipt') as HTMLInputElement;
     if (fileInput) fileInput.value = "";
+    setAiError(null);
   }, [currentUser, group]);
 
 
@@ -188,7 +198,8 @@ export default function AddExpensePage() {
               paidByUserId: storedExp.paidByUserId,
               date: storedExp.date,
               participants: storedExp.participants,
-              createdAt: serverTimestamp()
+              createdAt: serverTimestamp(),
+              category: storedExp.category || 'Other'
             };
             
             if (storedExp.receiptFileName) {
@@ -332,18 +343,87 @@ export default function AddExpensePage() {
     setReceiptPreview(null);
     const fileInput = document.getElementById('receipt') as HTMLInputElement;
     if (fileInput) fileInput.value = "";
+    setAiError(null);
   };
+
+  const handleAiExtract = async () => {
+      if (!receiptPreview) {
+        toast({ title: "No Receipt", description: "Please select a receipt image first.", variant: "destructive" });
+        return;
+      }
+      if (!isOnline) {
+        toast({ title: "Offline Mode", description: "AI features are disabled while offline.", variant: "default" });
+        return;
+      }
+      setIsAiProcessing(true);
+      setAiError(null);
+
+      try {
+        toast({ title: "Analyzing Receipt...", description: "AI is processing the image. This may take a moment.", variant: "default" });
+        const result = await extractExpenseDetails({
+          receiptDataUri: receiptPreview,
+          userDescription: description, 
+        });
+        
+        if (result) {
+          let fieldsUpdated = false;
+          if (result.extractedDescription) { setDescription(result.extractedDescription); fieldsUpdated = true; }
+          if (result.extractedAmount !== undefined && result.extractedAmount !== null) { setAmount(result.extractedAmount.toString()); fieldsUpdated = true; }
+          
+          if (result.extractedDate) {
+            let parsedDate: Date | null = null;
+            const ymdParts = result.extractedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (ymdParts) {
+              const year = parseInt(ymdParts[1]);
+              const month = parseInt(ymdParts[2]) - 1; 
+              const day = parseInt(ymdParts[3]);
+              const tempDate = new Date(Date.UTC(year, month, day));
+              if (!isNaN(tempDate.getTime())) parsedDate = tempDate;
+            }
+            if (!parsedDate) { try { const tempDate = parseISO(result.extractedDate); if (!isNaN(tempDate.getTime())) parsedDate = tempDate; } catch (e) {} }
+            if (!parsedDate) { try { const tempDate = new Date(result.extractedDate); if (!isNaN(tempDate.getTime())) parsedDate = tempDate; } catch (e) {} }
+
+            if (parsedDate) { setExpenseDate(parsedDate); fieldsUpdated = true; }
+             else { console.warn("Could not parse AI suggested date:", result.extractedDate); toast({ title: "AI Date Format Issue", description: `AI suggested date "${result.extractedDate}" couldn't be parsed. Please set manually.`, variant: "default", duration: 7000 }); }
+          }
+
+          if (result.suggestedCategory && PREDEFINED_EXPENSE_CATEGORIES.includes(result.suggestedCategory as ExpenseCategory)) {
+            setSelectedCategory(result.suggestedCategory as ExpenseCategory); fieldsUpdated = true;
+          } else if (result.suggestedCategory) {
+            setSelectedCategory("Other"); fieldsUpdated = true;
+            toast({ title: "AI Category Note", description: `AI suggested "${result.suggestedCategory}", set to "Other". You can change it.`, variant: "default", duration: 5000 });
+          }
+          
+          if (fieldsUpdated) {
+            toast({ title: "AI Autofill Complete", description: "Fields updated based on receipt. Please review." });
+          } else {
+            toast({ title: "AI Analysis Note", description: "AI could not extract significant details. Please fill manually.", variant: "default" });
+          }
+
+        } else {
+          toast({ title: "AI Analysis Failed", description: "Could not extract details from the receipt.", variant: "destructive" });
+          setAiError("AI analysis returned no result.");
+        }
+      } catch (error: any) {
+        console.error("[AddExpense] Error calling AI extraction flow:", error);
+        const errorMessage = error.message || "An unknown error occurred during AI processing.";
+        toast({ title: "AI Error", description: errorMessage, variant: "destructive" });
+        setAiError(errorMessage);
+      } finally {
+        setIsAiProcessing(false);
+      }
+    };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
-    console.log("handleSubmit called, isSubmitting set to true");
+    console.log("[AddExpense] handleSubmit called, isSubmitting set to true");
 
     try {
         if (!description.trim() || !amount || parseFloat(amount) <= 0 || !paidByUserId || selectedParticipantIds.length === 0 || !expenseDate) {
         toast({ title: "Missing Information", description: "Please fill all required fields, ensure amount is positive, and at least one participant is selected.", variant: "destructive" });
         setIsSubmitting(false);
-        console.log("Validation failed, isSubmitting set to false");
+        console.log("[AddExpense] Validation failed, isSubmitting set to false");
         return;
         }
 
@@ -365,14 +445,14 @@ export default function AddExpensePage() {
             if (customAmountStr === undefined || customAmountStr.trim() === '') {
                 toast({ title: "Custom Split Error", description: `Please enter an amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
                 setIsSubmitting(false);
-                 console.log("Custom split error (missing amount), isSubmitting set to false");
+                 console.log("[AddExpense] Custom split error (missing amount), isSubmitting set to false");
                 return;
             }
             const customAmount = parseFloat(customAmountStr);
             if (isNaN(customAmount) || customAmount < 0) {
             toast({ title: "Invalid Amount", description: `Please enter a valid, non-negative amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
             setIsSubmitting(false);
-            console.log("Custom split error (invalid amount), isSubmitting set to false");
+            console.log("[AddExpense] Custom split error (invalid amount), isSubmitting set to false");
             return;
             }
             expenseParticipants.push({ userId, amountOwed: parseFloat(customAmount.toFixed(2)) });
@@ -389,7 +469,7 @@ export default function AddExpensePage() {
             variant: "destructive",
             });
             setIsSubmitting(false);
-            console.log("Custom split mismatch, isSubmitting set to false");
+            console.log("[AddExpense] Custom split mismatch, isSubmitting set to false");
             return;
         }
         }
@@ -416,7 +496,7 @@ export default function AddExpensePage() {
                 await uploadTask; 
                 console.log("[AddExpense] Upload task completed.");
                 
-                receiptFileNameToStore = receiptFile.name; // Set filename here after successful upload too
+                receiptFileNameToStore = receiptFile.name;
                 console.log("[AddExpense] Attempting to get download URL...");
                 receiptUrlToStore = await getDownloadURL(uploadTask.snapshot.ref);
                 console.log("[AddExpense] Got download URL:", receiptUrlToStore);
@@ -429,14 +509,14 @@ export default function AddExpensePage() {
                     errorDescription += ` (Error: ${uploadError.code}). Please check Firebase Storage rules.`;
                 }
                 toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive", duration: 7000 });
-                if (receiptFile) { // Still try to save filename if a file was chosen
+                if (receiptFile) { 
                     receiptFileNameToStore = receiptFile.name; 
                 }
             }
             console.log("[AddExpense] Finished receipt processing block.");
         } else if (receiptFile && !isOnline) {
             receiptFileNameToStore = receiptFile.name; 
-            toast({ title: "Offline Receipt", description: "Receipt file noted. Upload will be attempted if/when app supports offline uploads.", variant: "default" });
+            toast({ title: "Offline Receipt", description: "Receipt file noted. Upload will be attempted when online if app supports it.", variant: "default" });
             console.log("[AddExpense] Receipt noted for offline mode, filename:", receiptFileNameToStore);
         }
 
@@ -452,6 +532,7 @@ export default function AddExpensePage() {
             actorNameForLog: actor?.name || 'User',
             receiptUrl: receiptUrlToStore, 
             receiptFileName: receiptFileNameToStore,
+            category: selectedCategory || 'Other',
         };
 
         if (!isOnline) {
@@ -466,7 +547,7 @@ export default function AddExpensePage() {
             });
             console.log("[AddExpense] Expense saved offline.");
             resetFormFields();
-            router.push(`/groups/${groupId}`);
+            router.push(`/groups/${groupId}?refresh=${Date.now()}`);
             return; 
         }
 
@@ -478,7 +559,8 @@ export default function AddExpensePage() {
             paidByUserId: expenseDataForStorage.paidByUserId,
             date: expenseDataForStorage.date,
             participants: expenseDataForStorage.participants,
-            createdAt: serverTimestamp()
+            createdAt: serverTimestamp(),
+            category: expenseDataForStorage.category,
         };
 
         if (expenseDataForStorage.receiptUrl) {
@@ -552,6 +634,55 @@ export default function AddExpensePage() {
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-6">
             <div>
+              <Label htmlFor="receipt">Receipt (Optional)</Label>
+              <Input
+                id="receipt"
+                type="file"
+                accept="image/*"
+                onChange={handleReceiptFileChange}
+                disabled={isSubmitting || isAiProcessing}
+                className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+              />
+              {receiptFile && (
+                <div className="mt-2 p-2 border rounded-md bg-muted/50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                      {receiptPreview ? (
+                        <NextImage src={receiptPreview} alt="Receipt preview" width={32} height={32} className="h-8 w-8 object-cover rounded" />
+                      ) : (
+                        <ImageIconLucide className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      <span className="truncate max-w-[200px]">{receiptFile.name}</span>
+                      <span className="text-xs text-muted-foreground">({(receiptFile.size / 1024).toFixed(1)} KB)</span>
+                    </div>
+                    <Button type="button" variant="ghost" size="icon" onClick={removeReceiptFile} disabled={isSubmitting || isAiProcessing} className="h-7 w-7">
+                      <XCircle className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">Max file size: 5MB. Only image files (JPEG, PNG, GIF, etc.) are accepted.</p>
+              {receiptPreview && (
+                <Button
+                  type="button"
+                  onClick={handleAiExtract}
+                  variant="outline"
+                  className="w-full mt-2"
+                  disabled={isAiProcessing || !isOnline || isSubmitting}
+                >
+                  {isAiProcessing ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4 text-primary" />
+                  )}
+                  {isAiProcessing ? 'Analyzing Receipt...' : 'Auto-fill from Receipt (AI)'}
+                </Button>
+              )}
+              {!isOnline && receiptPreview && <p className="text-xs text-muted-foreground text-center mt-1">AI auto-fill disabled in offline mode.</p>}
+              {aiError && <p className="text-sm text-destructive mt-1 text-center">{aiError}</p>}
+            </div>
+
+            <div>
               <Label htmlFor="description">Description*</Label>
               <Input
                 id="description"
@@ -559,7 +690,7 @@ export default function AddExpensePage() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="e.g., Groceries, Dinner, Train tickets"
                 required
-                disabled={isSubmitting}
+                disabled={isSubmitting || isAiProcessing}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -577,7 +708,7 @@ export default function AddExpensePage() {
                     required
                     step="0.01"
                     min="0.01"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isAiProcessing}
                   />
                 </div>
               </div>
@@ -588,7 +719,7 @@ export default function AddExpensePage() {
                         <Button
                         variant={"outline"}
                         className="w-full justify-start text-left font-normal"
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || isAiProcessing}
                         >
                         <CalendarDays className="mr-2 h-4 w-4" />
                         {expenseDate ? format(expenseDate, "PPP") : <span>Pick a date</span>}
@@ -600,15 +731,34 @@ export default function AddExpensePage() {
                         selected={expenseDate}
                         onSelect={setExpenseDate}
                         initialFocus
-                        disabled={isSubmitting || !expenseDate}
+                        disabled={isSubmitting || isAiProcessing || !expenseDate}
                         />
                     </PopoverContent>
                 </Popover>
               </div>
             </div>
+             <div>
+              <Label htmlFor="category">Category</Label>
+              <Select
+                value={selectedCategory}
+                onValueChange={(value) => setSelectedCategory(value as ExpenseCategory)}
+                disabled={isSubmitting || isAiProcessing}
+              >
+                <SelectTrigger id="category">
+                  <SelectValue placeholder="Select a category (e.g., Food)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PREDEFINED_EXPENSE_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label htmlFor="paidBy">Paid by*</Label>
-              <Select value={paidByUserId} onValueChange={setPaidByUserId} required disabled={isSubmitting}>
+              <Select value={paidByUserId} onValueChange={setPaidByUserId} required disabled={isSubmitting || isAiProcessing}>
                 <SelectTrigger id="paidBy">
                   <User className="mr-2 h-4 w-4 text-muted-foreground inline-block" /> <SelectValue placeholder="Select who paid" />
                 </SelectTrigger>
@@ -621,38 +771,6 @@ export default function AddExpensePage() {
                 </SelectContent>
               </Select>
             </div>
-
-            <div>
-              <Label htmlFor="receipt">Receipt (Optional)</Label>
-              <Input
-                id="receipt"
-                type="file"
-                accept="image/*"
-                onChange={handleReceiptFileChange}
-                disabled={isSubmitting}
-                className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-              />
-              {receiptFile && (
-                <div className="mt-2 p-2 border rounded-md bg-muted/50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                      {receiptPreview ? (
-                        <NextImage src={receiptPreview} alt="Receipt preview" width={32} height={32} className="h-8 w-8 object-cover rounded" />
-                      ) : (
-                        <ImageIconLucide className="h-5 w-5 text-muted-foreground" />
-                      )}
-                      <span className="truncate max-w-[200px]">{receiptFile.name}</span>
-                      <span className="text-xs text-muted-foreground">({(receiptFile.size / 1024).toFixed(1)} KB)</span>
-                    </div>
-                    <Button type="button" variant="ghost" size="icon" onClick={removeReceiptFile} disabled={isSubmitting} className="h-7 w-7">
-                      <XCircle className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground mt-1">Max file size: 5MB. Only image files (JPEG, PNG, GIF, etc.) are accepted.</p>
-            </div>
-
             <div>
               <Label>Participants*</Label>
               <p className="text-xs text-muted-foreground mb-2">Select who this expense should be split amongst.</p>
@@ -663,7 +781,7 @@ export default function AddExpensePage() {
                       id={`participant-${member.id}`}
                       checked={selectedParticipantIds.includes(member.id)}
                       onCheckedChange={(checked) => handleParticipantChange(member.id, Boolean(checked))}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || isAiProcessing}
                     />
                     <Label htmlFor={`participant-${member.id}`} className="font-normal cursor-pointer">
                       {member.name} {member.id === currentUser.id && "(You)"}
@@ -677,7 +795,7 @@ export default function AddExpensePage() {
                   id="splitEqually"
                   checked={splitEqually}
                   onCheckedChange={(checked) => handleSplitEquallyChange(Boolean(checked))}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isAiProcessing}
                 />
                 <Label htmlFor="splitEqually" className="font-normal">Split equally</Label>
             </div>
@@ -705,7 +823,7 @@ export default function AddExpensePage() {
                             className="pl-8"
                             step="0.01"
                             min="0"
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || isAiProcessing}
                          />
                       </div>
                     </div>
@@ -729,7 +847,7 @@ export default function AddExpensePage() {
 
           </CardContent>
           <CardFooter className="border-t px-6 py-4">
-            <Button type="submit" className="ml-auto" disabled={isSubmitting || (!splitEqually && Math.abs(remainingToAllocate) >= 0.005)}>
+            <Button type="submit" className="ml-auto" disabled={isSubmitting || isAiProcessing || (!splitEqually && Math.abs(remainingToAllocate) >= 0.005)}>
               {isSubmitting ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
