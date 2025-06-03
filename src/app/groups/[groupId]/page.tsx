@@ -8,9 +8,9 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory } from '@/types';
+import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact } from '@/types';
 import { useUser } from '@/contexts/UserContext';
 import { format, parseISO } from 'date-fns';
 import {
@@ -25,6 +25,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -38,15 +49,16 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/firebase'; 
-import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction, QuerySnapshot } from 'firebase/firestore';
+import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction, updateDoc, arrayUnion, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext'; 
 import React from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
+
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDFWithAutoTable;
 }
 
-// Helper to get initials
 const getInitials = (name: string | undefined | null) => {
   if (!name) return "U";
   const names = name.split(' ');
@@ -83,6 +95,12 @@ export default function GroupDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [isWebShareSupported, setIsWebShareSupported] = useState(false);
+
+  const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
+  const [potentialNewMembers, setPotentialNewMembers] = useState<UserType[]>([]);
+  const [isLoadingPotentialMembers, setIsLoadingPotentialMembers] = useState(false);
+  const [selectedContactsToAdd, setSelectedContactsToAdd] = useState<string[]>([]);
+  const [isAddingMembers, setIsAddingMembers] = useState(false);
   
   const memberDetailsMap = useMemo(() => {
     if (!group || !group.members) return new Map<string, UserType>();
@@ -91,13 +109,13 @@ export default function GroupDetailPage() {
     return map;
   }, [group]);
 
-  const fetchGroupData = useCallback(async () => {
+  const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
     if (!currentUser || !groupId) {
-      setIsLoading(false);
+      if(showLoadingSpinner) setIsLoading(false);
       if(!currentUser) router.push('/login');
       return;
     }
-    setIsLoading(true);
+    if(showLoadingSpinner) setIsLoading(true);
     setAccessDenied(false);
 
     try {
@@ -119,12 +137,11 @@ export default function GroupDetailPage() {
         if (fetchedGroup.visibility === 'private' && !isMember) {
           toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
           setAccessDenied(true);
-          setIsLoading(false);
+          if(showLoadingSpinner) setIsLoading(false);
           return;
         }
         setGroup(fetchedGroup);
 
-        // Fetch expenses
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
         const expensesQuery = query(expensesColRef, orderBy('date', 'desc'));
         const expensesSnapshot = await getDocs(expensesQuery);
@@ -139,7 +156,6 @@ export default function GroupDetailPage() {
         });
         setFirestoreExpenses(fetchedExpenses);
 
-        // Fetch activity logs
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
         const activityLogQuery = query(activityLogColRef, orderBy('timestamp', 'desc'));
         const activityLogSnapshot = await getDocs(activityLogQuery);
@@ -165,7 +181,7 @@ export default function GroupDetailPage() {
       toast({ title: "Error", description: "Could not fetch group details.", variant: "destructive" });
       setAccessDenied(true);
     } finally {
-      setIsLoading(false);
+      if(showLoadingSpinner) setIsLoading(false);
     }
   }, [groupId, currentUser, router, toast]);
 
@@ -429,6 +445,122 @@ export default function GroupDetailPage() {
     }
   };
 
+  const fetchPotentialNewMembers = async () => {
+    if (!currentUser || !group) return;
+    setIsLoadingPotentialMembers(true);
+    try {
+      const contactsCollectionRef = collection(db, "appMemberContacts");
+      const q = query(
+        contactsCollectionRef,
+        where("addedByUid", "==", currentUser.id),
+        orderBy("name", "asc")
+      );
+      const contactsSnapshot = await getDocs(q);
+      const contactsList = contactsSnapshot.docs
+        .map(docSnap => {
+          const data = docSnap.data() as AppMemberContact;
+          return {
+            id: docSnap.id,
+            name: data.name,
+            email: null, // AppMemberContact doesn't store email
+            avatarUrl: undefined, // AppMemberContact doesn't store avatar
+          } as UserType;
+        })
+        .filter(contact => !group.memberIds.includes(contact.id)); // Filter out existing members
+      
+      setPotentialNewMembers(contactsList);
+    } catch (error) {
+      console.error("Error fetching potential new members:", error);
+      toast({ title: "Error", description: "Could not load your contacts. Ensure Firestore indexes are set.", variant: "destructive" });
+    } finally {
+      setIsLoadingPotentialMembers(false);
+    }
+  };
+
+  const handleAddMemberDialogOpenChange = (open: boolean) => {
+    setIsAddMemberDialogOpen(open);
+    if (open) {
+      fetchPotentialNewMembers();
+      setSelectedContactsToAdd([]); // Reset selection
+    }
+  };
+
+  const handleToggleContactSelection = (contactId: string) => {
+    setSelectedContactsToAdd(prev =>
+      prev.includes(contactId)
+        ? prev.filter(id => id !== contactId)
+        : [...prev, contactId]
+    );
+  };
+
+  const handleAddSelectedMembers = async () => {
+    if (!currentUser || !group || selectedContactsToAdd.length === 0) {
+      toast({ title: "No members selected", variant: "destructive" });
+      return;
+    }
+    setIsAddingMembers(true);
+    try {
+      const groupDocRef = doc(db, 'groups', groupId);
+      const batch = writeBatch(db);
+
+      const newMemberObjects: UserType[] = [];
+      selectedContactsToAdd.forEach(contactId => {
+        const contact = potentialNewMembers.find(p => p.id === contactId);
+        if (contact) {
+          newMemberObjects.push({
+            id: contact.id,
+            name: contact.name,
+            email: null, // Or fetch more details if AppMemberContact had them
+            avatarUrl: contact.avatarUrl || '',
+          });
+        }
+      });
+
+      batch.update(groupDocRef, {
+        memberIds: arrayUnion(...selectedContactsToAdd),
+        members: arrayUnion(...newMemberObjects)
+      });
+
+      const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
+      newMemberObjects.forEach(member => {
+        const logEntry: Omit<ActivityLog, 'id' | 'timestamp'> = {
+          groupId: groupId,
+          userId: currentUser.id,
+          actionType: 'member_added',
+          description: `${currentUser.name || 'Admin'} added ${member.name || 'a new member'} to the group.`,
+          relatedUserId: member.id,
+        };
+        batch.set(doc(activityLogColRef), { ...logEntry, timestamp: serverTimestamp() });
+
+        // Add notification for the current user (admin)
+        addNotification({
+          title: "Member Added to Group",
+          message: `You added ${member.name || 'a new member'} to "${group.name}".`,
+          type: "success",
+          href: `/groups/${groupId}`,
+        });
+         // TODO: In a real app, you might also send a notification to the newly added member.
+      });
+
+      await batch.commit();
+      toast({ title: "Members Added!", description: `${newMemberObjects.length} member(s) added to the group.` });
+      setIsAddMemberDialogOpen(false);
+      fetchGroupData(false); // Refresh group data without full page load spinner
+
+    } catch (error) {
+      console.error("Error adding members to group:", error);
+      toast({ title: "Error", description: "Could not add members to the group.", variant: "destructive" });
+      addNotification({
+        title: "Failed to Add Members",
+        message: `Could not add members to "${group.name}".`,
+        type: "destructive",
+      });
+    } finally {
+      setIsAddingMembers(false);
+    }
+  };
+
+
   if (isLoading) {
     return (
         <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
@@ -495,7 +627,7 @@ export default function GroupDetailPage() {
                 height={100} 
                 className="rounded-lg object-cover h-24 w-24 md:h-28 md:w-28 shadow-md"
                 data-ai-hint={group.dataAiHint || "group image"}
-                priority // Consider adding priority for LCP images
+                priority
               />
             ) : (
               <div className="rounded-lg h-24 w-24 md:h-28 md:w-28 flex items-center justify-center bg-muted shadow-md">
@@ -732,7 +864,69 @@ export default function GroupDetailPage() {
                     <CardTitle>Members ({group.members.length})</CardTitle>
                     <CardDescription>People participating in this group (from Firestore).</CardDescription>
                 </div>
-                {isOwner && <Button variant="outline" size="sm" disabled><UserPlus className="mr-2 h-4 w-4"/>Add Member</Button>}
+                 {isOwner && (
+                    <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" size="sm">
+                                <UserPlus className="mr-2 h-4 w-4"/>Add Member
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[480px]">
+                            <DialogHeader>
+                                <DialogTitle>Add Members to "{group.name}"</DialogTitle>
+                                <DialogDescription>
+                                    Select contacts to add to this group. Only contacts not already in the group are shown.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4">
+                                {isLoadingPotentialMembers ? (
+                                    <div className="space-y-2">
+                                        {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)}
+                                    </div>
+                                ) : potentialNewMembers.length > 0 ? (
+                                   <ScrollArea className="h-[250px] pr-3">
+                                        <div className="space-y-2">
+                                            {potentialNewMembers.map(contact => (
+                                                <label
+                                                    key={contact.id}
+                                                    htmlFor={`contact-${contact.id}`}
+                                                    className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer"
+                                                >
+                                                    <Checkbox
+                                                        id={`contact-${contact.id}`}
+                                                        checked={selectedContactsToAdd.includes(contact.id)}
+                                                        onCheckedChange={() => handleToggleContactSelection(contact.id)}
+                                                    />
+                                                    <Avatar className="h-8 w-8">
+                                                        <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} />
+                                                        <AvatarFallback>{getInitials(contact.name)}</AvatarFallback>
+                                                    </Avatar>
+                                                    <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground text-center py-4">
+                                        No new contacts available to add, or all your contacts are already in this group.
+                                    </p>
+                                )}
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}>
+                                    Cancel
+                                </Button>
+                                <Button 
+                                    onClick={handleAddSelectedMembers} 
+                                    disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers}
+                                >
+                                    {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                                    {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                 )}
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
@@ -750,11 +944,7 @@ export default function GroupDetailPage() {
                     </div>
                     <div>
                         {member.id === group.ownerId && <Badge variant="outline" className="text-primary">Admin</Badge>}
-                        {isOwner && member.id !== currentUser.id && (
-                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive ml-2" disabled> 
-                                <Trash2 className="h-4 w-4"/>
-                            </Button>
-                        )}
+                        {/* TODO: Add kick member functionality if needed */}
                     </div>
                   </li>
                 ))}
@@ -773,7 +963,7 @@ export default function GroupDetailPage() {
               {firestoreActivityLogs.length > 0 ? (
                 <ul className="space-y-4">
                   {firestoreActivityLogs.map(log => {
-                    const actor = memberDetailsMap.get(log.userId);
+                    const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); // Fallback for newly added members not yet in memberDetailsMap
                     return (
                     <li key={log.id} className="flex items-start gap-3 text-sm p-2 border rounded-md">
                         <Avatar className="h-8 w-8 mt-1">
@@ -785,7 +975,7 @@ export default function GroupDetailPage() {
                                 <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span>
                                 {log.description.includes(actor?.name || 'User') 
                                     ? log.description.substring((actor?.name || 'User').length).trim() 
-                                    : log.description}
+                                    : ` ${log.description}` /* Added space for better formatting if actor name not in desc */}
                             </p>
                             <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p>
                         </div>
@@ -802,4 +992,3 @@ export default function GroupDetailPage() {
     </div>
   );
 }
-
