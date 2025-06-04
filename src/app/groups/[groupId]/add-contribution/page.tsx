@@ -13,12 +13,13 @@ import { ArrowLeft, DollarSign as DollarSignIcon, CalendarDays, User, Loader2, A
 import { useUser } from '@/contexts/UserContext';
 import type { Group, User as UserType, Contribution, ActivityLog } from '@/types';
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, Timestamp, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, Timestamp, addDoc, writeBatch, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
 
 export default function AddContributionPage() {
@@ -38,6 +39,26 @@ export default function AddContributionPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [undoTimeoutId, setUndoTimeoutId] = useState<NodeJS.Timeout | null>(null);
+
+
+  const resetFormFields = useCallback(() => {
+    setAmount('');
+    setContributionDate(new Date());
+    setDescription('');
+    if (currentUser) {
+        setContributorId(currentUser.id);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    return () => {
+      if (undoTimeoutId) {
+        clearTimeout(undoTimeoutId);
+      }
+    };
+  }, [undoTimeoutId]);
+
 
   useEffect(() => {
     const fetchGroupData = async () => {
@@ -70,7 +91,7 @@ export default function AddContributionPage() {
             return;
           }
           setGroup(fetchedGroup);
-          setContributorId(currentUser.id); // Default contributor to current user
+          setContributorId(currentUser.id);
         } else {
           toast({ title: "Group not found", variant: "destructive" });
           setError("Group not found.");
@@ -113,6 +134,42 @@ export default function AddContributionPage() {
     return <p className="text-center p-4">Loading group data or an error occurred...</p>;
   }
 
+  const handleUndoAddContribution = async (contributionIdToUndo: string, currentGroupId: string, originalContributorName: string, originalAmount: number) => {
+    setIsSubmitting(true);
+    try {
+      const batch = writeBatch(db);
+      const contributionDocRef = doc(db, 'groups', currentGroupId, 'contributions', contributionIdToUndo);
+      batch.delete(contributionDocRef);
+
+      const activityLogColRef = collection(db, 'groups', currentGroupId, 'activityLog');
+      const logsQuery = query(activityLogColRef, where('relatedContributionId', '==', contributionIdToUndo));
+      const logsSnapshot = await getDocs(logsQuery);
+      logsSnapshot.forEach(logDoc => batch.delete(logDoc.ref));
+
+      await batch.commit();
+
+      toast({
+        title: "Action Undone",
+        description: `Contribution from ${originalContributorName} of ${getCurrencySymbol()}${originalAmount.toFixed(2)} has been removed.`,
+        variant: "default",
+      });
+      addNotification({
+        title: "Contribution Undone",
+        message: `The contribution from ${originalContributorName} was removed from group "${group?.name || 'the group'}".`,
+        type: "info",
+      });
+      resetFormFields();
+      router.push(`/groups/${currentGroupId}?refresh=${Date.now()}&tab=contributions`);
+
+    } catch (err) {
+      console.error("Error undoing contribution add:", err);
+      toast({ title: "Undo Failed", description: "Could not undo adding the contribution.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!contributorId || !amount || parseFloat(amount) <= 0 || !contributionDate) {
@@ -140,19 +197,20 @@ export default function AddContributionPage() {
 
     const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
       groupId,
-      userId: contributorId, 
+      userId: contributorId,
       actionType: 'contribution_added',
       description: `${contributorUser.name || 'User'} contributed ${getCurrencySymbol()}${numericAmount.toFixed(2)} to the group. ${description.trim() ? `(${description.trim()})` : ''}`,
-      relatedContributionId: '', 
-      actorName: currentUser.name, // Person recording the log
+      relatedContributionId: '',
+      actorName: currentUser.name,
     };
     
     try {
       const batch = writeBatch(db);
       
       const contributionsColRef = collection(db, 'groups', groupId, 'contributions');
-      const newContributionDocRef = doc(contributionsColRef); 
-      activityLogForFirestore.relatedContributionId = newContributionDocRef.id; 
+      const newContributionDocRef = doc(contributionsColRef);
+      activityLogForFirestore.relatedContributionId = newContributionDocRef.id;
+      const contributionId = newContributionDocRef.id;
 
       batch.set(newContributionDocRef, { ...contributionForFirestore, createdAt: serverTimestamp() });
       
@@ -161,17 +219,42 @@ export default function AddContributionPage() {
       
       await batch.commit();
 
-      toast({
-        title: "Contribution Recorded!",
-        description: `${contributorUser.name}'s contribution of ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been saved.`,
-      });
       addNotification({
           title: "Funds Contributed",
           message: `${contributorUser.name} contributed ${getCurrencySymbol()}${numericAmount.toFixed(2)} to "${group.name}".`,
           type: "success",
           href: `/groups/${groupId}?tab=contributions`
       });
-      router.push(`/groups/${groupId}?refresh=${Date.now()}&tab=contributions`);
+
+      const contributorNameForToast = contributorUser.name || 'User';
+      if (undoTimeoutId) clearTimeout(undoTimeoutId);
+
+      const { dismiss: dismissToast } = toast({
+        title: "Contribution Recorded!",
+        description: `${contributorNameForToast}'s contribution of ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been saved.`,
+        duration: 7000,
+        action: (
+          <ToastAction
+            altText="Undo"
+            onClick={async () => {
+              if (undoTimeoutId) clearTimeout(undoTimeoutId);
+              setUndoTimeoutId(null);
+              dismissToast();
+              await handleUndoAddContribution(contributionId, groupId, contributorNameForToast, numericAmount);
+            }}
+          >
+            Undo
+          </ToastAction>
+        ),
+      });
+      
+      const newTimeout = setTimeout(() => {
+        resetFormFields();
+        router.push(`/groups/${groupId}?refresh=${Date.now()}&tab=contributions`);
+        setUndoTimeoutId(null);
+      }, 7500);
+      setUndoTimeoutId(newTimeout);
+
     } catch (error) {
       console.error("Error recording contribution:", error);
       toast({ title: "Error", description: "Could not record contribution.", variant: "destructive" });
@@ -286,3 +369,4 @@ export default function AddContributionPage() {
     </div>
   );
 }
+

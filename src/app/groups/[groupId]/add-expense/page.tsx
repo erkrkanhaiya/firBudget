@@ -14,17 +14,18 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info, Loader2, Paperclip, XCircle, Image as ImageIconLucide, Sparkles } from 'lucide-react';
 import NextImage from 'next/image';
 import { useUser } from '@/contexts/UserContext';
-import type { Group, User as UserType, ExpenseParticipant, Expense, ActivityLog } from '@/types'; // ExpenseCategory removed from imports if not used
+import type { Group, User as UserType, ExpenseParticipant, Expense, ActivityLog } from '@/types';
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format, parseISO } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db, storage } from '@/lib/firebase';
-import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch, type DocumentData, type SetOptions } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch, type DocumentData, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { useNotification } from '@/contexts/NotificationContext'; 
+import { useNotification } from '@/contexts/NotificationContext';
 import { extractExpenseDetails } from '@/ai/flows/extract-expense-details-flow';
 
 interface StoredExpenseData {
@@ -38,7 +39,6 @@ interface StoredExpenseData {
   actorNameForLog: string | null;
   receiptUrl?: string;
   receiptFileName?: string;
-  // category?: ExpenseCategory | string; // Category removed
 }
 
 export default function AddExpensePage() {
@@ -58,8 +58,6 @@ export default function AddExpensePage() {
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [splitEqually, setSplitEqually] = useState(true);
   const [customSplitAmounts, setCustomSplitAmounts] = useState<Record<string, string>>({});
-  // const [selectedCategory, setSelectedCategory] = useState<ExpenseCategory | string>(''); // Category state removed
-
 
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -72,21 +70,21 @@ export default function AddExpensePage() {
 
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [undoTimeoutId, setUndoTimeoutId] = useState<NodeJS.Timeout | null>(null);
 
   const resetFormFields = useCallback(() => {
     setDescription('');
     setAmount('');
     setExpenseDate(new Date());
-    // setSelectedCategory(''); // Category state removed
-    if (currentUser && group) { 
+    if (currentUser && group) {
         setPaidByUserId(currentUser.id);
         setSelectedParticipantIds(group.members.map(m => m.id));
         const initialCustomAmounts: Record<string, string> = {};
-        group.members.forEach(memberUser => { initialCustomAmounts[memberUser.id] = ''; }); 
+        group.members.forEach(memberUser => { initialCustomAmounts[memberUser.id] = ''; });
         setCustomSplitAmounts(initialCustomAmounts);
     } else if (currentUser) {
         setPaidByUserId(currentUser.id);
-        setSelectedParticipantIds([]); 
+        setSelectedParticipantIds([]);
         setCustomSplitAmounts({});
     }
 
@@ -98,6 +96,13 @@ export default function AddExpensePage() {
     setAiError(null);
   }, [currentUser, group]);
 
+  useEffect(() => {
+    return () => {
+      if (undoTimeoutId) {
+        clearTimeout(undoTimeoutId);
+      }
+    };
+  }, [undoTimeoutId]);
 
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
@@ -188,7 +193,7 @@ export default function AddExpensePage() {
 
           for (const storedExp of expensesToSyncForThisGroup) {
             const expenseColRef = collection(db, 'groups', storedExp.groupId, 'expenses');
-            const newExpenseDocRef = doc(expenseColRef); 
+            const newExpenseDocRef = doc(expenseColRef);
 
             const expenseDataForFirestore: DocumentData = {
               groupId: storedExp.groupId,
@@ -198,13 +203,12 @@ export default function AddExpensePage() {
               date: storedExp.date,
               participants: storedExp.participants,
               createdAt: serverTimestamp(),
-              // category: storedExp.category || 'Other' // Category removed
             };
             
             if (storedExp.receiptFileName) {
               expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
             }
-            if (storedExp.receiptUrl) { 
+            if (storedExp.receiptUrl) {
               expenseDataForFirestore.receiptUrl = storedExp.receiptUrl;
             }
 
@@ -311,16 +315,16 @@ export default function AddExpensePage() {
   const handleReceiptFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) { 
+      if (file.size > 5 * 1024 * 1024) {
         toast({ title: "File too large", description: "Receipt image cannot exceed 5MB.", variant: "destructive"});
-        event.target.value = ""; 
+        event.target.value = "";
         setReceiptFile(null);
         setReceiptPreview(null);
         return;
       }
       if (!file.type.startsWith("image/")) {
         toast({ title: "Invalid File Type", description: "Only image files are accepted for receipts.", variant: "destructive"});
-        event.target.value = ""; 
+        event.target.value = "";
         setReceiptFile(null);
         setReceiptPreview(null);
         return;
@@ -361,7 +365,7 @@ export default function AddExpensePage() {
         toast({ title: "Analyzing Receipt...", description: "AI is processing the image. This may take a moment.", variant: "default" });
         const result = await extractExpenseDetails({
           receiptDataUri: receiptPreview,
-          userDescription: description, 
+          userDescription: description,
         });
         
         if (result) {
@@ -374,7 +378,7 @@ export default function AddExpensePage() {
             const ymdParts = result.extractedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
             if (ymdParts) {
               const year = parseInt(ymdParts[1]);
-              const month = parseInt(ymdParts[2]) - 1; 
+              const month = parseInt(ymdParts[2]) - 1;
               const day = parseInt(ymdParts[3]);
               const tempDate = new Date(Date.UTC(year, month, day));
               if (!isNaN(tempDate.getTime())) parsedDate = tempDate;
@@ -385,14 +389,6 @@ export default function AddExpensePage() {
             if (parsedDate) { setExpenseDate(parsedDate); fieldsUpdated = true; }
              else { console.warn("Could not parse AI suggested date:", result.extractedDate); toast({ title: "AI Date Format Issue", description: `AI suggested date "${result.extractedDate}" couldn't be parsed. Please set manually.`, variant: "default", duration: 7000 }); }
           }
-          
-          // Category suggestion handling removed
-          // if (result.suggestedCategory && PREDEFINED_EXPENSE_CATEGORIES.includes(result.suggestedCategory as ExpenseCategory)) {
-          //   setSelectedCategory(result.suggestedCategory as ExpenseCategory); fieldsUpdated = true;
-          // } else if (result.suggestedCategory) {
-          //   setSelectedCategory("Other"); fieldsUpdated = true;
-          //   toast({ title: "AI Category Note", description: `AI suggested "${result.suggestedCategory}", set to "Other". You can change it.`, variant: "default", duration: 5000 });
-          // }
           
           if (fieldsUpdated) {
             toast({ title: "AI Autofill Complete", description: "Fields updated based on receipt. Please review." });
@@ -414,16 +410,49 @@ export default function AddExpensePage() {
       }
     };
 
+  const handleUndoAddExpense = async (expenseIdToUndo: string, currentGroupId: string, originalDescription: string) => {
+    setIsSubmitting(true);
+    try {
+      const batch = writeBatch(db);
+      const expenseDocRef = doc(db, 'groups', currentGroupId, 'expenses', expenseIdToUndo);
+      batch.delete(expenseDocRef);
+
+      const activityLogColRef = collection(db, 'groups', currentGroupId, 'activityLog');
+      const logsQuery = query(activityLogColRef, where('relatedExpenseId', '==', expenseIdToUndo));
+      const logsSnapshot = await getDocs(logsQuery);
+      logsSnapshot.forEach(logDoc => batch.delete(logDoc.ref));
+
+      await batch.commit();
+
+      toast({
+        title: "Action Undone",
+        description: `Expense "${originalDescription}" has been removed.`,
+        variant: "default",
+      });
+      addNotification({
+        title: "Expense Addition Undone",
+        message: `The expense "${originalDescription}" was removed from group "${group?.name || 'the group'}".`,
+        type: "info",
+      });
+      resetFormFields();
+      router.push(`/groups/${currentGroupId}?refresh=${Date.now()}`);
+
+    } catch (error) {
+      console.error("Error undoing expense add:", error);
+      toast({ title: "Undo Failed", description: "Could not undo adding the expense.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
-    console.log("[AddExpense] handleSubmit called, isSubmitting set to true");
 
     try {
         if (!description.trim() || !amount || parseFloat(amount) <= 0 || !paidByUserId || selectedParticipantIds.length === 0 || !expenseDate) {
         toast({ title: "Missing Information", description: "Please fill all required fields, ensure amount is positive, and at least one participant is selected.", variant: "destructive" });
         setIsSubmitting(false);
-        console.log("[AddExpense] Validation failed, isSubmitting set to false");
         return;
         }
 
@@ -445,14 +474,12 @@ export default function AddExpensePage() {
             if (customAmountStr === undefined || customAmountStr.trim() === '') {
                 toast({ title: "Custom Split Error", description: `Please enter an amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
                 setIsSubmitting(false);
-                 console.log("[AddExpense] Custom split error (missing amount), isSubmitting set to false");
                 return;
             }
             const customAmount = parseFloat(customAmountStr);
             if (isNaN(customAmount) || customAmount < 0) {
             toast({ title: "Invalid Amount", description: `Please enter a valid, non-negative amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
             setIsSubmitting(false);
-            console.log("[AddExpense] Custom split error (invalid amount), isSubmitting set to false");
             return;
             }
             expenseParticipants.push({ userId, amountOwed: parseFloat(customAmount.toFixed(2)) });
@@ -469,7 +496,6 @@ export default function AddExpensePage() {
             variant: "destructive",
             });
             setIsSubmitting(false);
-            console.log("[AddExpense] Custom split mismatch, isSubmitting set to false");
             return;
         }
         }
@@ -477,7 +503,7 @@ export default function AddExpensePage() {
         const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
         
         const expenseColRef = collection(db, 'groups', groupId, 'expenses');
-        const newExpenseDocRef = doc(expenseColRef); 
+        const newExpenseDocRef = doc(expenseColRef);
         const expenseId = newExpenseDocRef.id;
 
         let receiptUrlToStore: string | undefined = undefined;
@@ -485,41 +511,29 @@ export default function AddExpensePage() {
 
         if (receiptFile && isOnline) {
             toast({ title: "Uploading Receipt", description: "Please wait...", variant: "default" });
-            console.log("[AddExpense] Attempting to upload receipt file:", receiptFile.name);
             try {
                 const filePath = `receipts/${groupId}/${expenseId}/${receiptFile.name}`;
                 const fileStorageRef = storageRef(storage, filePath);
-                console.log("[AddExpense] Created storage ref:", filePath);
                 const uploadTask = uploadBytesResumable(fileStorageRef, receiptFile);
-                console.log("[AddExpense] Upload task created. Awaiting completion...");
-
-                await uploadTask; 
-                console.log("[AddExpense] Upload task completed.");
-                
+                await uploadTask;
                 receiptFileNameToStore = receiptFile.name;
-                console.log("[AddExpense] Attempting to get download URL...");
                 receiptUrlToStore = await getDownloadURL(uploadTask.snapshot.ref);
-                console.log("[AddExpense] Got download URL:", receiptUrlToStore);
-                
                 toast({ title: "Receipt Uploaded", description: "Receipt successfully uploaded to Firebase Storage.", variant: "default" });
             } catch (uploadError: any) {
                 console.error("[AddExpense] Error during receipt upload or getting URL:", uploadError);
                 let errorDescription = "Could not upload receipt. Expense will be added without it.";
-                if (uploadError.code) { 
+                if (uploadError.code) {
                     errorDescription += ` (Error: ${uploadError.code}). Please check Firebase Storage rules.`;
                 }
                 toast({ title: "Receipt Upload Failed", description: errorDescription, variant: "destructive", duration: 7000 });
-                if (receiptFile) { 
-                    receiptFileNameToStore = receiptFile.name; 
+                if (receiptFile) {
+                    receiptFileNameToStore = receiptFile.name;
                 }
             }
-            console.log("[AddExpense] Finished receipt processing block.");
         } else if (receiptFile && !isOnline) {
-            receiptFileNameToStore = receiptFile.name; 
+            receiptFileNameToStore = receiptFile.name;
             toast({ title: "Offline Receipt", description: "Receipt file noted. Upload will be attempted when online if app supports it.", variant: "default" });
-            console.log("[AddExpense] Receipt noted for offline mode, filename:", receiptFileNameToStore);
         }
-
 
         const expenseDataForStorage: StoredExpenseData = {
             groupId,
@@ -528,16 +542,15 @@ export default function AddExpensePage() {
             paidByUserId,
             date: expenseDate.toISOString(),
             participants: expenseParticipants,
-            tempId: isOnline ? expenseId : `offline-${Date.now()}`, 
+            tempId: isOnline ? expenseId : `offline-${Date.now()}`,
             actorNameForLog: actor?.name || 'User',
-            receiptUrl: receiptUrlToStore, 
+            receiptUrl: receiptUrlToStore,
             receiptFileName: receiptFileNameToStore,
-            // category: selectedCategory || 'Other', // Category removed
         };
 
         if (!isOnline) {
             const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
-            pending.push(expenseDataForStorage); 
+            pending.push(expenseDataForStorage);
             localStorage.setItem('pendingExpenses', JSON.stringify(pending));
             toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
             addNotification({
@@ -545,13 +558,11 @@ export default function AddExpensePage() {
                 message: `"${description.trim()}" for group "${group.name}" saved locally.`,
                 type: "info",
             });
-            console.log("[AddExpense] Expense saved offline.");
             resetFormFields();
             router.push(`/groups/${groupId}?refresh=${Date.now()}`);
-            return; 
+            return;
         }
 
-        console.log("[AddExpense] Preparing for online Firestore submission...");
         const dataToSetInFirestore: DocumentData = {
             groupId: expenseDataForStorage.groupId,
             description: expenseDataForStorage.description,
@@ -560,7 +571,6 @@ export default function AddExpensePage() {
             date: expenseDataForStorage.date,
             participants: expenseDataForStorage.participants,
             createdAt: serverTimestamp(),
-            // category: expenseDataForStorage.category, // Category removed
         };
 
         if (expenseDataForStorage.receiptUrl) {
@@ -569,7 +579,6 @@ export default function AddExpensePage() {
         if (expenseDataForStorage.receiptFileName) {
             dataToSetInFirestore.receiptFileName = expenseDataForStorage.receiptFileName;
         }
-        console.log("[AddExpense] Data for Firestore:", dataToSetInFirestore);
 
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
         const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
@@ -579,31 +588,48 @@ export default function AddExpensePage() {
             description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
             relatedExpenseId: expenseId,
         };
-        console.log("[AddExpense] Activity log data:", activityLogForFirestore);
 
         const batch = writeBatch(db);
-        batch.set(newExpenseDocRef, dataToSetInFirestore); 
+        batch.set(newExpenseDocRef, dataToSetInFirestore);
         batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
 
-        console.log("[AddExpense] Committing batch write to Firestore...");
         await batch.commit();
-        console.log("[AddExpense] Batch write successful.");
 
-        toast({
-            title: "Expense Added to Firestore!",
-            description: `Expense "${description}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} has been added.`,
-        });
         addNotification({
             title: "Expense Added",
             message: `You added "${description.trim()}" to group "${group.name}".`,
             type: "success",
             href: `/groups/${groupId}`,
         });
-        resetFormFields();
-        console.log("[AddExpense] Form reset, preparing to navigate...");
-        await new Promise(resolve => setTimeout(resolve, 300)); 
-        router.push(`/groups/${groupId}?refresh=${Date.now()}`);
-        console.log("[AddExpense] Navigation triggered.");
+
+        const expenseDescriptionForToast = description.trim();
+        if (undoTimeoutId) clearTimeout(undoTimeoutId);
+
+        const { dismiss: dismissToast } = toast({
+          title: "Expense Added!",
+          description: `Expense "${expenseDescriptionForToast}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} recorded.`,
+          duration: 7000,
+          action: (
+            <ToastAction
+              altText="Undo"
+              onClick={async () => {
+                if (undoTimeoutId) clearTimeout(undoTimeoutId);
+                setUndoTimeoutId(null);
+                dismissToast(); 
+                await handleUndoAddExpense(expenseId, groupId, expenseDescriptionForToast);
+              }}
+            >
+              Undo
+            </ToastAction>
+          ),
+        });
+
+        const newTimeout = setTimeout(() => {
+          resetFormFields();
+          router.push(`/groups/${groupId}?refresh=${Date.now()}`);
+          setUndoTimeoutId(null);
+        }, 7500);
+        setUndoTimeoutId(newTimeout);
 
     } catch (error) {
         console.error("[AddExpense] Error in handleSubmit:", error);
@@ -615,7 +641,6 @@ export default function AddExpensePage() {
         });
     } finally {
         setIsSubmitting(false);
-        console.log("[AddExpense] handleSubmit finished, isSubmitting set to false in finally block.");
     }
   };
 
@@ -737,27 +762,6 @@ export default function AddExpensePage() {
                 </Popover>
               </div>
             </div>
-            {/* Category Select Removed
-             <div>
-              <Label htmlFor="category">Category</Label>
-              <Select
-                value={selectedCategory}
-                onValueChange={(value) => setSelectedCategory(value as ExpenseCategory)}
-                disabled={isSubmitting || isAiProcessing}
-              >
-                <SelectTrigger id="category">
-                  <SelectValue placeholder="Select a category (e.g., Food)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PREDEFINED_EXPENSE_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            */}
             <div>
               <Label htmlFor="paidBy">Paid by*</Label>
               <Select value={paidByUserId} onValueChange={setPaidByUserId} required disabled={isSubmitting || isAiProcessing}>
@@ -863,3 +867,4 @@ export default function AddExpensePage() {
     </div>
   );
 }
+
