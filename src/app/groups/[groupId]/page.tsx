@@ -534,6 +534,7 @@ export default function GroupDetailPage() {
             clearTimeout(undoTimeoutId);
         }
     };
+  // Added pathname to dependency array as it's used in router.replace
   }, [searchParams, group, isLoadingPageData, accessDenied, groupNotFound, pathname, router, toast, getCurrencySymbol, addNotification, groupId, isUndoing, undoTimeoutId, fetchGroupData]);
 
 
@@ -1216,7 +1217,15 @@ export default function GroupDetailPage() {
             <Card>
               <CardHeader> <CardTitle>Fund Contributions</CardTitle> <CardDescription>All funds contributed by members to this group's pool.</CardDescription> </CardHeader>
               <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-4"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && ` - ${contribution.description}`} </p> </div> </div> <div className="text-right ml-2"> <p className="text-lg font-semibold text-green-600 dark:text-green-400"> +{currencySymbol}{contribution.amount.toFixed(2)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-4">No contributions recorded yet for this group.</p> )} </CardContent>
-               <CardFooter> <Button asChild className="ml-auto"> <Link href={`/groups/${groupId}/add-contribution`}> <CoinsIcon className="mr-2 h-4 w-4" /> Record Contribution </Link> </Button> </CardFooter>
+               <CardFooter> 
+                <Button asChild className="ml-auto"> 
+                  <Link href={`/groups/${groupId}/add-contribution`}> 
+                    <span>
+                      <CoinsIcon className="mr-2 h-4 w-4" /> Record Contribution 
+                    </span>
+                  </Link> 
+                </Button> 
+              </CardFooter>
             </Card>
           </TabsContent>
 
