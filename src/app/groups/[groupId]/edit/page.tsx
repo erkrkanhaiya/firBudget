@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Save, Image as ImageIcon, Lock, Unlock, AlertTriangle, Loader2, Briefcase, Home as HomeIconLucide, Heart, PartyPopper, Shapes, DollarSign } from 'lucide-react'; // Renamed Home to HomeIconLucide
+import { ArrowLeft, Save, Image as ImageIcon, Lock, Unlock, AlertTriangle, Loader2, Briefcase, Home as HomeIconLucide, Heart, PartyPopper, Shapes, DollarSign } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import type { Group, GroupVisibility, GroupCategory } from '@/types';
 import { useToast } from "@/hooks/use-toast";
@@ -216,56 +216,61 @@ export default function EditGroupPage() {
         setIsSubmitting(false);
         return;
     }
+    
+    const numericBudget = groupBudget.trim() ? parseFloat(groupBudget) : undefined;
+    if (groupBudget.trim() && (numericBudget === undefined || isNaN(numericBudget) || numericBudget < 0)) {
+        toast({ title: "Invalid Budget", description: "Budget must be a non-negative number.", variant: "destructive"});
+        setIsSubmitting(false);
+        return;
+    }
 
+    // Initialize with current values, ensuring they are strings
+    let photoUrlToSave = group.photoUrl || '';
+    let dataAiHintToSave = group.dataAiHint || '';
+    let photoActuallyChanged = false; 
     const oldGroupName = group.name;
-    let photoUrlToSave = group.photoUrl;
-    let dataAiHintToSave = group.dataAiHint;
-    let photoChangedDuringSubmit = false;
 
     if (groupPhotoFile) { // A new file was selected
-      photoChangedDuringSubmit = true;
+      photoActuallyChanged = true;
       toast({ title: "Uploading Photo...", description: "Please wait.", variant: "default" });
       try {
         const timestampedFileName = `${Date.now()}_${groupPhotoFile.name}`;
         const filePath = `group-photos/${groupId}/${timestampedFileName}`;
         const fileStorageRef = storageRef(storage, filePath);
         const uploadTask = uploadBytesResumable(fileStorageRef, groupPhotoFile);
-        await uploadTask;
+        
+        await uploadTask; // Wait for the upload to complete
+
         photoUrlToSave = await getDownloadURL(uploadTask.snapshot.ref);
         dataAiHintToSave = ''; // Clear hint for real images
         toast({ title: "Photo Uploaded!", description: "New group photo is saved.", variant: "default" });
       } catch (uploadError) {
         console.error("Error uploading group photo:", uploadError);
         toast({ title: "Photo Upload Failed", description: "Could not upload new photo. Previous photo (if any) will be kept.", variant: "destructive" });
-        setGroupPhotoPreview(group.photoUrl || null); // Revert preview
-        photoUrlToSave = group.photoUrl; // Keep original if upload failed
-        dataAiHintToSave = group.dataAiHint;
-        setIsSubmitting(false);
-        return;
+        // Revert preview and URL to original if upload failed
+        setGroupPhotoPreview(group.photoUrl || null); 
+        // photoUrlToSave and dataAiHintToSave will remain as initialized (original values)
+        // photoActuallyChanged will remain true, but subsequent payload construction will use original values
+        photoUrlToSave = group.photoUrl || '';
+        dataAiHintToSave = group.dataAiHint || '';
+        photoActuallyChanged = false; // Since upload failed, consider it as no change from original for payload
+        setIsSubmitting(false); 
+        return; 
       }
-    } else { // No new file was selected, check if preview indicates removal or change to placeholder
-      if (groupPhotoPreview === null && group.photoUrl) { // Photo was removed
-        photoChangedDuringSubmit = true;
+    } else { 
+      // No new file was selected, check if preview indicates removal or change to placeholder
+      const originalGroupPhotoUrl = group.photoUrl || '';
+      if (groupPhotoPreview === null && originalGroupPhotoUrl !== '') { // Photo was explicitly removed
+        photoActuallyChanged = true;
         photoUrlToSave = '';
         dataAiHintToSave = '';
-      } else if (groupPhotoPreview && groupPhotoPreview !== group.photoUrl) { // Placeholder or external URL (if preview was directly set)
-        photoChangedDuringSubmit = true;
+      } else if (groupPhotoPreview && groupPhotoPreview !== originalGroupPhotoUrl) { // Placeholder or different external URL was set
+        photoActuallyChanged = true;
         photoUrlToSave = groupPhotoPreview;
-        if (groupPhotoPreview.includes('placehold.co')) {
-          dataAiHintToSave = group.dataAiHint || 'group image'; 
-        } else {
-          dataAiHintToSave = ''; // For other external URLs or if original hint is not relevant
-        }
+        dataAiHintToSave = groupPhotoPreview.includes('placehold.co') ? (group.dataAiHint || 'group image') : '';
       }
-      // If groupPhotoPreview is the same as group.photoUrl, no change to photo.
-    }
-
-
-    const numericBudget = groupBudget.trim() ? parseFloat(groupBudget) : undefined;
-    if (groupBudget.trim() && (isNaN(numericBudget as number) || (numericBudget as number) < 0)) {
-        toast({ title: "Invalid Budget", description: "Budget must be a non-negative number.", variant: "destructive"});
-        setIsSubmitting(false);
-        return;
+      // If groupPhotoPreview matches originalGroupPhotoUrl (or both are empty/nullish), 
+      // photoUrlToSave and dataAiHintToSave remain as initialized, and photoActuallyChanged remains false.
     }
 
     const updatePayload: { [key: string]: any } = {
@@ -275,20 +280,25 @@ export default function EditGroupPage() {
       category: groupCategory,
     };
 
-    if(photoChangedDuringSubmit || photoUrlToSave !== group.photoUrl || dataAiHintToSave !== group.dataAiHint) {
-      updatePayload.photoUrl = photoUrlToSave;
-      updatePayload.dataAiHint = dataAiHintToSave;
+    if(photoActuallyChanged) {
+      updatePayload.photoUrl = photoUrlToSave; // photoUrlToSave is guaranteed string by logic above
+      updatePayload.dataAiHint = dataAiHintToSave; // dataAiHintToSave is guaranteed string
     }
     
-
-    if (groupBudget.trim() === '' && group.budgetAmount !== undefined) {
-      updatePayload.budgetAmount = deleteField();
-    } else if (numericBudget !== undefined && numericBudget !== group.budgetAmount) {
-      updatePayload.budgetAmount = numericBudget;
-    } else if (groupBudget.trim() !== '' && numericBudget === undefined) {
-      // This case should be caught by the isNaN check earlier, but as a safeguard
-      // if budget string is present but not parseable or negative, don't change budgetAmount.
+    // Robust budget handling
+    if (groupBudget.trim() === '') {
+      // User cleared the budget field
+      if (group.budgetAmount !== undefined) { // Only delete if it existed
+        updatePayload.budgetAmount = deleteField();
+      }
+    } else if (numericBudget !== undefined && !isNaN(numericBudget) && numericBudget >= 0) {
+      // User entered a valid, non-negative budget
+      if (numericBudget !== group.budgetAmount) {
+        updatePayload.budgetAmount = numericBudget;
+      }
     }
+    // If groupBudget.trim() is not empty but numericBudget is NaN or negative, validation above handles it.
+    // This ensures `updatePayload.budgetAmount` is either a number, deleteField(), or not set (if no change).
     
     try {
       const groupDocRef = doc(db, 'groups', groupId);
@@ -296,7 +306,7 @@ export default function EditGroupPage() {
 
       toast({
         title: "Group Updated!",
-        description: `The group "${groupName}" has been successfully updated in Firestore.`,
+        description: `The group "${groupName.trim()}" has been successfully updated in Firestore.`,
       });
       addNotification({
         title: "Group Updated",
@@ -477,7 +487,3 @@ export default function EditGroupPage() {
     </div>
   );
 }
-
-    
-
-    
