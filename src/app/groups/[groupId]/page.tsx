@@ -45,6 +45,7 @@ import {
   DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from "@/components/ui/toast"; // Import ToastAction for undo button
 import { useCurrency } from '@/contexts/CurrencyContext';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -150,6 +151,10 @@ export default function GroupDetailPage() {
 
   const [spendingByPayerChartData, setSpendingByPayerChartData] = useState<SpendingByPayerChartData[]>([]);
   
+  const [undoTimeoutId, setUndoTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const [isUndoing, setIsUndoing] = useState(false);
+
+
   const memberDetailsMap = useMemo(() => {
     if (!group || !group.members) return new Map<string, UserType>();
     const map = new Map<string, UserType>();
@@ -362,9 +367,121 @@ export default function GroupDetailPage() {
     }
   }, [groupId, currentUser, router, toast, calculateGroupBalances]);
 
+  const performUndoAddItem = async (
+    itemId: string, 
+    itemType: 'expense' | 'contribution',
+    itemGroupId: string,
+    itemDescription: string, // For toast message
+    actorName: string, // For notification
+    itemAmount?: number // For toast message
+  ) => {
+    if (!group) return;
+    setIsUndoing(true);
+    try {
+        const batch = writeBatch(db);
+        const itemDocRef = doc(db, 'groups', itemGroupId, itemType === 'expense' ? 'expenses' : 'contributions', itemId);
+        batch.delete(itemDocRef);
+
+        const activityLogColRef = collection(db, 'groups', itemGroupId, 'activityLog');
+        const logsQuery = query(activityLogColRef, where(itemType === 'expense' ? 'relatedExpenseId' : 'relatedContributionId', '==', itemId));
+        const logsSnapshot = await getDocs(logsQuery);
+        logsSnapshot.forEach(logDoc => batch.delete(logDoc.ref));
+
+        await batch.commit();
+
+        toast({
+            title: "Action Undone",
+            description: `${itemType === 'expense' ? 'Expense' : 'Contribution'} "${itemDescription}" has been removed.`,
+            variant: "default",
+        });
+        addNotification({
+            title: `${itemType.charAt(0).toUpperCase() + itemType.slice(1)} Undone`,
+            message: `The ${itemType} from ${actorName} was removed from group "${group.name}".`,
+            type: "info",
+        });
+        fetchGroupData(false); // Refresh data without full loading spinner
+    } catch (error) {
+        console.error(`Error undoing ${itemType} add:`, error);
+        toast({ title: "Undo Failed", description: `Could not undo adding the ${itemType}.`, variant: "destructive" });
+    } finally {
+        setIsUndoing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (undoTimeoutId) { // Clear previous timeout if component re-renders or new undo is triggered
+        clearTimeout(undoTimeoutId);
+        setUndoTimeoutId(null);
+    }
+
+    const undoAction = searchParams.get('undoAction');
+    const itemId = searchParams.get('itemId');
+
+    if ((undoAction === 'expense' || undoAction === 'contribution') && itemId && group) {
+        const itemDetailsString = sessionStorage.getItem('undoItemDetails');
+        if (itemDetailsString) {
+            const itemDetails = JSON.parse(itemDetailsString);
+            if (itemDetails.itemId === itemId && itemDetails.groupId === groupId && itemDetails.itemType === undoAction) {
+                // Clear from session storage and URL to prevent re-trigger
+                sessionStorage.removeItem('undoItemDetails');
+                const currentPath = router.pathname; 
+                const newSearchParams = new URLSearchParams(searchParams.toString());
+                newSearchParams.delete('undoAction');
+                newSearchParams.delete('itemId');
+                router.replace(`${currentPath}?${newSearchParams.toString()}`, { scroll: false });
+
+                const { dismiss: dismissToast } = toast({
+                    title: `${itemDetails.itemType.charAt(0).toUpperCase() + itemDetails.itemType.slice(1)} Added!`,
+                    description: `"${itemDetails.description}" ${itemDetails.amount ? `(${getCurrencySymbol()}${itemDetails.amount.toFixed(2)})` : ''} was recorded.`,
+                    duration: 7000,
+                    action: (
+                        <ToastAction
+                            altText="Undo"
+                            onClick={async () => {
+                                if (undoTimeoutId) clearTimeout(undoTimeoutId);
+                                setUndoTimeoutId(null);
+                                dismissToast();
+                                await performUndoAddItem(
+                                    itemDetails.itemId, 
+                                    itemDetails.itemType, 
+                                    itemDetails.groupId, 
+                                    itemDetails.description, 
+                                    itemDetails.actorName,
+                                    itemDetails.amount
+                                );
+                            }}
+                            disabled={isUndoing}
+                        >
+                            {isUndoing ? <Loader2 className="h-4 w-4 animate-spin"/> : "Undo"}
+                        </ToastAction>
+                    ),
+                });
+                
+                const newTimeout = setTimeout(() => {
+                  // Just let the toast dismiss itself, no further action on timeout needed here
+                  // as we are already on the details page.
+                  setUndoTimeoutId(null);
+                }, 7500); 
+                setUndoTimeoutId(newTimeout);
+            } else {
+                // Mismatch or old data, clear it
+                sessionStorage.removeItem('undoItemDetails');
+            }
+        }
+    }
+     // Cleanup timeout on component unmount or if dependencies change
+    return () => {
+        if (undoTimeoutId) {
+            clearTimeout(undoTimeoutId);
+        }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, group, groupId, router, toast, addNotification, getCurrencySymbol, isUndoing]); // Added isUndoing
+
+
   useEffect(() => {
     fetchGroupData();
-  }, [fetchGroupData, searchParams]); 
+  }, [fetchGroupData, searchParams.get('refresh')]); // Refresh when 'refresh' param changes
 
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.share) {

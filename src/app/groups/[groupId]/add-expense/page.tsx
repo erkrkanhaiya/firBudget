@@ -16,7 +16,7 @@ import NextImage from 'next/image';
 import { useUser } from '@/contexts/UserContext';
 import type { Group, User as UserType, ExpenseParticipant, Expense, ActivityLog } from '@/types';
 import { useToast } from "@/hooks/use-toast";
-import { ToastAction } from "@/components/ui/toast";
+// Removed ToastAction as it's not used directly here anymore for undo
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format, parseISO } from 'date-fns';
@@ -70,7 +70,7 @@ export default function AddExpensePage() {
 
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [undoTimeoutId, setUndoTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  // Removed undoTimeoutId as the undo mechanism is moving to the details page
 
   const resetFormFields = useCallback(() => {
     setDescription('');
@@ -96,13 +96,7 @@ export default function AddExpensePage() {
     setAiError(null);
   }, [currentUser, group]);
 
-  useEffect(() => {
-    return () => {
-      if (undoTimeoutId) {
-        clearTimeout(undoTimeoutId);
-      }
-    };
-  }, [undoTimeoutId]);
+  // Removed useEffect for undoTimeoutId cleanup
 
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
@@ -410,40 +404,7 @@ export default function AddExpensePage() {
       }
     };
 
-  const handleUndoAddExpense = async (expenseIdToUndo: string, currentGroupId: string, originalDescription: string) => {
-    setIsSubmitting(true);
-    try {
-      const batch = writeBatch(db);
-      const expenseDocRef = doc(db, 'groups', currentGroupId, 'expenses', expenseIdToUndo);
-      batch.delete(expenseDocRef);
-
-      const activityLogColRef = collection(db, 'groups', currentGroupId, 'activityLog');
-      const logsQuery = query(activityLogColRef, where('relatedExpenseId', '==', expenseIdToUndo));
-      const logsSnapshot = await getDocs(logsQuery);
-      logsSnapshot.forEach(logDoc => batch.delete(logDoc.ref));
-
-      await batch.commit();
-
-      toast({
-        title: "Action Undone",
-        description: `Expense "${originalDescription}" has been removed.`,
-        variant: "default",
-      });
-      addNotification({
-        title: "Expense Addition Undone",
-        message: `The expense "${originalDescription}" was removed from group "${group?.name || 'the group'}".`,
-        type: "info",
-      });
-      resetFormFields();
-      router.push(`/groups/${currentGroupId}?refresh=${Date.now()}`);
-
-    } catch (error) {
-      console.error("Error undoing expense add:", error);
-      toast({ title: "Undo Failed", description: "Could not undo adding the expense.", variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  // handleUndoAddExpense is removed as undo logic moves to group details page
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -559,7 +520,7 @@ export default function AddExpensePage() {
                 type: "info",
             });
             resetFormFields();
-            router.push(`/groups/${groupId}?refresh=${Date.now()}`);
+            router.push(`/groups/${groupId}?refresh=${Date.now()}&tab=expenses`); // Navigate immediately for offline
             return;
         }
 
@@ -587,6 +548,7 @@ export default function AddExpensePage() {
             actionType: 'expense_added',
             description: `${actor?.name || 'User'} added expense: ${expenseDataForStorage.description}`,
             relatedExpenseId: expenseId,
+            actorName: actor?.name || 'User',
         };
 
         const batch = writeBatch(db);
@@ -599,37 +561,21 @@ export default function AddExpensePage() {
             title: "Expense Added",
             message: `You added "${description.trim()}" to group "${group.name}".`,
             type: "success",
-            href: `/groups/${groupId}`,
+            href: `/groups/${groupId}?tab=expenses`,
         });
 
-        const expenseDescriptionForToast = description.trim();
-        if (undoTimeoutId) clearTimeout(undoTimeoutId);
-
-        const { dismiss: dismissToast } = toast({
-          title: "Expense Added!",
-          description: `Expense "${expenseDescriptionForToast}" for ${getCurrencySymbol()}${numericAmount.toFixed(2)} recorded.`,
-          duration: 7000,
-          action: (
-            <ToastAction
-              altText="Undo"
-              onClick={async () => {
-                if (undoTimeoutId) clearTimeout(undoTimeoutId);
-                setUndoTimeoutId(null);
-                dismissToast(); 
-                await handleUndoAddExpense(expenseId, groupId, expenseDescriptionForToast);
-              }}
-            >
-              Undo
-            </ToastAction>
-          ),
-        });
-
-        const newTimeout = setTimeout(() => {
-          resetFormFields();
-          router.push(`/groups/${groupId}?refresh=${Date.now()}`);
-          setUndoTimeoutId(null);
-        }, 7500);
-        setUndoTimeoutId(newTimeout);
+        // Store details for undo toast on the next page
+        sessionStorage.setItem('undoItemDetails', JSON.stringify({
+            itemId: expenseId,
+            itemType: 'expense',
+            groupId: groupId,
+            description: description.trim(),
+            actorName: actor?.name || 'User',
+            amount: numericAmount, // Store amount for display in undo toast if needed
+        }));
+        
+        resetFormFields();
+        router.push(`/groups/${groupId}?refresh=${Date.now()}&tab=expenses&undoAction=expense&itemId=${expenseId}`);
 
     } catch (error) {
         console.error("[AddExpense] Error in handleSubmit:", error);
