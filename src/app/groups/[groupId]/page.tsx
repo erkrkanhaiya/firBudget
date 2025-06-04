@@ -260,14 +260,13 @@ export default function GroupDetailPage() {
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
     if (showLoadingSpinner) setIsLoadingPageData(true);
-    setGroup(null); // Clear previous group data
+    setGroup(null); 
     setAccessDenied(false);
     setGroupNotFound(false);
 
 
     if (!currentUser || !groupId) {
       if(showLoadingSpinner) setIsLoadingPageData(false);
-      // No need to redirect here, main useEffect will handle it
       return;
     }
 
@@ -396,7 +395,7 @@ export default function GroupDetailPage() {
     } catch (error) {
       console.error("Error fetching group data:", error);
       toast({ title: "Error fetching group", description: "Could not fetch group details. Please try refreshing.", variant: "destructive" });
-      setGroup(null); // Ensure group is null on error
+      setGroup(null); 
     } finally {
        if(showLoadingSpinner) setIsLoadingPageData(false);
     }
@@ -404,19 +403,19 @@ export default function GroupDetailPage() {
 
 
   useEffect(() => {
-    if (isLoadingAuth) return; // Wait for auth state to be determined
+    if (isLoadingAuth) return; 
 
     if (!currentUser) {
-        router.push('/login'); // Redirect if not logged in
-        setIsLoadingPageData(false); // Ensure loading stops
+        router.push('/login'); 
+        setIsLoadingPageData(false); 
         return;
     }
     if (!groupId) {
-        setGroupNotFound(true); // If groupId is somehow missing
+        setGroupNotFound(true); 
         setIsLoadingPageData(false);
         return;
     }
-    fetchGroupData(); // Fetch data only if user is authenticated and groupId is present
+    fetchGroupData(); 
   }, [isLoadingAuth, currentUser, groupId, searchParams.get('refresh'), fetchGroupData, router]);
 
 
@@ -456,7 +455,7 @@ export default function GroupDetailPage() {
               type: "info",
           });
         }
-        fetchGroupData(false); // Re-fetch data to update UI
+        fetchGroupData(false); 
     } catch (error) {
         console.error(`Error undoing ${itemType} add:`, error);
         toast({ title: "Undo Failed", description: `Could not undo adding the ${itemType}.`, variant: "destructive" });
@@ -471,7 +470,6 @@ export default function GroupDetailPage() {
         setUndoTimeoutId(null);
     }
 
-    // Only proceed if page and group data are loaded and no access issues
     if (isLoadingPageData || accessDenied || groupNotFound || !group) {
         return;
     }
@@ -484,13 +482,11 @@ export default function GroupDetailPage() {
         if (itemDetailsString) {
             const itemDetails = JSON.parse(itemDetailsString);
             if (itemDetails.itemId === itemId && itemDetails.groupId === groupId && itemDetails.itemType === undoActionParam) {
-                sessionStorage.removeItem('undoItemDetails'); // Consume it
+                sessionStorage.removeItem('undoItemDetails'); 
 
-                // Clean up URL params
                 const newSearchParams = new URLSearchParams(searchParams.toString());
                 newSearchParams.delete('undoAction');
                 newSearchParams.delete('itemId');
-                // Keep refresh if it was there, or remove it if not needed further
                 if (searchParams.get('refresh')) {
                     newSearchParams.set('refresh', searchParams.get('refresh')!);
                 } else {
@@ -508,9 +504,9 @@ export default function GroupDetailPage() {
                         <ToastAction
                             altText="Undo"
                             onClick={async () => {
-                                if (undoTimeoutId) clearTimeout(undoTimeoutId); // Clear any pending timeout
+                                if (undoTimeoutId) clearTimeout(undoTimeoutId); 
                                 setUndoTimeoutId(null);
-                                dismissToast(); // Dismiss this toast
+                                dismissToast(); 
                                 await performUndoAddItem(
                                     itemDetails.itemId,
                                     itemDetails.itemType,
@@ -527,22 +523,15 @@ export default function GroupDetailPage() {
                     ),
                 });
 
-                // Set a timeout to clear the "undo" capability if not used
                 const newTimeout = setTimeout(() => {
-                  // This timeout's purpose is to clear the state that an undo is pending,
-                  // not to auto-dismiss the toast (toast has its own duration).
-                  // If your performUndoAddItem relies on undoTimeoutId being non-null to act,
-                  // then clearing it here is appropriate.
                   setUndoTimeoutId(null);
-                }, 7500); // Slightly longer than toast duration
+                }, 7500); 
                 setUndoTimeoutId(newTimeout);
             } else {
-                // Mismatch or old data, clear it
                 sessionStorage.removeItem('undoItemDetails');
             }
         }
     }
-    // Cleanup function for the useEffect
     return () => {
         if (undoTimeoutId) {
             clearTimeout(undoTimeoutId);
@@ -1056,7 +1045,13 @@ export default function GroupDetailPage() {
                 </Link>
               </Button>
               <AlertDialog>
-                <AlertDialogTrigger asChild> <Button variant="destructive" size="sm"> <Trash2 className="mr-2 h-4 w-4" /> Delete Group </Button> </AlertDialogTrigger>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm">
+                    <span>
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete Group
+                    </span>
+                  </Button>
+                </AlertDialogTrigger>
                 <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete the group "{group.name}" and all its associated data (expenses, activity logs, payments, contributions, notes) from Firestore. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={handleDeleteGroup} className="bg-destructive hover:bg-destructive/90"> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent>
               </AlertDialog>
             </div>
