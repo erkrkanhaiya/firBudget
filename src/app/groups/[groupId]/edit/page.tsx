@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Save, Image as ImageIcon, Lock, Unlock, AlertTriangle, Loader2, Briefcase, Home as HomeIconLucide, Heart, PartyPopper, Shapes } from 'lucide-react'; // Renamed Home to HomeIconLucide
+import { ArrowLeft, Save, Image as ImageIcon, Lock, Unlock, AlertTriangle, Loader2, Briefcase, Home as HomeIconLucide, Heart, PartyPopper, Shapes, DollarSign } from 'lucide-react'; // Renamed Home to HomeIconLucide
 import { useUser } from '@/contexts/UserContext';
 import type { Group, GroupVisibility, GroupCategory } from '@/types';
 import { useToast } from "@/hooks/use-toast";
@@ -19,10 +19,11 @@ import NextImage from 'next/image';
 import { db, auth } from '@/lib/firebase'; 
 import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
   TRIP: Briefcase,
-  HOME: HomeIconLucide, // Use renamed import
+  HOME: HomeIconLucide, 
   COUPLE: Heart,
   PARTY: PartyPopper,
   OTHER: Shapes,
@@ -35,11 +36,13 @@ export default function EditGroupPage() {
   const { currentUser } = useUser();
   const { toast } = useToast();
   const { addNotification } = useNotification();
+  const { getCurrencySymbol } = useCurrency();
   const groupId = params.groupId as string;
 
   const [group, setGroup] = useState<Group | null>(null);
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
+  const [groupBudget, setGroupBudget] = useState(''); // New state for budget
   const [groupPhotoFile, setGroupPhotoFile] = useState<File | null>(null);
   const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
   const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
@@ -99,6 +102,7 @@ export default function EditGroupPage() {
             memberIds: groupData.memberIds || [],
             visibility: groupData.visibility || 'private',
             category: groupData.category || 'OTHER',
+            budgetAmount: groupData.budgetAmount, // Fetch budget
             createdAt: (groupData.createdAt && typeof (groupData.createdAt as Timestamp).toDate === 'function')
               ? (groupData.createdAt as Timestamp).toDate().toISOString()
               : (groupData.createdAt && (groupData.createdAt as {seconds: number}).seconds) 
@@ -118,6 +122,7 @@ export default function EditGroupPage() {
           setGroup(fetchedGroup);
           setGroupName(fetchedGroup.name);
           setGroupDescription(fetchedGroup.description || '');
+          setGroupBudget(fetchedGroup.budgetAmount !== undefined ? fetchedGroup.budgetAmount.toString() : ''); // Set budget state
           setGroupPhotoPreview(fetchedGroup.photoUrl || null);
           setGroupVisibility(fetchedGroup.visibility);
           setGroupCategory(fetchedGroup.category || 'OTHER');
@@ -208,14 +213,18 @@ export default function EditGroupPage() {
     let finalPhotoUrl = group.photoUrl; 
     if (groupPhotoFile && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
       console.warn("Group photo is a blob URL. In production, upload to Firebase Storage.");
-      // For demo, not uploading. If it were a real upload, finalPhotoUrl would be the new Firebase Storage URL.
-      // Since we don't upload, if it was a blob, we revert to the old URL or empty.
-      // For now, let's simulate by keeping it empty if it's a new blob.
-      finalPhotoUrl = ''; // Or group.photoUrl if you want to keep old one if new blob fails
+      finalPhotoUrl = ''; 
     } else if (!groupPhotoPreview && group.photoUrl) { 
         finalPhotoUrl = ''; 
     } else if (groupPhotoPreview && !groupPhotoPreview.startsWith('blob:')) {
-        finalPhotoUrl = groupPhotoPreview; // It was already a URL
+        finalPhotoUrl = groupPhotoPreview; 
+    }
+
+    const numericBudget = groupBudget.trim() ? parseFloat(groupBudget) : undefined;
+    if (groupBudget.trim() && (isNaN(numericBudget as number) || (numericBudget as number) < 0)) {
+        toast({ title: "Invalid Budget", description: "Budget must be a non-negative number.", variant: "destructive"});
+        setIsSubmitting(false);
+        return;
     }
 
 
@@ -226,6 +235,7 @@ export default function EditGroupPage() {
       visibility: groupVisibility,
       category: groupCategory,
       dataAiHint: finalPhotoUrl && finalPhotoUrl.includes('placehold.co') ? (group.dataAiHint || 'group image') : '',
+      budgetAmount: numericBudget, // Save parsed budget or undefined to remove it
     };
     
     try {
@@ -290,6 +300,23 @@ export default function EditGroupPage() {
                 placeholder="A brief description of the group's purpose"
                 disabled={isSubmitting}
               />
+            </div>
+             <div>
+              <Label htmlFor="groupBudget">Group Budget (Optional)</Label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{getCurrencySymbol()}</span>
+                  <Input
+                    id="groupBudget"
+                    type="number"
+                    value={groupBudget}
+                    onChange={(e) => setGroupBudget(e.target.value)}
+                    placeholder="0.00"
+                    className="pl-8"
+                    step="0.01"
+                    min="0"
+                    disabled={isSubmitting}
+                  />
+                </div>
             </div>
             <div>
               <Label htmlFor="groupCategory">Group Category*</Label>

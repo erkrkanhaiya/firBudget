@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus, Lock, Unlock, Contact, Loader2, Send, Briefcase, Home, Heart, PartyPopper, Shapes } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Image as ImageIcon, Users, UserPlus, Lock, Unlock, Contact, Loader2, Send, Briefcase, Home, Heart, PartyPopper, Shapes, DollarSign } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from "@/hooks/use-toast";
@@ -17,9 +17,10 @@ import type { User, GroupVisibility, Group, AppMemberContact, GroupCategory } fr
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import NextImage from 'next/image';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where, orderBy } from 'firebase/firestore'; // Added where and orderBy
+import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where, orderBy } from 'firebase/firestore'; 
 import { useNotification } from '@/contexts/NotificationContext';
 import React from 'react';
+import { useCurrency } from '@/contexts/CurrencyContext';
 
 // Helper to get initials
 const getInitials = (name: string | null | undefined): string => {
@@ -45,9 +46,11 @@ export default function CreateGroupPage() {
   const { currentUser, isLoadingAuth } = useUser();
   const { toast } = useToast();
   const { addNotification } = useNotification();
+  const { getCurrencySymbol } = useCurrency();
 
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
+  const [groupBudget, setGroupBudget] = useState(''); // New state for budget
   const [groupPhoto, setGroupPhoto] = useState<File | null>(null);
   const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
   const [selectedMembers, setSelectedMembers] = useState<User[]>([]);
@@ -84,8 +87,8 @@ export default function CreateGroupPage() {
         const contactsCollectionRef = collection(db, "appMemberContacts");
         const q = query(
           contactsCollectionRef, 
-          where("addedByUid", "==", currentUser.id), // Filter by current user
-          orderBy("name", "asc") // Optionally order by name
+          where("addedByUid", "==", currentUser.id), 
+          orderBy("name", "asc") 
         ); 
         const contactsSnapshot = await getDocs(q);
 
@@ -280,6 +283,12 @@ export default function CreateGroupPage() {
        photoURLToSave = groupPhotoPreview;
     }
 
+    const numericBudget = groupBudget.trim() ? parseFloat(groupBudget) : undefined;
+    if (groupBudget.trim() && (isNaN(numericBudget as number) || (numericBudget as number) < 0)) {
+        toast({ title: "Invalid Budget", description: "Budget must be a non-negative number.", variant: "destructive"});
+        setIsSubmitting(false);
+        return;
+    }
 
     const memberIds = selectedMembers.map(m => m.id);
     const uniqueMemberIds = Array.from(new Set(memberIds));
@@ -300,6 +309,7 @@ export default function CreateGroupPage() {
       visibility: groupVisibility,
       category: groupCategory,
       createdAt: serverTimestamp() as Timestamp,
+      ...(numericBudget !== undefined && { budgetAmount: numericBudget }),
     };
 
     try {
@@ -366,6 +376,23 @@ export default function CreateGroupPage() {
                 placeholder="A brief description of the group's purpose"
                 disabled={isSubmitting}
               />
+            </div>
+             <div>
+              <Label htmlFor="groupBudget">Group Budget (Optional)</Label>
+              <div className="relative">
+                <span className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground">{getCurrencySymbol()}</span>
+                <Input
+                  id="groupBudget"
+                  type="number"
+                  value={groupBudget}
+                  onChange={(e) => setGroupBudget(e.target.value)}
+                  placeholder="0.00"
+                  className="pl-8"
+                  step="0.01"
+                  min="0"
+                  disabled={isSubmitting}
+                />
+              </div>
             </div>
             <div>
               <Label>Group Category*</Label>
@@ -566,6 +593,3 @@ export default function CreateGroupPage() {
     </div>
   );
 }
-
-
-    
