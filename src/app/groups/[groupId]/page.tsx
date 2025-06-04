@@ -8,9 +8,9 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Send, BarChartHorizontal } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Send, BarChartHorizontal, Coins as CoinsIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment } from '@/types';
+import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment, Contribution } from '@/types';
 import { useUser } from '@/contexts/UserContext';
 import { format, parseISO } from 'date-fns';
 import {
@@ -61,7 +61,6 @@ import {
   ChartTooltipContent,
   ChartLegend,
   ChartLegendContent,
-  ChartStyle,
   type ChartConfig
 } from "@/components/ui/chart";
 import { BarChart, CartesianGrid, XAxis, YAxis, Bar } from "recharts";
@@ -109,6 +108,7 @@ export default function GroupDetailPage() {
   const [group, setGroup] = useState<Group | null>(null);
   const [firestoreExpenses, setFirestoreExpenses] = useState<Expense[]>([]);
   const [firestorePayments, setFirestorePayments] = useState<Payment[]>([]);
+  const [firestoreContributions, setFirestoreContributions] = useState<Contribution[]>([]);
   const [firestoreActivityLogs, setFirestoreActivityLogs] = useState<ActivityLog[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -130,63 +130,87 @@ export default function GroupDetailPage() {
     return map;
   }, [group]);
 
-  const calculateGroupBalances = (
-    currentGroup: Group | null, 
+  const calculateGroupBalances = useCallback((
+    currentGroupMembers: UserType[], 
     groupExpenses: Expense[], 
-    groupPayments: Payment[], 
-    groupMembers: UserType[]
+    groupPayments: Payment[],
+    groupContributions: Contribution[]
   ): Balance[] => {
-    if (!currentGroup || groupMembers.length === 0) return [];
-    const memberBalances: Record<string, { owes: Record<string, number>, owedBy: Record<string, number>, netBalance: number }> = {};
+    if (currentGroupMembers.length === 0) return [];
     
-    groupMembers.forEach(member => { 
-        memberBalances[member.id] = { owes: {}, owedBy: {}, netBalance: 0 };
+    const memberNetBalances: Record<string, number> = {};
+    currentGroupMembers.forEach(member => {
+      memberNetBalances[member.id] = 0;
     });
 
+    // 1. Process Contributions
+    groupContributions.forEach(contrib => {
+      if (memberNetBalances[contrib.contributorId] !== undefined) {
+        memberNetBalances[contrib.contributorId] += contrib.amount;
+      }
+    });
+
+    // 2. Process Expenses
     groupExpenses.forEach(expense => {
-        const payerId = expense.paidByUserId;
-        if (!memberBalances[payerId] && groupMembers.find(m => m.id === payerId)) { 
-             memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
+      // Credit the payer
+      if (memberNetBalances[expense.paidByUserId] !== undefined) {
+        memberNetBalances[expense.paidByUserId] += expense.amount;
+      }
+      // Debit participants for their share
+      expense.participants.forEach(p => {
+        if (memberNetBalances[p.userId] !== undefined) {
+          memberNetBalances[p.userId] -= p.amountOwed;
         }
-
-        expense.participants.forEach(participant => {
-            const debtorId = participant.userId;
-            const amountOwedByDebtor = participant.amountOwed;
-
-            if (debtorId === payerId) return; 
-            
-            if(!memberBalances[debtorId] && groupMembers.find(m => m.id === debtorId)) {
-                memberBalances[debtorId] = { owes: {}, owedBy: {}, netBalance: 0 };
-            }
-            
-            if (memberBalances[debtorId] && memberBalances[payerId]) {
-                memberBalances[debtorId].owes[payerId] = (memberBalances[debtorId].owes[payerId] || 0) + amountOwedByDebtor;
-                memberBalances[debtorId].netBalance -= amountOwedByDebtor;
-                memberBalances[payerId].owedBy[debtorId] = (memberBalances[payerId].owedBy[debtorId] || 0) + amountOwedByDebtor;
-                memberBalances[payerId].netBalance += amountOwedByDebtor;
-            }
-        });
+      });
     });
 
+    // 3. Process Payments (Settlements)
     groupPayments.forEach(payment => {
-        const payerId = payment.paidByUserId;
-        const payeeId = payment.paidToUserId;
-        const amount = payment.amount;
-
-        if (memberBalances[payerId] && memberBalances[payeeId]) {
-            memberBalances[payerId].owes[payeeId] = (memberBalances[payerId].owes[payeeId] || 0) - amount;
-            memberBalances[payerId].netBalance += amount; 
-
-            memberBalances[payeeId].owedBy[payerId] = (memberBalances[payeeId].owedBy[payerId] || 0) - amount;
-            memberBalances[payeeId].netBalance -= amount;
-        }
+      if (memberNetBalances[payment.paidByUserId] !== undefined) {
+        memberNetBalances[payment.paidByUserId] -= payment.amount; // Payer's balance decreases
+      }
+      if (memberNetBalances[payment.paidToUserId] !== undefined) {
+        memberNetBalances[payment.paidToUserId] += payment.amount; // Payee's balance increases
+      }
     });
 
-    return Object.entries(memberBalances).map(([userId, balanceData]) => ({
-        userId,
-        ...balanceData
-    })).filter(b => groupMembers.some(m => m.id === b.userId)); 
-  };
+    // 4. Simplify debts based on final netBalances
+    const finalBalances: Balance[] = [];
+    const creditors: Array<{ id: string, amount: number }> = [];
+    const debtors: Array<{ id: string, amount: number }> = [];
+
+    currentGroupMembers.forEach(member => {
+      const net = parseFloat((memberNetBalances[member.id] || 0).toFixed(2));
+      if (net > 0.005) creditors.push({ id: member.id, amount: net });
+      else if (net < -0.005) debtors.push({ id: member.id, amount: Math.abs(net) });
+      finalBalances.push({ userId: member.id, owes: {}, owedBy: {}, netBalance: net });
+    });
+
+    creditors.sort((a, b) => b.amount - a.amount); // Sort by largest amount owed
+    debtors.sort((a, b) => b.amount - a.amount);   // Sort by largest amount needs to pay
+
+    let i = 0, j = 0;
+    while (i < debtors.length && j < creditors.length) {
+      const debtor = debtors[i];
+      const creditor = creditors[j];
+      const amountToSettle = parseFloat(Math.min(debtor.amount, creditor.amount).toFixed(2));
+
+      if (amountToSettle > 0.005) {
+        const debtorBalanceEntry = finalBalances.find(b => b.userId === debtor.id)!;
+        const creditorBalanceEntry = finalBalances.find(b => b.userId === creditor.id)!;
+
+        debtorBalanceEntry.owes[creditor.id] = (debtorBalanceEntry.owes[creditor.id] || 0) + amountToSettle;
+        creditorBalanceEntry.owedBy[debtor.id] = (creditorBalanceEntry.owedBy[debtor.id] || 0) + amountToSettle;
+
+        debtor.amount = parseFloat((debtor.amount - amountToSettle).toFixed(2));
+        creditor.amount = parseFloat((creditor.amount - amountToSettle).toFixed(2));
+      }
+
+      if (debtor.amount < 0.005) i++;
+      if (creditor.amount < 0.005) j++;
+    }
+    return finalBalances;
+  }, []);
 
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
@@ -222,6 +246,7 @@ export default function GroupDetailPage() {
         }
         setGroup(fetchedGroup);
 
+        // Fetch Expenses
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
         const expensesQuery = query(expensesColRef, orderBy('date', 'desc'));
         const expensesSnapshot = await getDocs(expensesQuery);
@@ -238,6 +263,7 @@ export default function GroupDetailPage() {
         });
         setFirestoreExpenses(fetchedExpenses);
 
+        // Fetch Payments
         const paymentsColRef = collection(db, 'groups', groupId, 'payments');
         const paymentsQuery = query(paymentsColRef, orderBy('date', 'desc'));
         const paymentsSnapshot = await getDocs(paymentsQuery);
@@ -252,6 +278,23 @@ export default function GroupDetailPage() {
         });
         setFirestorePayments(fetchedPayments);
 
+        // Fetch Contributions
+        const contributionsColRef = collection(db, 'groups', groupId, 'contributions');
+        const contributionsQuery = query(contributionsColRef, orderBy('date', 'desc'));
+        const contributionsSnapshot = await getDocs(contributionsQuery);
+        const fetchedContributions = contributionsSnapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            return {
+                id: docSnap.id,
+                ...data,
+                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
+                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+            } as Contribution;
+        });
+        setFirestoreContributions(fetchedContributions);
+
+
+        // Fetch Activity Logs
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
         const activityLogQuery = query(activityLogColRef, orderBy('timestamp', 'desc'));
         const activityLogSnapshot = await getDocs(activityLogQuery);
@@ -265,7 +308,7 @@ export default function GroupDetailPage() {
         });
         setFirestoreActivityLogs(fetchedActivityLogs);
         
-        const calculatedBalances = calculateGroupBalances(fetchedGroup, fetchedExpenses, fetchedPayments, fetchedGroup.members);
+        const calculatedBalances = calculateGroupBalances(fetchedGroup.members, fetchedExpenses, fetchedPayments, fetchedContributions);
         setBalances(calculatedBalances);
         
         // Calculate spending by payer for chart
@@ -277,9 +320,9 @@ export default function GroupDetailPage() {
         const chartData = fetchedGroup.members.map((member, index) => ({
             name: member.name || `User ${member.id.substring(0, 4)}`,
             totalPaid: payerTotals[member.id] || 0,
-            fill: `var(--chart-${(index % 5) + 1})` // Cycle through chart colors
-        })).filter(data => data.totalPaid > 0) // Only show members who paid something
-           .sort((a,b) => b.totalPaid - a.totalPaid); // Sort by most paid
+            fill: `var(--chart-${(index % 5) + 1})` 
+        })).filter(data => data.totalPaid > 0) 
+           .sort((a,b) => b.totalPaid - a.totalPaid); 
 
         setSpendingByPayerChartData(chartData);
 
@@ -295,7 +338,7 @@ export default function GroupDetailPage() {
     } finally {
       if(showLoadingSpinner) setIsLoading(false);
     }
-  }, [groupId, currentUser, router, toast]);
+  }, [groupId, currentUser, router, toast, calculateGroupBalances]);
 
   useEffect(() => {
     fetchGroupData();
@@ -345,6 +388,31 @@ export default function GroupDetailPage() {
       yPos += 6;
     });
     yPos += 4; 
+
+    if (firestoreContributions.length > 0) {
+      doc.setFontSize(14);
+      doc.text("Contributions to Group Fund", 14, yPos);
+      yPos += 2;
+      const contributionData = firestoreContributions.map(c => {
+        const contributor = memberDetailsMap.get(c.contributorId);
+        return [
+          format(parseISO(c.date), "MMM d, yyyy"),
+          contributor?.name || c.contributorId.substring(0,6),
+          c.description || "-",
+          `${currencySymbol}${c.amount.toFixed(2)}`
+        ];
+      });
+      doc.autoTable({
+        startY: yPos,
+        head: [['Date', 'Contributor', 'Description', 'Amount']],
+        body: contributionData,
+        theme: 'striped',
+        headStyles: { fillColor: [22, 160, 133] },
+        margin: { top: yPos }
+      });
+      yPos = doc.autoTable.previous.finalY + 10;
+    }
+
 
     if (firestoreExpenses.length > 0) {
       doc.setFontSize(14);
@@ -412,17 +480,17 @@ export default function GroupDetailPage() {
         if (!user) return;
         let balanceText = "";
         if (balance.netBalance > 0.005) { 
-          balanceText = `Is Owed: ${currencySymbol}${balance.netBalance.toFixed(2)}`;
+          balanceText = `Is Owed by Group: ${currencySymbol}${balance.netBalance.toFixed(2)}`;
         } else if (balance.netBalance < -0.005) { 
-          balanceText = `Owes: ${currencySymbol}${Math.abs(balance.netBalance).toFixed(2)}`;
+          balanceText = `Owes to Group: ${currencySymbol}${Math.abs(balance.netBalance).toFixed(2)}`;
         } else {
-          balanceText = "Settled Up";
+          balanceText = "Settled with Group";
         }
         balanceSummary.push([user.name || balance.userId.substring(0,6), balanceText]);
       });
        doc.autoTable({
         startY: yPos,
-        head: [['Member', 'Net Balance Status']],
+        head: [['Member', 'Net Position with Group Fund']],
         body: balanceSummary,
         theme: 'grid',
         headStyles: { fillColor: [52, 73, 94] },
@@ -443,7 +511,7 @@ export default function GroupDetailPage() {
           .filter(item => item.user);
           
         if (owedToList.length > 0) {
-            detailedOwesText += `${user.name || balance.userId.substring(0,6)} owes:\n`;
+            detailedOwesText += `${user.name || balance.userId.substring(0,6)} should pay:\n`;
             owedToList.forEach(item => {
                  detailedOwesText += `  - ${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}\n`;
             });
@@ -454,7 +522,7 @@ export default function GroupDetailPage() {
       if (detailedOwesText) {
         if (yPos > 250) { doc.addPage(); yPos = 20; } 
         doc.setFontSize(14);
-        doc.text("Settlement Suggestions (Who Owes Whom)", 14, yPos);
+        doc.text("Simplified Settlement Suggestions (Who Owes Whom Directly)", 14, yPos);
         yPos += 10;
         doc.setFontSize(10);
         const splitOwesText = doc.splitTextToSize(detailedOwesText, 180);
@@ -528,6 +596,10 @@ export default function GroupDetailPage() {
         const paymentsSnapshot = await getDocs(query(paymentsColRef));
         paymentsSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
 
+        const contributionsColRef = collection(db, 'groups', groupId, 'contributions'); // Delete contributions
+        const contributionsSnapshot = await getDocs(query(contributionsColRef));
+        contributionsSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
+        
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
         const activityLogSnapshot = await getDocs(query(activityLogColRef)); 
         activityLogSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
@@ -719,7 +791,6 @@ export default function GroupDetailPage() {
     totalPaid: {
       label: `Total Paid (${getCurrencySymbol()})`,
     },
-    // Dynamically add members to chartConfig for legend and tooltip
     ...spendingByPayerChartData.reduce((acc, member) => {
       acc[member.name] = { label: member.name, color: member.fill };
       return acc;
@@ -786,7 +857,7 @@ export default function GroupDetailPage() {
                     <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                     <AlertDialogDescription>
                       This action cannot be undone. This will permanently delete the group
-                      "{group.name}" and all its associated data (expenses, activity logs, payments) from Firestore.
+                      "{group.name}" and all its associated data (expenses, activity logs, payments, contributions) from Firestore.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -806,6 +877,7 @@ export default function GroupDetailPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
             <TabsList>
               <TabsTrigger value="expenses"><CreditCard className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
+              <TabsTrigger value="contributions"><CoinsIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Contributions</TabsTrigger>
               <TabsTrigger value="payments"><HandCoins className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Payments</TabsTrigger>
               <TabsTrigger value="balances"><ListChecks className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Balances</TabsTrigger>
               <TabsTrigger value="reports"><BarChartHorizontal className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Reports</TabsTrigger>
@@ -818,6 +890,11 @@ export default function GroupDetailPage() {
                   <Button asChild className="flex-1 sm:flex-none">
                     <Link href={`/groups/${groupId}/add-expense`}>
                       <PlusCircle className="mr-2 h-4 w-4" /> Add Expense
+                    </Link>
+                  </Button>
+                  <Button variant="secondary" asChild className="flex-1 sm:flex-none">
+                    <Link href={`/groups/${groupId}/add-contribution`}>
+                      <CoinsIcon className="mr-2 h-4 w-4" /> Add Funds
                     </Link>
                   </Button>
                   <Button variant="outline" asChild className="flex-1 sm:flex-none">
@@ -933,6 +1010,57 @@ export default function GroupDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="contributions">
+            <Card>
+              <CardHeader>
+                <CardTitle>Fund Contributions</CardTitle>
+                <CardDescription>All funds contributed by members to this group's pool.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {firestoreContributions.length > 0 ? (
+                  <ul className="space-y-4">
+                    {firestoreContributions.map(contribution => {
+                      const contributor = memberDetailsMap.get(contribution.contributorId);
+                      return (
+                        <li key={contribution.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name} />
+                              <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">
+                                {contributor?.name || contribution.contributorId.substring(0,6)} contributed
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                On {format(parseISO(contribution.date), "MMM d, yyyy")}
+                                {contribution.description && ` - ${contribution.description}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right ml-2">
+                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                              +{getCurrencySymbol()}{contribution.amount.toFixed(2)}
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">No contributions recorded yet for this group.</p>
+                )}
+              </CardContent>
+               <CardFooter>
+                <Button asChild className="ml-auto">
+                    <Link href={`/groups/${groupId}/add-contribution`}>
+                        <CoinsIcon className="mr-2 h-4 w-4" /> Record Contribution
+                    </Link>
+                </Button>
+              </CardFooter>
+            </Card>
+          </TabsContent>
           
           <TabsContent value="payments">
             <Card>
@@ -982,7 +1110,7 @@ export default function GroupDetailPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Balances</CardTitle>
-                <CardDescription>Who owes whom in this group, calculated from Firestore expenses and recorded payments.</CardDescription>
+                <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription>
               </CardHeader>
               <CardContent>
                 {balances.length > 0 ? (
@@ -1008,14 +1136,14 @@ export default function GroupDetailPage() {
                                       <AvatarImage src={user.avatarUrl || undefined} />
                                       <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                                   </Avatar>
-                                  <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Balance:</span>
+                                  <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span>
                                   <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                                      {getCurrencySymbol()}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed" : balance.netBalance < -0.005 ? "owes" : "is settled"}
+                                      {getCurrencySymbol()}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"}
                                   </span>
                               </div>
                               {owedToList.length > 0 && (
                                   <div className="pl-4 text-sm space-y-1">
-                                      <p className="text-red-600 dark:text-red-400 font-medium">Owes:</p>
+                                      <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p>
                                       <ul className="list-none ml-2 space-y-1">
                                           {owedToList.map(item => (
                                               <li key={item.user!.id} className="flex justify-between items-center">
@@ -1032,25 +1160,7 @@ export default function GroupDetailPage() {
                                       </ul>
                                   </div>
                               )}
-                              {owedByList.length > 0 && (
-                                   <div className="pl-4 text-sm mt-2 space-y-1">
-                                      <p className="text-green-600 dark:text-green-400 font-medium">Is owed by:</p>
-                                      <ul className="list-none ml-2 space-y-1">
-                                          {owedByList.map(item => (
-                                              <li key={item.user!.id} className="flex justify-between items-center">
-                                                  <span>{`${getCurrencySymbol()}${item.amount.toFixed(2)} from ${item.user!.name || item.user!.id.substring(0,6)}`}</span>
-                                                  {balance.userId === currentUser.id && isMember && (
-                                                    <Button asChild size="xs" variant="outline" className="px-2 py-1 h-auto text-xs">
-                                                      <Link href={`/groups/${groupId}/settle-up?payerId=${item.user!.id}&payeeId=${currentUser.id}&amount=${item.amount.toFixed(2)}`}>
-                                                        <HandCoins className="mr-1.5 h-3 w-3" /> Record Payment
-                                                      </Link>
-                                                    </Button>
-                                                  )}
-                                              </li>
-                                          ))}
-                                      </ul>
-                                  </div>
-                              )}
+                              {/* OwedBy list might be redundant if we are showing net position and simplified payments */}
                                {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( 
                                    <p className="pl-4 text-sm text-muted-foreground">All settled up!</p>
                                )}
@@ -1059,7 +1169,7 @@ export default function GroupDetailPage() {
                     })}
                   </ul>
                 ) : (
-                   <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses/payments yet in Firestore.</p>
+                   <p className="text-muted-foreground text-center py-4">Balances are being calculated or no transactions yet in Firestore.</p>
                 )}
               </CardContent>
             </Card>
@@ -1095,7 +1205,6 @@ export default function GroupDetailPage() {
                           />
                            <ChartLegend content={<ChartLegendContent />} />
                           <Bar dataKey="totalPaid" radius={4}>
-                            {/* Recharts will use the fill property from data for each bar */}
                           </Bar>
                         </BarChart>
                       </ChartContainer>
@@ -1243,4 +1352,3 @@ export default function GroupDetailPage() {
     </div>
   );
 }
-

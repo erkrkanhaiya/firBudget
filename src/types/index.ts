@@ -56,15 +56,26 @@ export interface Payment {
   createdAt: string; // ISO string format for Firestore serverTimestamp
 }
 
+export interface Contribution {
+  id: string;
+  groupId: string;
+  contributorId: string;
+  amount: number;
+  date: string; // ISO string
+  description?: string;
+  createdAt: string; // ISO string format for Firestore serverTimestamp
+}
+
 export interface ActivityLog {
   id: string;
   groupId: string;
   userId: string; // User who performed the action OR the user central to the action (e.g. paidByUserId for payment)
-  actionType: 'expense_added' | 'expense_edited' | 'expense_deleted' | 'payment_recorded' | 'member_added' | 'member_removed' | 'group_created' | 'group_edited';
+  actionType: 'expense_added' | 'expense_edited' | 'expense_deleted' | 'payment_recorded' | 'member_added' | 'member_removed' | 'group_created' | 'group_edited' | 'contribution_added';
   timestamp: string; // ISO string format
   description: string;
   relatedExpenseId?: string;
   relatedPaymentId?: string;
+  relatedContributionId?: string;
   relatedUserId?: string; // e.g., for member_added/removed, the ID of the member affected
   actorName?: string | null; // Name of the user who performed the action
   actorAvatarUrl?: string | null;
@@ -103,8 +114,6 @@ export interface NotificationItem {
 }
 
 // For AI Expense Detail Extraction
-export const PREDEFINED_EXPENSE_CATEGORIES = ["Food", "Travel", "Utilities", "Entertainment", "Shopping", "Other"];
-
 // Zod schemas for AI Expense Detail Extraction Flow
 export const ExtractExpenseDetailsInputSchema = z.object({
   receiptDataUri: z
