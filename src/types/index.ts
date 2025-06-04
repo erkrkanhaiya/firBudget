@@ -66,21 +66,58 @@ export interface Contribution {
   createdAt: string; // ISO string format for Firestore serverTimestamp
 }
 
+export interface GroupNote {
+  id: string;
+  groupId: string;
+  title: string;
+  content: string;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
+}
+
+// For future to-do/checklist items, define a structure
+export interface TaskItem {
+  id: string; // Unique ID for the task item within the list
+  text: string;
+  isDone: boolean;
+}
+
+export interface GroupTaskList {
+  id: string;
+  groupId: string;
+  title: string;
+  items: TaskItem[];
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
+}
+
 export interface ActivityLog {
   id: string;
   groupId: string;
-  userId: string; // User who performed the action OR the user central to the action (e.g. paidByUserId for payment)
-  actionType: 'expense_added' | 'expense_edited' | 'expense_deleted' | 'payment_recorded' | 'member_added' | 'member_removed' | 'group_created' | 'group_edited' | 'contribution_added';
+  userId: string; // User who performed the action OR the user central to the action
+  actionType: 'expense_added' | 'expense_edited' | 'expense_deleted' |
+                'payment_recorded' |
+                'member_added' | 'member_removed' |
+                'group_created' | 'group_edited' |
+                'contribution_added' |
+                'note_added' | 'note_edited' | 'note_deleted' |
+                'tasklist_added' | 'tasklist_edited' | 'tasklist_deleted';
   timestamp: string; // ISO string format
   description: string;
   relatedExpenseId?: string;
   relatedPaymentId?: string;
   relatedContributionId?: string;
-  relatedUserId?: string; // e.g., for member_added/removed, the ID of the member affected
-  actorName?: string | null; // Name of the user who performed the action
+  relatedNoteId?: string;
+  relatedTaskListId?: string;
+  relatedUserId?: string;
+  actorName?: string | null;
   actorAvatarUrl?: string | null;
   groupName?: string;
-  groupId?: string; // Added groupId to EnrichedActivityLog
+  groupId?: string;
 }
 
 export interface Balance {
