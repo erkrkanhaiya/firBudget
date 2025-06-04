@@ -16,6 +16,7 @@ import { Loader2 } from 'lucide-react';
 
 interface UserContextType {
   currentUser: User | null;
+  setCurrentUser: React.Dispatch<React.SetStateAction<User | null>>; // Added to allow manual updates
   isLoadingAuth: boolean; // To indicate auth state is being determined
   login: (email: string, password: string) => Promise<FirebaseUser>;
   logout: () => Promise<void>;
@@ -59,12 +60,21 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
   const signup = async (email: string, password: string, name?: string): Promise<FirebaseUser> => {
     const userCredential = await firebaseCreateUserWithEmailAndPassword(auth, email, password);
-    if (name && userCredential.user) {
+    if (userCredential.user) {
       await firebaseUpdateProfile(userCredential.user, {
-        displayName: name,
+        displayName: name || null, // Ensure displayName can be null if name is empty
+        photoURL: null, // Explicitly set photoURL to null initially
       });
       // Update local currentUser state immediately if needed, or rely on onAuthStateChanged
-      // For simplicity, onAuthStateChanged will eventually update it.
+      // onAuthStateChanged will pick up the displayName.
+       if (auth.currentUser) { // Check if currentUser is not null
+         setCurrentUser({
+          id: auth.currentUser.uid,
+          name: auth.currentUser.displayName,
+          email: auth.currentUser.email,
+          avatarUrl: auth.currentUser.photoURL,
+        });
+       }
     }
     return userCredential.user;
   };
@@ -78,7 +88,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   }
 
   return (
-    <UserContext.Provider value={{ currentUser, isLoadingAuth, login, logout, signup }}>
+    <UserContext.Provider value={{ currentUser, setCurrentUser, isLoadingAuth, login, logout, signup }}>
       {children}
     </UserContext.Provider>
   );
@@ -91,3 +101,6 @@ export const useUser = (): UserContextType => {
   }
   return context;
 };
+
+
+    

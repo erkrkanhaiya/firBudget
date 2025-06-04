@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import { useUser } from '@/contexts/UserContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -12,16 +12,18 @@ import { Camera, Edit3, Save, AlertTriangle, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { updateProfile } from 'firebase/auth';
-import { auth } from '@/lib/firebase'; // Import auth directly
-import { useNotification } from '@/contexts/NotificationContext'; // Import useNotification
+import { auth, storage } from '@/lib/firebase'; // Import auth and storage
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { useNotification } from '@/contexts/NotificationContext';
 
 export default function ProfilePage() {
-  const { currentUser, isLoadingAuth } = useUser();
-  const { addNotification } = useNotification(); // Use notification context
+  const { currentUser, isLoadingAuth, setCurrentUser } = useUser(); // Added setCurrentUser from context
+  const { addNotification } = useNotification();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState('');
-  const [email, setEmail] = useState(''); // Email is generally not editable directly this way
-  const [avatarPreview, setAvatarPreview] = useState<string | undefined | null>(null); // For new image preview
+  const [email, setEmail] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | undefined | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
@@ -64,40 +66,85 @@ export default function ProfilePage() {
     return "U";
   };
 
+  const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+        toast({ title: "File too large", description: "Avatar image cannot exceed 2MB.", variant: "destructive"});
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        toast({ title: "Invalid File Type", description: "Only image files are accepted for avatars.", variant: "destructive"});
+        return;
+      }
+      setAvatarFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSave = async () => {
     if (!auth.currentUser) {
       toast({ title: "Error", description: "Not authenticated.", variant: "destructive" });
       return;
     }
     setIsSaving(true);
-    const oldName = currentUser.name; // Store for notification
+    const oldName = currentUser.name;
+    let newAvatarUrl: string | undefined = currentUser.avatarUrl || undefined;
+    let avatarChanged = false;
+
     try {
+      if (avatarFile) {
+        const filePath = `profile-avatars/${currentUser.id}/${Date.now()}_${avatarFile.name}`;
+        const fileStorageRef = storageRef(storage, filePath);
+        
+        toast({ title: "Uploading Avatar...", description: "Please wait.", variant: "default" });
+        const uploadTask = uploadBytesResumable(fileStorageRef, avatarFile);
+        await uploadTask;
+        newAvatarUrl = await getDownloadURL(uploadTask.snapshot.ref);
+        avatarChanged = true;
+        toast({ title: "Avatar Uploaded!", description: "Your new avatar is uploaded.", variant: "default" });
+      }
+
       const updates: { displayName?: string; photoURL?: string } = {};
       if (name !== currentUser.name) {
         updates.displayName = name;
       }
-      // Avatar update logic still simplified - actual upload to Firebase Storage needed for persistence
-      // if (avatarPreview && avatarPreview !== currentUser.avatarUrl && avatarPreview.startsWith('data:image')) {
-      //   updates.photoURL = avatarPreview; // This would be the URL from Firebase Storage in a real app
-      // }
+      if (avatarChanged && newAvatarUrl !== currentUser.avatarUrl) {
+        updates.photoURL = newAvatarUrl;
+      }
 
       if (Object.keys(updates).length > 0) {
         await updateProfile(auth.currentUser, updates);
-        // Manually trigger a refresh of UserContext or rely on its onAuthStateChanged to pick up display name change
-        // Forcing a reload of the user profile:
-        // await auth.currentUser.reload(); // This can sometimes cause issues, use with caution
-        // The UserContext's onAuthStateChanged should pick up the displayName update eventually.
-        // Re-setting currentUser in context or forcing a page refresh are other strategies if it doesn't update immediately.
+        
+        // Manually update the currentUser in context for immediate UI reflection
+        setCurrentUser({
+          ...currentUser,
+          name: updates.displayName !== undefined ? updates.displayName : currentUser.name,
+          avatarUrl: updates.photoURL !== undefined ? updates.photoURL : currentUser.avatarUrl,
+        });
 
         toast({
           title: "Profile Updated",
           description: "Your profile information has been saved.",
         });
-        addNotification({
-          title: "Profile Updated",
-          message: `Your name was changed ${oldName ? `from "${oldName}"` : ""} to "${name}".`,
-          type: "success",
-        });
+        if (updates.displayName && updates.displayName !== oldName) {
+            addNotification({
+            title: "Profile Name Updated",
+            message: `Your name was changed to "${updates.displayName}".`,
+            type: "success",
+            });
+        }
+        if (updates.photoURL) {
+            addNotification({
+            title: "Profile Avatar Updated",
+            message: `Your avatar has been successfully changed.`,
+            type: "success",
+            });
+        }
       } else {
         toast({
           title: "No Changes",
@@ -105,6 +152,7 @@ export default function ProfilePage() {
         });
       }
       setIsEditing(false);
+      setAvatarFile(null); // Reset file input after save
     } catch (error) {
       console.error("Error updating profile:", error);
       toast({ title: "Error", description: "Could not update profile.", variant: "destructive" });
@@ -118,22 +166,11 @@ export default function ProfilePage() {
     }
   };
   
-  const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
-        toast({ title: "Avatar Preview Updated", description: "Click 'Save Changes' to apply. Note: Full avatar upload to server is not implemented in this demo."});
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   const handleCancelEdit = () => {
     if (currentUser) {
       setName(currentUser.name || '');
       setAvatarPreview(currentUser.avatarUrl);
+      setAvatarFile(null);
     }
     setIsEditing(false);
   };
@@ -155,7 +192,7 @@ export default function ProfilePage() {
               {isEditing && (
                 <label htmlFor="avatar-upload" className="absolute -bottom-2 -right-2 bg-primary text-primary-foreground p-2 rounded-full cursor-pointer hover:bg-primary/90 transition-colors">
                   <Camera className="h-5 w-5" />
-                  <input id="avatar-upload" type="file" className="hidden" accept="image/*" onChange={handleAvatarChange} />
+                  <input id="avatar-upload" type="file" className="hidden" accept="image/*" onChange={handleAvatarChange} disabled={isSaving} />
                 </label>
               )}
             </div>
@@ -180,7 +217,7 @@ export default function ProfilePage() {
           {isEditing ? (
             <div className="flex justify-end gap-2 w-full">
               <Button variant="outline" onClick={handleCancelEdit} disabled={isSaving}>Cancel</Button>
-              <Button onClick={handleSave} disabled={isSaving || (name === currentUser.name && avatarPreview === currentUser.avatarUrl) }>
+              <Button onClick={handleSave} disabled={isSaving || (name === currentUser.name && !avatarFile) }>
                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 {isSaving ? "Saving..." : "Save Changes"}
               </Button>
@@ -195,3 +232,6 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+
+    
