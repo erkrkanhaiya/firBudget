@@ -25,6 +25,7 @@ const nextConfig: NextConfig = {
       // Add other redirects here if needed
     ]
   },
+  allowedDevOrigins: ['https://6000-firebase-studio-1748230088871.cluster-htdgsbmflbdmov5xrjithceibm.cloudworkstations.dev'],
 };
 
 export default nextConfig;
