@@ -260,7 +260,7 @@ export default function GroupDetailPage() {
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
     if (showLoadingSpinner) setIsLoadingPageData(true);
-    setGroup(null); 
+    setGroup(null);
     setAccessDenied(false);
     setGroupNotFound(false);
 
@@ -395,7 +395,7 @@ export default function GroupDetailPage() {
     } catch (error) {
       console.error("Error fetching group data:", error);
       toast({ title: "Error fetching group", description: "Could not fetch group details. Please try refreshing.", variant: "destructive" });
-      setGroup(null); 
+      setGroup(null);
     } finally {
        if(showLoadingSpinner) setIsLoadingPageData(false);
     }
@@ -525,7 +525,7 @@ export default function GroupDetailPage() {
                 }, 7500);
                 setUndoTimeoutId(newTimeout);
             } else {
-                sessionStorage.removeItem('undoItemDetails'); 
+                sessionStorage.removeItem('undoItemDetails');
             }
         }
     }
@@ -534,7 +534,6 @@ export default function GroupDetailPage() {
             clearTimeout(undoTimeoutId);
         }
     };
-  // Added pathname to dependency array as it's used in router.replace
   }, [searchParams, group, isLoadingPageData, accessDenied, groupNotFound, pathname, router, toast, getCurrencySymbol, addNotification, groupId, isUndoing, undoTimeoutId, fetchGroupData]);
 
 
@@ -804,7 +803,7 @@ export default function GroupDetailPage() {
         const subcollections = ['expenses', 'payments', 'contributions', 'activityLog', 'notes'];
         for (const subcollection of subcollections) {
             const colRef = collection(db, 'groups', groupId, subcollection);
-            const snapshot = await getDocs(query(colRef)); 
+            const snapshot = await getDocs(query(colRef));
             snapshot.forEach(docSnap => transaction.delete(docSnap.ref));
         }
         transaction.delete(groupDocRef);
@@ -907,12 +906,12 @@ export default function GroupDetailPage() {
       let actionType: ActivityLog['actionType'] = 'note_added';
       let activityDescription = `${currentUser.name || 'User'} added note: "${noteData.title}"`;
 
-      if (editingNote) { 
+      if (editingNote) {
         actionType = 'note_edited';
         activityDescription = `${currentUser.name || 'User'} edited note: "${noteData.title}"`;
         const noteRef = doc(db, 'groups', groupId, 'notes', editingNote.id);
         batch.update(noteRef, noteData);
-      } else { 
+      } else {
         const notesColRef = collection(db, 'groups', groupId, 'notes');
         const newNoteRef = doc(notesColRef);
         noteId = newNoteRef.id;
@@ -966,7 +965,7 @@ export default function GroupDetailPage() {
         relatedNoteId: noteToDelete.id,
       };
       batch.set(doc(activityLogColRef), { ...activityLog, timestamp: serverTimestamp() });
-      
+
       const prevLogsQuery = query(activityLogColRef, where('relatedNoteId', '==', noteToDelete.id));
       const prevLogsSnap = await getDocs(prevLogsQuery);
       prevLogsSnap.forEach(logDoc => batch.delete(logDoc.ref));
@@ -989,13 +988,13 @@ export default function GroupDetailPage() {
   if (isLoadingAuth || isLoadingPageData) {
     return ( <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]"> <Loader2 className="h-12 w-12 animate-spin text-primary" /> </div> );
   }
-  if (!currentUser) { 
+  if (!currentUser) {
     return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold mb-2">Authentication Required</h1> <p className="text-lg text-muted-foreground mb-6">Please log in to view this page.</p> <Button asChild><Link href="/login">Go to Login</Link></Button> </div> );
   }
   if (accessDenied) {
     return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold mb-2">Access Denied</h1> <p className="text-lg text-muted-foreground mb-6"> You do not have permission to view this group. </p> <Button asChild><Link href="/groups">Back to Groups</Link></Button> </div> );
   }
-  if (groupNotFound || !group) { 
+  if (groupNotFound || !group) {
     return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-muted-foreground mb-4" /> <h1 className="text-3xl font-bold mb-2">Group Not Found</h1> <p className="text-lg text-muted-foreground mb-6"> The group you are looking for does not exist or could not be loaded. It might have been deleted. </p> <Button asChild><Link href="/groups">Back to Groups</Link></Button> </div> );
   }
 
@@ -1109,7 +1108,7 @@ export default function GroupDetailPage() {
               <TabsTrigger value="activity"><ActivityIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
             </TabsList>
              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              {isMember && ( <> 
+              {isMember && ( <>
                 <Button asChild className="flex-1 sm:flex-none">
                   <Link href={`/groups/${groupId}/add-expense`}>
                     <span><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
@@ -1124,7 +1123,7 @@ export default function GroupDetailPage() {
                   <Link href={`/groups/${groupId}/settle-up`}>
                     <span><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
                   </Link>
-                </Button> 
+                </Button>
               </> )}
                <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 sm:flex-none"> <Download className="mr-2 h-4 w-4" /> Download PDF </Button>
               {(group.visibility === 'public' || isMember) && ( <DropdownMenu> <DropdownMenuTrigger asChild> <Button variant="outline" className="flex-1 sm:flex-none"> <Share2 className="mr-2 h-4 w-4" /> Share Group </Button> </DropdownMenuTrigger> <DropdownMenuContent align="end" className="w-56"> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
@@ -1217,14 +1216,14 @@ export default function GroupDetailPage() {
             <Card>
               <CardHeader> <CardTitle>Fund Contributions</CardTitle> <CardDescription>All funds contributed by members to this group's pool.</CardDescription> </CardHeader>
               <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-4"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && ` - ${contribution.description}`} </p> </div> </div> <div className="text-right ml-2"> <p className="text-lg font-semibold text-green-600 dark:text-green-400"> +{currencySymbol}{contribution.amount.toFixed(2)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-4">No contributions recorded yet for this group.</p> )} </CardContent>
-               <CardFooter> 
-                <Button asChild className="ml-auto"> 
-                  <Link href={`/groups/${groupId}/add-contribution`}> 
+               <CardFooter>
+                <Button asChild className="ml-auto">
+                  <Link href={`/groups/${groupId}/add-contribution`}>
                     <span>
-                      <CoinsIcon className="mr-2 h-4 w-4" /> Record Contribution 
+                      <CoinsIcon className="mr-2 h-4 w-4" /> Record Contribution
                     </span>
-                  </Link> 
-                </Button> 
+                  </Link>
+                </Button>
               </CardFooter>
             </Card>
           </TabsContent>
@@ -1239,7 +1238,7 @@ export default function GroupDetailPage() {
           <TabsContent value="balances">
             <Card>
               <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription> </CardHeader>
-              <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3 border rounded-md"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-8 w-8"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> {owedToList.length > 0 && ( <div className="pl-4 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-2 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Button asChild size="xs" variant="outline" className="px-2 py-1 h-auto text-xs"> <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}> <Send className="mr-1.5 h-3 w-3" /> Settle </Link> </Button> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-4 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-4">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
+              <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3 border rounded-md"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-8 w-8"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> {owedToList.length > 0 && ( <div className="pl-4 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-2 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Button asChild size="xs" variant="outline" className="px-2 py-1 h-auto text-xs"> <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}> <span><Send className="mr-1.5 h-3 w-3" /> Settle</span> </Link> </Button> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-4 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-4">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
             </Card>
           </TabsContent>
 
