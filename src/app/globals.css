@@ -37,11 +37,11 @@ body {
     --input: 220 30% 92%; /* Slightly lighter input background */
     --ring: 210 70% 55%; /* Primary color for rings */
 
-    --chart-1: 210 70% 50%;
-    --chart-2: 200 75% 55%;
-    --chart-3: 220 65% 60%;
-    --chart-4: 205 60% 45%;
-    --chart-5: 215 70% 55%;
+    --chart-1: 210 70% 65%;
+    --chart-2: 200 75% 70%;
+    --chart-3: 220 65% 75%;
+    --chart-4: 205 60% 60%;
+    --chart-5: 215 70% 70%;
     
     --radius: 0.5rem;
 
@@ -85,11 +85,11 @@ body {
     --input: 220 20% 20%; /* Dark input bg */
     --ring: 210 80% 65%;
 
-    --chart-1: 210 75% 60%;
-    --chart-2: 200 80% 65%;
-    --chart-3: 220 70% 70%;
-    --chart-4: 205 65% 55%;
-    --chart-5: 215 75% 65%;
+    --chart-1: 210 75% 70%;
+    --chart-2: 200 80% 75%;
+    --chart-3: 220 70% 80%;
+    --chart-4: 205 65% 65%;
+    --chart-5: 215 75% 75%;
 
     /* Dark Sidebar specific theme variables */
     --sidebar-background: 220 22% 12%; /* Consistent dark shade */
