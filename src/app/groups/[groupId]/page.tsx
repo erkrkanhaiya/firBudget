@@ -4,7 +4,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation'; // Added usePathname
+import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -124,8 +124,8 @@ export default function GroupDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const pathname = usePathname(); // Get current pathname
-  const { currentUser } = useUser();
+  const pathname = usePathname();
+  const { currentUser, isLoadingAuth } = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
@@ -137,8 +137,11 @@ export default function GroupDetailPage() {
   const [firestoreContributions, setFirestoreContributions] = useState<Contribution[]>([]);
   const [firestoreActivityLogs, setFirestoreActivityLogs] = useState<ActivityLog[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  
+  const [isLoadingPageData, setIsLoadingPageData] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [groupNotFound, setGroupNotFound] = useState(false);
+  
   const [isWebShareSupported, setIsWebShareSupported] = useState(false);
 
   const [totalContributions, setTotalContributions] = useState(0);
@@ -244,13 +247,15 @@ export default function GroupDetailPage() {
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
     if (!currentUser || !groupId) {
-      if(showLoadingSpinner) setIsLoading(false); // Potentially problematic if !currentUser causes early return
-      if(!currentUser) router.push('/login');
+      if(showLoadingSpinner) setIsLoadingPageData(false);
+      // currentUser check will be handled by the calling useEffect
       return;
     }
-    // Always set loading true at the start of an attempt to fetch
-    setIsLoading(true);
-    setAccessDenied(false); // Reset access denied state at the start of each fetch attempt
+    
+    if (showLoadingSpinner) setIsLoadingPageData(true);
+    setAccessDenied(false);
+    setGroupNotFound(false);
+    setGroup(null); // Reset group state before fetching
 
     try {
       const groupDocRef = doc(db, 'groups', groupId);
@@ -272,11 +277,10 @@ export default function GroupDetailPage() {
         if (fetchedGroup.visibility === 'private' && !isMember) {
           toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
           setAccessDenied(true);
-          setGroup(null); // Ensure group is null if access denied
-          setIsLoading(false);
-          return;
+          setGroup(null);
+          return; // Return early from fetchGroupData itself
         }
-        setGroup(fetchedGroup); // Set group if access is okay
+        setGroup(fetchedGroup);
 
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
         const expensesQuery = query(expensesColRef, orderBy('date', 'desc'));
@@ -359,18 +363,36 @@ export default function GroupDetailPage() {
 
       } else {
         toast({ title: "Group not found", description: "The group you are looking for does not exist.", variant: "destructive" });
-        setAccessDenied(true);
-        setGroup(null); // Ensure group is null if not found
+        setGroupNotFound(true);
+        setGroup(null);
       }
     } catch (error) {
       console.error("Error fetching group data:", error);
-      toast({ title: "Error", description: "Could not fetch group details.", variant: "destructive" });
-      setAccessDenied(true);
-      setGroup(null); // Ensure group is null on generic error
+      toast({ title: "Error fetching group", description: "Could not fetch group details. Please try refreshing.", variant: "destructive" });
+      setGroup(null); // Error state, group is not available
+      // Not setting groupNotFound or accessDenied here, as it's a generic fetch error
     } finally {
-      setIsLoading(false);
+      setIsLoadingPageData(false);
     }
-  }, [groupId, currentUser, router, toast, calculateGroupBalances]);
+  }, [groupId, currentUser, toast, calculateGroupBalances]); // Removed router from here
+
+  // Main data fetching useEffect
+  useEffect(() => {
+    if (!isLoadingAuth) { // Only proceed if Firebase auth state is resolved
+      if (currentUser && groupId) {
+        fetchGroupData();
+      } else if (!currentUser) {
+        // Not logged in, redirect or show message
+        router.push('/login');
+        setIsLoadingPageData(false); 
+      } else if (!groupId) {
+        // No groupId, this shouldn't happen if routing is correct
+        setGroupNotFound(true); 
+        setIsLoadingPageData(false);
+      }
+    }
+  }, [isLoadingAuth, currentUser, groupId, fetchGroupData, router, searchParams.get('refresh')]);
+
 
   const performUndoAddItem = async (
     itemId: string,
@@ -380,7 +402,7 @@ export default function GroupDetailPage() {
     actorName: string,
     itemAmount?: number
   ) => {
-    if (!group) return; // Should not happen if called correctly
+    if (!group) return;
     setIsUndoing(true);
     try {
         const batch = writeBatch(db);
@@ -399,12 +421,14 @@ export default function GroupDetailPage() {
             description: `${itemType === 'expense' ? 'Expense' : 'Contribution'} "${itemDescription}" has been removed.`,
             variant: "default",
         });
-        addNotification({
-            title: `${itemType.charAt(0).toUpperCase() + itemType.slice(1)} Undone`,
-            message: `The ${itemType} from ${actorName} was removed from group "${group.name}".`,
-            type: "info",
-        });
-        fetchGroupData(false);
+        if (group) { // Check if group is defined before using its name
+          addNotification({
+              title: `${itemType.charAt(0).toUpperCase() + itemType.slice(1)} Undone`,
+              message: `The ${itemType} from ${actorName} was removed from group "${group.name}".`,
+              type: "info",
+          });
+        }
+        fetchGroupData(false); // Re-fetch data without full page spinner
     } catch (error) {
         console.error(`Error undoing ${itemType} add:`, error);
         toast({ title: "Undo Failed", description: `Could not undo adding the ${itemType}.`, variant: "destructive" });
@@ -413,23 +437,20 @@ export default function GroupDetailPage() {
     }
   };
 
-  useEffect(() => {
-    fetchGroupData();
-  }, [fetchGroupData, searchParams.get('refresh')]);
-
+  // Undo toast useEffect
   useEffect(() => {
     if (undoTimeoutId) {
         clearTimeout(undoTimeoutId);
         setUndoTimeoutId(null);
     }
 
-    const undoAction = searchParams.get('undoAction');
-    const itemId = searchParams.get('itemId');
-
-    // Guard: Only proceed if group data is loaded, no access denial, and not currently loading
-    if (isLoading || accessDenied || !group) {
+    // Guard: Only proceed if page data is loaded, no access denial/not found, and group is available
+    if (isLoadingPageData || accessDenied || groupNotFound || !group) {
         return;
     }
+
+    const undoAction = searchParams.get('undoAction');
+    const itemId = searchParams.get('itemId');
 
     if ((undoAction === 'expense' || undoAction === 'contribution') && itemId) {
         const itemDetailsString = sessionStorage.getItem('undoItemDetails');
@@ -438,7 +459,6 @@ export default function GroupDetailPage() {
             if (itemDetails.itemId === itemId && itemDetails.groupId === groupId && itemDetails.itemType === undoAction) {
                 sessionStorage.removeItem('undoItemDetails');
 
-                // Use the pathname from usePathname() hook
                 const newSearchParams = new URLSearchParams(searchParams.toString());
                 newSearchParams.delete('undoAction');
                 newSearchParams.delete('itemId');
@@ -476,6 +496,7 @@ export default function GroupDetailPage() {
                 }, 7500);
                 setUndoTimeoutId(newTimeout);
             } else {
+                // Mismatch or old data, clear it
                 sessionStorage.removeItem('undoItemDetails');
             }
         }
@@ -485,7 +506,7 @@ export default function GroupDetailPage() {
             clearTimeout(undoTimeoutId);
         }
     };
-  }, [searchParams, group, groupId, router, toast, addNotification, getCurrencySymbol, isUndoing, isLoading, accessDenied, pathname, undoTimeoutId]);
+  }, [searchParams, group, groupId, router, toast, addNotification, getCurrencySymbol, isUndoing, isLoadingPageData, accessDenied, groupNotFound, pathname, undoTimeoutId]);
 
 
   useEffect(() => {
@@ -855,12 +876,14 @@ export default function GroupDetailPage() {
         };
         batch.set(doc(activityLogColRef), { ...logEntry, timestamp: serverTimestamp() });
 
-        addNotification({
-          title: "Member Added to Group",
-          message: `You added ${member.name || 'a new member'} to "${group.name}".`,
-          type: "success",
-          href: `/groups/${groupId}`,
-        });
+        if (group) { // Check if group is defined
+          addNotification({
+            title: "Member Added to Group",
+            message: `You added ${member.name || 'a new member'} to "${group.name}".`,
+            type: "success",
+            href: `/groups/${groupId}`,
+          });
+        }
       });
 
       await batch.commit();
@@ -870,18 +893,20 @@ export default function GroupDetailPage() {
 
     } catch (error) {
       console.error("Error adding members to group:", error);
-      toast({ title: "Error", description: "Could not add members to the group.", variant: "destructive" });
-      addNotification({
-        title: "Failed to Add Members",
-        message: `Could not add members to "${group.name}".`,
-        type: "destructive",
-      });
+      if (group) { // Check if group is defined
+        toast({ title: "Error", description: "Could not add members to the group.", variant: "destructive" });
+        addNotification({
+          title: "Failed to Add Members",
+          message: `Could not add members to "${group.name}".`,
+          type: "destructive",
+        });
+      }
     } finally {
       setIsAddingMembers(false);
     }
   };
 
-  if (isLoading) {
+  if (isLoadingAuth || isLoadingPageData) {
     return (
         <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -895,7 +920,7 @@ export default function GroupDetailPage() {
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
         <h1 className="text-3xl font-bold mb-2">Access Denied</h1>
         <p className="text-lg text-muted-foreground mb-6">
-          Group not found or you do not have permission to view it.
+          You do not have permission to view this group.
         </p>
         <Button asChild>
           <Link href="/groups">Back to Groups</Link>
@@ -903,8 +928,8 @@ export default function GroupDetailPage() {
       </div>
     );
   }
-
-  if (!currentUser) {
+  
+  if (!currentUser) { // Should be caught by isLoadingAuth, but as a fallback
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
@@ -915,13 +940,13 @@ export default function GroupDetailPage() {
     );
   }
 
-  if (!group) {
+  if (groupNotFound || !group) {
     return (
          <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
             <AlertTriangle className="w-16 h-16 text-muted-foreground mb-4" />
             <h1 className="text-3xl font-bold mb-2">Group Not Found</h1>
             <p className="text-lg text-muted-foreground mb-6">
-                The group details could not be loaded. It might have been deleted or an error occurred.
+                The group you are looking for does not exist or could not be loaded. It might have been deleted.
             </p>
             <Button asChild>
                 <Link href="/groups">Back to Groups</Link>
