@@ -8,7 +8,7 @@ import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigat
 import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Coins as CoinsIcon, TrendingUp, FileText, Edit2, MessageSquare as MessageSquareIcon, BarChartHorizontal, Send } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Coins as CoinsIcon, TrendingUp, FileText, Edit2, MessageSquare as MessageSquareIcon, BarChartHorizontal, Send, Save } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment, Contribution, GroupNote } from '@/types';
 import { useUser } from '@/contexts/UserContext';
@@ -1045,12 +1045,12 @@ export default function GroupDetailPage() {
                 </Link>
               </Button>
               <AlertDialog>
-                <AlertDialogTrigger asChild>
-                   <Button variant="destructive" size="sm">
-                     <span>
-                       <Trash2 className="mr-2 h-4 w-4" /> Delete Group
-                     </span>
-                   </Button>
+                 <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm">
+                    <span>
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete Group
+                    </span>
+                  </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete the group "{group.name}" and all its associated data (expenses, activity logs, payments, contributions, notes) from Firestore. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={handleDeleteGroup} className="bg-destructive hover:bg-destructive/90"> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent>
               </AlertDialog>
@@ -1152,7 +1152,7 @@ export default function GroupDetailPage() {
               {(group.visibility === 'public' || isMember) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className={cn(buttonVariants({variant: 'outline'}), "flex-1 sm:flex-none")}>
+                     <button className={cn(buttonVariants({variant: 'outline'}), "flex-1 sm:flex-none")}>
                       <span>
                         <Share2 className="mr-2 h-4 w-4" /> Share Group
                       </span>
