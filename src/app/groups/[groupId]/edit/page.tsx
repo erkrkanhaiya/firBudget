@@ -218,10 +218,12 @@ export default function EditGroupPage() {
     }
 
     const oldGroupName = group.name;
-    let finalPhotoUrl = group.photoUrl;
-    let finalDataAiHint = group.dataAiHint;
+    let photoUrlToSave = group.photoUrl;
+    let dataAiHintToSave = group.dataAiHint;
+    let photoChangedDuringSubmit = false;
 
-    if (groupPhotoFile) {
+    if (groupPhotoFile) { // A new file was selected
+      photoChangedDuringSubmit = true;
       toast({ title: "Uploading Photo...", description: "Please wait.", variant: "default" });
       try {
         const timestampedFileName = `${Date.now()}_${groupPhotoFile.name}`;
@@ -229,29 +231,33 @@ export default function EditGroupPage() {
         const fileStorageRef = storageRef(storage, filePath);
         const uploadTask = uploadBytesResumable(fileStorageRef, groupPhotoFile);
         await uploadTask;
-        finalPhotoUrl = await getDownloadURL(uploadTask.snapshot.ref);
-        finalDataAiHint = ''; // Clear hint for real images
+        photoUrlToSave = await getDownloadURL(uploadTask.snapshot.ref);
+        dataAiHintToSave = ''; // Clear hint for real images
         toast({ title: "Photo Uploaded!", description: "New group photo is saved.", variant: "default" });
       } catch (uploadError) {
         console.error("Error uploading group photo:", uploadError);
         toast({ title: "Photo Upload Failed", description: "Could not upload new photo. Previous photo (if any) will be kept.", variant: "destructive" });
-        // Revert preview if upload fails and there was an original photo
-        setGroupPhotoPreview(group.photoUrl || null);
-        finalPhotoUrl = group.photoUrl; // Keep original if upload failed
-        finalDataAiHint = group.dataAiHint;
+        setGroupPhotoPreview(group.photoUrl || null); // Revert preview
+        photoUrlToSave = group.photoUrl; // Keep original if upload failed
+        dataAiHintToSave = group.dataAiHint;
         setIsSubmitting(false);
         return;
       }
-    } else if (groupPhotoPreview === null && group.photoUrl) { // Photo was removed
-      finalPhotoUrl = '';
-      finalDataAiHint = '';
-    } else if (groupPhotoPreview && groupPhotoPreview !== group.photoUrl) { // Placeholder was selected or it's an external URL
-        finalPhotoUrl = groupPhotoPreview;
+    } else { // No new file was selected, check if preview indicates removal or change to placeholder
+      if (groupPhotoPreview === null && group.photoUrl) { // Photo was removed
+        photoChangedDuringSubmit = true;
+        photoUrlToSave = '';
+        dataAiHintToSave = '';
+      } else if (groupPhotoPreview && groupPhotoPreview !== group.photoUrl) { // Placeholder or external URL (if preview was directly set)
+        photoChangedDuringSubmit = true;
+        photoUrlToSave = groupPhotoPreview;
         if (groupPhotoPreview.includes('placehold.co')) {
-            finalDataAiHint = group.dataAiHint || 'group image'; // Or let user define
+          dataAiHintToSave = group.dataAiHint || 'group image'; 
         } else {
-            finalDataAiHint = '';
+          dataAiHintToSave = ''; // For other external URLs or if original hint is not relevant
         }
+      }
+      // If groupPhotoPreview is the same as group.photoUrl, no change to photo.
     }
 
 
@@ -265,16 +271,23 @@ export default function EditGroupPage() {
     const updatePayload: { [key: string]: any } = {
       name: groupName.trim(),
       description: groupDescription.trim(),
-      photoUrl: finalPhotoUrl, 
-      dataAiHint: finalDataAiHint,
       visibility: groupVisibility,
       category: groupCategory,
     };
 
-    if (groupBudget.trim() === '') {
+    if(photoChangedDuringSubmit || photoUrlToSave !== group.photoUrl || dataAiHintToSave !== group.dataAiHint) {
+      updatePayload.photoUrl = photoUrlToSave;
+      updatePayload.dataAiHint = dataAiHintToSave;
+    }
+    
+
+    if (groupBudget.trim() === '' && group.budgetAmount !== undefined) {
       updatePayload.budgetAmount = deleteField();
-    } else if (numericBudget !== undefined) {
+    } else if (numericBudget !== undefined && numericBudget !== group.budgetAmount) {
       updatePayload.budgetAmount = numericBudget;
+    } else if (groupBudget.trim() !== '' && numericBudget === undefined) {
+      // This case should be caught by the isNaN check earlier, but as a safeguard
+      // if budget string is present but not parseable or negative, don't change budgetAmount.
     }
     
     try {
@@ -464,5 +477,7 @@ export default function EditGroupPage() {
     </div>
   );
 }
+
+    
 
     
