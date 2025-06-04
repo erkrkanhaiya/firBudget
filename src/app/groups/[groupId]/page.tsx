@@ -152,11 +152,11 @@ export default function GroupDetailPage() {
 
     // 2. Process Expenses
     groupExpenses.forEach(expense => {
-      // Credit the payer
+      // Credit the payer (money effectively comes back to them from the pool or reduces what they owe to the pool)
       if (memberNetBalances[expense.paidByUserId] !== undefined) {
         memberNetBalances[expense.paidByUserId] += expense.amount;
       }
-      // Debit participants for their share
+      // Debit participants for their share (money they owe to the pool)
       expense.participants.forEach(p => {
         if (memberNetBalances[p.userId] !== undefined) {
           memberNetBalances[p.userId] -= p.amountOwed;
@@ -164,20 +164,23 @@ export default function GroupDetailPage() {
       });
     });
 
-    // 3. Process Payments (Settlements)
+    // 3. Process Payments (Settlements between members, or to/from group fund if modeled that way)
+    // For settlements recorded through the "Settle Up" page which are direct peer-to-peer for simplicity:
     groupPayments.forEach(payment => {
+      // Payer's balance (what they are owed by the fund) decreases.
       if (memberNetBalances[payment.paidByUserId] !== undefined) {
-        memberNetBalances[payment.paidByUserId] -= payment.amount; // Payer's balance decreases
+        memberNetBalances[payment.paidByUserId] -= payment.amount;
       }
+      // Payee's balance (what they are owed by the fund) increases.
       if (memberNetBalances[payment.paidToUserId] !== undefined) {
-        memberNetBalances[payment.paidToUserId] += payment.amount; // Payee's balance increases
+        memberNetBalances[payment.paidToUserId] += payment.amount;
       }
     });
 
     // 4. Simplify debts based on final netBalances
     const finalBalances: Balance[] = [];
-    const creditors: Array<{ id: string, amount: number }> = [];
-    const debtors: Array<{ id: string, amount: number }> = [];
+    const creditors: Array<{ id: string, amount: number }> = []; // Positive netBalance, group fund owes them
+    const debtors: Array<{ id: string, amount: number }> = []; // Negative netBalance, they owe group fund
 
     currentGroupMembers.forEach(member => {
       const net = parseFloat((memberNetBalances[member.id] || 0).toFixed(2));
@@ -186,8 +189,8 @@ export default function GroupDetailPage() {
       finalBalances.push({ userId: member.id, owes: {}, owedBy: {}, netBalance: net });
     });
 
-    creditors.sort((a, b) => b.amount - a.amount); // Sort by largest amount owed
-    debtors.sort((a, b) => b.amount - a.amount);   // Sort by largest amount needs to pay
+    creditors.sort((a, b) => b.amount - a.amount); 
+    debtors.sort((a, b) => b.amount - a.amount);   
 
     let i = 0, j = 0;
     while (i < debtors.length && j < creditors.length) {
@@ -596,7 +599,7 @@ export default function GroupDetailPage() {
         const paymentsSnapshot = await getDocs(query(paymentsColRef));
         paymentsSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
 
-        const contributionsColRef = collection(db, 'groups', groupId, 'contributions'); // Delete contributions
+        const contributionsColRef = collection(db, 'groups', groupId, 'contributions'); 
         const contributionsSnapshot = await getDocs(query(contributionsColRef));
         contributionsSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
         
@@ -1352,3 +1355,5 @@ export default function GroupDetailPage() {
     </div>
   );
 }
+
+    

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlertTriangle, Activity as ActivityIcon, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
-import type { ActivityLog, User as UserType, Group as GroupType } from '@/types';
+import type { ActivityLog, User as UserType, Group as GroupType, Contribution } from '@/types'; // Added Contribution
 import { format, parseISO } from 'date-fns';
 import React, { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -100,6 +100,8 @@ export default function ActivityFeedPage() {
         }
 
         // 2. For each group, fetch its activity logs
+        // This part already fetches all activity logs regardless of actionType.
+        // So, contribution_added logs should be included if they exist.
         const activityLogQueries = userGroupIds.map(groupId => {
           const logsColRef = collection(db, 'groups', groupId, 'activityLog');
           return getDocs(query(logsColRef, orderBy('timestamp', 'desc')));
@@ -114,15 +116,17 @@ export default function ActivityFeedPage() {
 
           snapshot.forEach(docSnap => {
             const logData = docSnap.data() as Omit<ActivityLog, 'id' | 'timestamp'> & { timestamp: Timestamp | string };
-            const actor = group?.members.find(m => m.id === logData.userId);
+            // Determine actor based on logData.userId which should be the person performing the action
+            const actor = group?.members.find(m => m.id === logData.userId) || 
+                          (logData.userId === currentUser.id ? currentUser : null); 
             
             fetchedLogs.push({
               id: docSnap.id,
               ...logData,
               timestamp: (logData.timestamp instanceof Timestamp ? logData.timestamp.toDate().toISOString() : logData.timestamp as string),
               groupName: group?.name,
-              actorName: actor?.name,
-              actorAvatarUrl: actor?.avatarUrl
+              actorName: actor?.name || logData.actorName, // Fallback to actorName if stored directly in log
+              actorAvatarUrl: actor?.avatarUrl || logData.actorAvatarUrl
             });
           });
         });
@@ -193,6 +197,20 @@ export default function ActivityFeedPage() {
           <CardContent className="p-0">
             <ul className="divide-y divide-border">
               {relevantActivityLogs.map((log) => {
+                 const defaultActorName = log.actorName || 'Unknown User';
+                 let displayDescription = log.description;
+                 // Check if the description already starts with the actor's name to avoid duplication
+                 if (log.description.toLowerCase().startsWith(defaultActorName.toLowerCase())) {
+                    displayDescription = log.description.substring(defaultActorName.length).trim();
+                    if (displayDescription.startsWith('added') || displayDescription.startsWith('paid') || displayDescription.startsWith('recorded') || displayDescription.startsWith('contributed')) {
+                         // Add a space if it was directly appended
+                         displayDescription = ' ' + displayDescription;
+                    }
+                 } else {
+                    displayDescription = ' ' + log.description; // ensure space if name wasn't prefix
+                 }
+
+
                 return (
                   <li key={log.id} className="flex items-start gap-4 p-4 hover:bg-muted/50">
                     <Avatar className="h-10 w-10 mt-1 border">
@@ -201,8 +219,8 @@ export default function ActivityFeedPage() {
                     </Avatar>
                     <div className="flex-1">
                       <p className="text-sm">
-                        <span className="font-medium">{log.actorName || 'Unknown User'}</span>
-                        {log.description.startsWith(log.actorName || 'Unknown User') ? log.description.substring((log.actorName || 'Unknown User').length).trim() : log.description}
+                        <span className="font-medium">{defaultActorName}</span>
+                        {displayDescription}
                         {log.groupName && log.groupId && (
                             <>
                              {' in group '}

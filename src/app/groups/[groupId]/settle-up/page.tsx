@@ -3,7 +3,7 @@
 
 import { useState, useEffect, FormEvent, useCallback } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter, useSearchParams } from 'next/navigation'; // Import useSearchParams
+import { useParams, useRouter, useSearchParams } from 'next/navigation'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, DollarSign as DollarSignIcon, Send, CalendarDays, User, Loader2, AlertTriangle } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
-import type { Group, User as UserType, Balance, Expense, Payment, ActivityLog } from '@/types';
+import type { Group, User as UserType, Balance, Expense, Payment, ActivityLog, Contribution } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -21,53 +21,81 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc, collection, query, getDocs, Timestamp, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
 
-// Helper to calculate balances considering expenses and payments
-const calculateBalancesWithPayments = (groupMembers: UserType[], expenses: Expense[], payments: Payment[]): Balance[] => {
-    if (groupMembers.length === 0) return [];
-    const memberBalances: Record<string, { owes: Record<string, number>, owedBy: Record<string, number>, netBalance: number }> = {};
 
-    groupMembers.forEach(member => {
-        memberBalances[member.id] = { owes: {}, owedBy: {}, netBalance: 0 };
+const calculateGroupBalancesForSettlement = (
+    currentGroupMembers: UserType[], 
+    groupExpenses: Expense[], 
+    groupPayments: Payment[],
+    groupContributions: Contribution[]
+  ): Balance[] => {
+    if (currentGroupMembers.length === 0) return [];
+    
+    const memberNetBalances: Record<string, number> = {};
+    currentGroupMembers.forEach(member => {
+      memberNetBalances[member.id] = 0;
     });
 
-    // Process expenses
-    expenses.forEach(expense => {
-        const payerId = expense.paidByUserId;
-        if (!memberBalances[payerId] && groupMembers.some(m => m.id === payerId)) {
-            memberBalances[payerId] = { owes: {}, owedBy: {}, netBalance: 0 };
+    groupContributions.forEach(contrib => {
+      if (memberNetBalances[contrib.contributorId] !== undefined) {
+        memberNetBalances[contrib.contributorId] += contrib.amount;
+      }
+    });
+
+    groupExpenses.forEach(expense => {
+      if (memberNetBalances[expense.paidByUserId] !== undefined) {
+        memberNetBalances[expense.paidByUserId] += expense.amount;
+      }
+      expense.participants.forEach(p => {
+        if (memberNetBalances[p.userId] !== undefined) {
+          memberNetBalances[p.userId] -= p.amountOwed;
         }
-        expense.participants.forEach(participant => {
-            const debtorId = participant.userId;
-            const amountOwedByDebtor = participant.amountOwed;
-            if (debtorId === payerId) return;
-            if (memberBalances[debtorId] && memberBalances[payerId]) {
-                memberBalances[debtorId].owes[payerId] = (memberBalances[debtorId].owes[payerId] || 0) + amountOwedByDebtor;
-                memberBalances[debtorId].netBalance -= amountOwedByDebtor;
-                memberBalances[payerId].owedBy[debtorId] = (memberBalances[payerId].owedBy[debtorId] || 0) + amountOwedByDebtor;
-                memberBalances[payerId].netBalance += amountOwedByDebtor;
-            }
-        });
+      });
     });
 
-    // Process payments
-    payments.forEach(payment => {
-        const payerId = payment.paidByUserId;
-        const payeeId = payment.paidToUserId;
-        const amount = payment.amount;
-
-        if (memberBalances[payerId] && memberBalances[payeeId]) {
-            memberBalances[payerId].owes[payeeId] = (memberBalances[payerId].owes[payeeId] || 0) - amount;
-            memberBalances[payerId].netBalance += amount; 
-
-            memberBalances[payeeId].owedBy[payerId] = (memberBalances[payeeId].owedBy[payerId] || 0) - amount;
-            memberBalances[payeeId].netBalance -= amount; 
-        }
+    groupPayments.forEach(payment => {
+      if (memberNetBalances[payment.paidByUserId] !== undefined) {
+        memberNetBalances[payment.paidByUserId] -= payment.amount;
+      }
+      if (memberNetBalances[payment.paidToUserId] !== undefined) {
+        memberNetBalances[payment.paidToUserId] += payment.amount;
+      }
     });
 
-    return Object.entries(memberBalances).map(([userId, balanceData]) => ({
-        userId,
-        ...balanceData
-    })).filter(b => groupMembers.some(m => m.id === b.userId));
+    const finalBalances: Balance[] = [];
+    const creditors: Array<{ id: string, amount: number }> = [];
+    const debtors: Array<{ id: string, amount: number }> = [];
+
+    currentGroupMembers.forEach(member => {
+      const net = parseFloat((memberNetBalances[member.id] || 0).toFixed(2));
+      if (net > 0.005) creditors.push({ id: member.id, amount: net });
+      else if (net < -0.005) debtors.push({ id: member.id, amount: Math.abs(net) });
+      finalBalances.push({ userId: member.id, owes: {}, owedBy: {}, netBalance: net });
+    });
+
+    creditors.sort((a, b) => b.amount - a.amount);
+    debtors.sort((a, b) => b.amount - a.amount);
+
+    let i = 0, j = 0;
+    while (i < debtors.length && j < creditors.length) {
+      const debtor = debtors[i];
+      const creditor = creditors[j];
+      const amountToSettle = parseFloat(Math.min(debtor.amount, creditor.amount).toFixed(2));
+
+      if (amountToSettle > 0.005) {
+        const debtorBalanceEntry = finalBalances.find(b => b.userId === debtor.id)!;
+        const creditorBalanceEntry = finalBalances.find(b => b.userId === creditor.id)!;
+
+        debtorBalanceEntry.owes[creditor.id] = (debtorBalanceEntry.owes[creditor.id] || 0) + amountToSettle;
+        creditorBalanceEntry.owedBy[debtor.id] = (creditorBalanceEntry.owedBy[debtor.id] || 0) + amountToSettle;
+
+        debtor.amount = parseFloat((debtor.amount - amountToSettle).toFixed(2));
+        creditor.amount = parseFloat((creditor.amount - amountToSettle).toFixed(2));
+      }
+
+      if (debtor.amount < 0.005) i++;
+      if (creditor.amount < 0.005) j++;
+    }
+    return finalBalances;
 };
 
 
@@ -130,7 +158,7 @@ export default function SettleUpPage() {
 
         if (queryPayerId && fetchedGroup.members.some(m => m.id === queryPayerId)) {
             setPayerId(queryPayerId);
-        } else if (currentUser && !payerId) { // Only set to current user if not pre-filled
+        } else if (currentUser && !payerId) { 
             setPayerId(currentUser.id);
         }
 
@@ -141,7 +169,7 @@ export default function SettleUpPage() {
             setAmount(parseFloat(queryAmount).toFixed(2));
         }
 
-
+        // Fetch Expenses
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
         const expensesQuery = query(expensesColRef);
         const expensesSnapshot = await getDocs(expensesQuery);
@@ -155,6 +183,7 @@ export default function SettleUpPage() {
             } as Expense;
         });
         
+        // Fetch Payments
         const paymentsColRef = collection(db, 'groups', groupId, 'payments');
         const paymentsQuery = query(paymentsColRef);
         const paymentsSnapshot = await getDocs(paymentsQuery);
@@ -167,8 +196,22 @@ export default function SettleUpPage() {
                 createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
             } as Payment;
         });
+
+        // Fetch Contributions
+        const contributionsColRef = collection(db, 'groups', groupId, 'contributions');
+        const contributionsQuery = query(contributionsColRef);
+        const contributionsSnapshot = await getDocs(contributionsQuery);
+        const fetchedContributions = contributionsSnapshot.docs.map(docSnap => {
+            const data = docSnap.data();
+            return {
+                id: docSnap.id,
+                ...data,
+                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
+                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+            } as Contribution;
+        });
         
-        const calculatedBalances = calculateBalancesWithPayments(fetchedGroup.members, fetchedExpenses, fetchedPayments);
+        const calculatedBalances = calculateGroupBalancesForSettlement(fetchedGroup.members, fetchedExpenses, fetchedPayments, fetchedContributions);
         setBalances(calculatedBalances);
         
       } else {
@@ -194,29 +237,35 @@ export default function SettleUpPage() {
 
     if (payerId && balances.length > 0 && group && !queryPayeeId && !queryAmount) {
       const payerBalance = balances.find(b => b.userId === payerId);
-      if (payerBalance && payerBalance.netBalance < -0.005) { 
+      if (payerBalance) { // Check if payerBalance is found
+        // Find who the payer owes the most to based on the 'owes' object from simplified balances
         const owesMostEntry = Object.entries(payerBalance.owes)
-                                    .filter(([, owedAmount]) => owedAmount > 0.005)
-                                    .sort(([,a],[,b]) => b - a)[0];
+                                    .filter(([, owedAmount]) => owedAmount > 0.005) // Ensure a real amount is owed
+                                    .sort(([,a],[,b]) => b - a)[0]; // Get the largest debt
+
         if (owesMostEntry) {
           const suggestedPayeeId = owesMostEntry[0];
+          const suggestedAmount = owesMostEntry[1];
+          
           if (group.members.some(m => m.id === suggestedPayeeId) && suggestedPayeeId !== payerId) {
             setPayeeId(suggestedPayeeId);
-            setAmount(Math.min(owesMostEntry[1], Math.abs(payerBalance.netBalance)).toFixed(2));
+            setAmount(suggestedAmount.toFixed(2));
           } else {
-            setPayeeId('');
+            setPayeeId(''); // Clear if suggested payee is invalid or same as payer
             setAmount('');
           }
         } else {
+           // Payer doesn't owe anyone according to simplified balances
           setPayeeId('');
           setAmount('');
         }
       } else {
+        // Payer not found in balances or no debts
         setPayeeId('');
         setAmount('');
       }
     }
-  }, [payerId, balances, group, searchParams]); 
+  }, [payerId, balances, group, searchParams]);
 
 
   if (isLoading) {
@@ -313,7 +362,6 @@ export default function SettleUpPage() {
           href: `/groups/${groupId}?tab=balances`
       });
       
-      // Clear specific query params after successful submission
       const currentUrl = new URL(window.location.href);
       const currentPath = currentUrl.pathname;
       const existingParams = new URLSearchParams(currentUrl.search);
@@ -322,7 +370,6 @@ export default function SettleUpPage() {
       existingParams.delete('amount');
       const newSearch = existingParams.toString() ? `?${existingParams.toString()}` : '';
       
-      // Use router.replace to avoid adding to history stack
       router.replace(`${currentPath}${newSearch}`, { scroll: false });
 
       router.push(`/groups/${groupId}?refresh=${Date.now()}&tab=balances`);
@@ -478,3 +525,4 @@ export default function SettleUpPage() {
   );
 }
 
+    
