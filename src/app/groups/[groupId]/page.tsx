@@ -259,15 +259,17 @@ export default function GroupDetailPage() {
 
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
-    if (!currentUser || !groupId) {
-      if(showLoadingSpinner) setIsLoadingPageData(false);
-      return;
-    }
-
     if (showLoadingSpinner) setIsLoadingPageData(true);
-    setGroup(null); // Clear previous group data
+    setGroup(null);
     setAccessDenied(false);
     setGroupNotFound(false);
+
+
+    if (!currentUser || !groupId) {
+      if(showLoadingSpinner) setIsLoadingPageData(false);
+      // accessDenied and groupNotFound will remain false, handled by render logic
+      return;
+    }
 
 
     try {
@@ -394,26 +396,29 @@ export default function GroupDetailPage() {
     } catch (error) {
       console.error("Error fetching group data:", error);
       toast({ title: "Error fetching group", description: "Could not fetch group details. Please try refreshing.", variant: "destructive" });
-      setGroup(null);
+      setGroup(null); // Ensure group is null on error
     } finally {
-      if(showLoadingSpinner) setIsLoadingPageData(false);
+       if(showLoadingSpinner) setIsLoadingPageData(false);
     }
   }, [groupId, currentUser, toast, calculateGroupBalances]);
 
-  useEffect(() => {
-    if (isLoadingAuth) return;
 
-    if (currentUser && groupId) {
-        fetchGroupData();
-    } else if (!currentUser) {
+  useEffect(() => {
+    if (isLoadingAuth) return; // Wait for auth state to be known
+
+    if (!currentUser) {
         router.push('/login');
-        setIsLoadingPageData(false); // Ensure loading state is false if redirecting
-    } else if (!groupId) {
+        setIsLoadingPageData(false);
+        return;
+    }
+    if (!groupId) {
         setGroupNotFound(true);
         setIsLoadingPageData(false);
+        return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoadingAuth, currentUser, groupId, searchParams.get('refresh')]); // fetchGroupData removed to prevent loop, refresh param triggers it
+    fetchGroupData();
+  }, [isLoadingAuth, currentUser, groupId, searchParams.get('refresh'), fetchGroupData, router]);
+
 
   const performUndoAddItem = async (
     itemId: string,
@@ -483,7 +488,6 @@ export default function GroupDetailPage() {
                 const newSearchParams = new URLSearchParams(searchParams.toString());
                 newSearchParams.delete('undoAction');
                 newSearchParams.delete('itemId');
-                 // Keep refresh if it was there
                 if (searchParams.get('refresh')) {
                     newSearchParams.set('refresh', searchParams.get('refresh')!);
                 }
@@ -522,7 +526,7 @@ export default function GroupDetailPage() {
                 }, 7500);
                 setUndoTimeoutId(newTimeout);
             } else {
-                sessionStorage.removeItem('undoItemDetails'); // Clean up if details don't match
+                sessionStorage.removeItem('undoItemDetails'); 
             }
         }
     }
@@ -531,8 +535,7 @@ export default function GroupDetailPage() {
             clearTimeout(undoTimeoutId);
         }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, group, isLoadingPageData, accessDenied, groupNotFound, pathname]); // Removed addNotification, getCurrencySymbol, groupId, isUndoing, router, toast as they are stable or handled
+  }, [searchParams, group, isLoadingPageData, accessDenied, groupNotFound, pathname, router, toast, getCurrencySymbol, addNotification, groupId, isUndoing, undoTimeoutId, fetchGroupData]);
 
 
   useEffect(() => {
@@ -964,7 +967,6 @@ export default function GroupDetailPage() {
       };
       batch.set(doc(activityLogColRef), { ...activityLog, timestamp: serverTimestamp() });
       
-      // Also delete previous activity logs related to this note if any (like 'note_added', 'note_edited')
       const prevLogsQuery = query(activityLogColRef, where('relatedNoteId', '==', noteToDelete.id));
       const prevLogsSnap = await getDocs(prevLogsQuery);
       prevLogsSnap.forEach(logDoc => batch.delete(logDoc.ref));
@@ -987,13 +989,13 @@ export default function GroupDetailPage() {
   if (isLoadingAuth || isLoadingPageData) {
     return ( <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]"> <Loader2 className="h-12 w-12 animate-spin text-primary" /> </div> );
   }
+  if (!currentUser) { // Check after isLoadingAuth is false
+    return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold mb-2">Authentication Required</h1> <p className="text-lg text-muted-foreground mb-6">Please log in to view this page.</p> <Button asChild><Link href="/login">Go to Login</Link></Button> </div> );
+  }
   if (accessDenied) {
     return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold mb-2">Access Denied</h1> <p className="text-lg text-muted-foreground mb-6"> You do not have permission to view this group. </p> <Button asChild><Link href="/groups">Back to Groups</Link></Button> </div> );
   }
-  if (!currentUser) {
-    return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold mb-2">Authentication Required</h1> <p className="text-lg text-muted-foreground mb-6">Please log in to view this page.</p> <Button asChild><Link href="/login">Go to Login</Link></Button> </div> );
-  }
-  if (groupNotFound || !group) {
+  if (groupNotFound || !group) { // Check after isLoadingPageData is false
     return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-muted-foreground mb-4" /> <h1 className="text-3xl font-bold mb-2">Group Not Found</h1> <p className="text-lg text-muted-foreground mb-6"> The group you are looking for does not exist or could not be loaded. It might have been deleted. </p> <Button asChild><Link href="/groups">Back to Groups</Link></Button> </div> );
   }
 
@@ -1115,7 +1117,9 @@ export default function GroupDetailPage() {
                 </Button>
                 <Button variant="secondary" asChild className="flex-1 sm:flex-none">
                   <Link href={`/groups/${groupId}/add-contribution`}>
-                    <span className="flex items-center"><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
+                    <span className="flex items-center"> 
+                      <CoinsIcon className="mr-2 h-4 w-4" /> Add Funds
+                    </span>
                   </Link>
                 </Button>
                 <Button variant="outline" asChild className="flex-1 sm:flex-none">
