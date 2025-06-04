@@ -16,8 +16,9 @@ import { useUser } from '@/contexts/UserContext';
 import type { Group, GroupVisibility, GroupCategory } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import NextImage from 'next/image'; 
-import { db, auth } from '@/lib/firebase'; 
-import { doc, getDoc, updateDoc, Timestamp, deleteField } from 'firebase/firestore'; // Added deleteField
+import { db, auth, storage } from '@/lib/firebase'; 
+import { doc, getDoc, updateDoc, Timestamp, deleteField } from 'firebase/firestore';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useNotification } from '@/contexts/NotificationContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 
@@ -42,7 +43,7 @@ export default function EditGroupPage() {
   const [group, setGroup] = useState<Group | null>(null);
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
-  const [groupBudget, setGroupBudget] = useState(''); // New state for budget
+  const [groupBudget, setGroupBudget] = useState('');
   const [groupPhotoFile, setGroupPhotoFile] = useState<File | null>(null);
   const [groupPhotoPreview, setGroupPhotoPreview] = useState<string | null>(null);
   const [groupVisibility, setGroupVisibility] = useState<GroupVisibility>('private');
@@ -102,7 +103,7 @@ export default function EditGroupPage() {
             memberIds: groupData.memberIds || [],
             visibility: groupData.visibility || 'private',
             category: groupData.category || 'OTHER',
-            budgetAmount: groupData.budgetAmount, // Fetch budget
+            budgetAmount: groupData.budgetAmount,
             createdAt: (groupData.createdAt && typeof (groupData.createdAt as Timestamp).toDate === 'function')
               ? (groupData.createdAt as Timestamp).toDate().toISOString()
               : (groupData.createdAt && (groupData.createdAt as {seconds: number}).seconds) 
@@ -122,7 +123,7 @@ export default function EditGroupPage() {
           setGroup(fetchedGroup);
           setGroupName(fetchedGroup.name);
           setGroupDescription(fetchedGroup.description || '');
-          setGroupBudget(fetchedGroup.budgetAmount !== undefined ? fetchedGroup.budgetAmount.toString() : ''); // Set budget state
+          setGroupBudget(fetchedGroup.budgetAmount !== undefined ? fetchedGroup.budgetAmount.toString() : '');
           setGroupPhotoPreview(fetchedGroup.photoUrl || null);
           setGroupVisibility(fetchedGroup.visibility);
           setGroupCategory(fetchedGroup.category || 'OTHER');
@@ -188,6 +189,14 @@ export default function EditGroupPage() {
   const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
+       if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({ title: "File too large", description: "Group photo cannot exceed 5MB.", variant: "destructive"});
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        toast({ title: "Invalid File Type", description: "Only image files are accepted for group photos.", variant: "destructive"});
+        return;
+      }
       setGroupPhotoFile(file);
       setGroupPhotoPreview(URL.createObjectURL(file));
     }
@@ -209,16 +218,42 @@ export default function EditGroupPage() {
     }
 
     const oldGroupName = group.name;
+    let finalPhotoUrl = group.photoUrl;
+    let finalDataAiHint = group.dataAiHint;
 
-    let finalPhotoUrl = group.photoUrl; 
-    if (groupPhotoFile && groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) {
-      console.warn("Group photo is a blob URL. In production, upload to Firebase Storage.");
-      finalPhotoUrl = ''; 
-    } else if (!groupPhotoPreview && group.photoUrl) { 
-        finalPhotoUrl = ''; 
-    } else if (groupPhotoPreview && !groupPhotoPreview.startsWith('blob:')) {
-        finalPhotoUrl = groupPhotoPreview; 
+    if (groupPhotoFile) {
+      toast({ title: "Uploading Photo...", description: "Please wait.", variant: "default" });
+      try {
+        const timestampedFileName = `${Date.now()}_${groupPhotoFile.name}`;
+        const filePath = `group-photos/${groupId}/${timestampedFileName}`;
+        const fileStorageRef = storageRef(storage, filePath);
+        const uploadTask = uploadBytesResumable(fileStorageRef, groupPhotoFile);
+        await uploadTask;
+        finalPhotoUrl = await getDownloadURL(uploadTask.snapshot.ref);
+        finalDataAiHint = ''; // Clear hint for real images
+        toast({ title: "Photo Uploaded!", description: "New group photo is saved.", variant: "default" });
+      } catch (uploadError) {
+        console.error("Error uploading group photo:", uploadError);
+        toast({ title: "Photo Upload Failed", description: "Could not upload new photo. Previous photo (if any) will be kept.", variant: "destructive" });
+        // Revert preview if upload fails and there was an original photo
+        setGroupPhotoPreview(group.photoUrl || null);
+        finalPhotoUrl = group.photoUrl; // Keep original if upload failed
+        finalDataAiHint = group.dataAiHint;
+        setIsSubmitting(false);
+        return;
+      }
+    } else if (groupPhotoPreview === null && group.photoUrl) { // Photo was removed
+      finalPhotoUrl = '';
+      finalDataAiHint = '';
+    } else if (groupPhotoPreview && groupPhotoPreview !== group.photoUrl) { // Placeholder was selected or it's an external URL
+        finalPhotoUrl = groupPhotoPreview;
+        if (groupPhotoPreview.includes('placehold.co')) {
+            finalDataAiHint = group.dataAiHint || 'group image'; // Or let user define
+        } else {
+            finalDataAiHint = '';
+        }
     }
+
 
     const numericBudget = groupBudget.trim() ? parseFloat(groupBudget) : undefined;
     if (groupBudget.trim() && (isNaN(numericBudget as number) || (numericBudget as number) < 0)) {
@@ -231,20 +266,16 @@ export default function EditGroupPage() {
       name: groupName.trim(),
       description: groupDescription.trim(),
       photoUrl: finalPhotoUrl, 
+      dataAiHint: finalDataAiHint,
       visibility: groupVisibility,
       category: groupCategory,
-      dataAiHint: finalPhotoUrl && finalPhotoUrl.includes('placehold.co') ? (group.dataAiHint || 'group image') : '',
     };
 
     if (groupBudget.trim() === '') {
-      // If the budget input is empty, we want to remove the field from Firestore
       updatePayload.budgetAmount = deleteField();
     } else if (numericBudget !== undefined) {
-      // If there's a valid numeric budget, update it
       updatePayload.budgetAmount = numericBudget;
     }
-    // If numericBudget is undefined AND groupBudget.trim() is not empty, it's an invalid number (already handled by validation)
-    // If groupBudget was not touched and had a value, it won't be in updatePayload, so it remains unchanged in Firestore unless cleared.
     
     try {
       const groupDocRef = doc(db, 'groups', groupId);
@@ -362,7 +393,7 @@ export default function EditGroupPage() {
                     width={80} 
                     height={80} 
                     className="rounded-md object-cover h-20 w-20"
-                    {...(groupPhotoFile || (groupPhotoPreview && groupPhotoPreview.startsWith('blob:')) ? {} : { 'data-ai-hint': group.dataAiHint || 'group image' })}
+                    data-ai-hint={groupPhotoPreview.includes('placehold.co') ? (group.dataAiHint || 'group image') : ''}
                   />
                 ) : (
                   <div className="h-20 w-20 bg-muted rounded-md flex items-center justify-center">
@@ -383,7 +414,6 @@ export default function EditGroupPage() {
                  </div>
                 <input id="group-photo-upload" type="file" className="hidden" accept="image/*" onChange={handlePhotoChange} disabled={isSubmitting} />
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Note: Photo upload to server requires Firebase Storage integration (not fully implemented in this demo).</p>
             </div>
 
             <div>
@@ -434,3 +464,5 @@ export default function EditGroupPage() {
     </div>
   );
 }
+
+    
