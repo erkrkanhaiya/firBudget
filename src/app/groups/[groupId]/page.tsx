@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Send, BarChartHorizontal, Coins as CoinsIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -102,7 +102,7 @@ const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
       parseISO(dateVal);
       return dateVal;
     } catch (e) {
-      console.warn(`Invalid date string for ${fieldName}:`, dateVal);
+      console.warn(`Invalid date string for ${fieldName}:`, dateVal, `- defaulting.`);
       return '1970-01-01T00:00:00.000Z';
     }
   }
@@ -111,7 +111,7 @@ const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
     try {
       return new Date(dateVal.seconds * 1000).toISOString();
     } catch(e) {
-       console.warn(`Error converting Firestore-like Timestamp object for ${fieldName}:`, dateVal);
+       console.warn(`Error converting Firestore-like Timestamp object for ${fieldName}:`, dateVal, `- defaulting.`);
        return '1970-01-01T00:00:00.000Z';
     }
   }
