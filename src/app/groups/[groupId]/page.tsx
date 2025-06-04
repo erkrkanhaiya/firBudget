@@ -8,7 +8,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Send } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment } from '@/types';
 import { useUser } from '@/contexts/UserContext';
@@ -111,11 +111,10 @@ export default function GroupDetailPage() {
     return map;
   }, [group]);
 
-  // Updated balance calculation to include payments
   const calculateGroupBalances = (
     currentGroup: Group | null, 
     groupExpenses: Expense[], 
-    groupPayments: Payment[], // Add payments here
+    groupPayments: Payment[], 
     groupMembers: UserType[]
   ): Balance[] => {
     if (!currentGroup || groupMembers.length === 0) return [];
@@ -125,7 +124,6 @@ export default function GroupDetailPage() {
         memberBalances[member.id] = { owes: {}, owedBy: {}, netBalance: 0 };
     });
 
-    // Process expenses
     groupExpenses.forEach(expense => {
         const payerId = expense.paidByUserId;
         if (!memberBalances[payerId] && groupMembers.find(m => m.id === payerId)) { 
@@ -151,18 +149,15 @@ export default function GroupDetailPage() {
         });
     });
 
-    // Process payments
     groupPayments.forEach(payment => {
         const payerId = payment.paidByUserId;
         const payeeId = payment.paidToUserId;
         const amount = payment.amount;
 
         if (memberBalances[payerId] && memberBalances[payeeId]) {
-            // Payer's debt to payee decreases (or they are credited if they overpaid)
             memberBalances[payerId].owes[payeeId] = (memberBalances[payerId].owes[payeeId] || 0) - amount;
             memberBalances[payerId].netBalance += amount; 
 
-            // Payee's amount owed by payer decreases (or they are debited if they received more)
             memberBalances[payeeId].owedBy[payerId] = (memberBalances[payeeId].owedBy[payerId] || 0) - amount;
             memberBalances[payeeId].netBalance -= amount;
         }
@@ -224,7 +219,6 @@ export default function GroupDetailPage() {
         });
         setFirestoreExpenses(fetchedExpenses);
 
-        // Fetch payments
         const paymentsColRef = collection(db, 'groups', groupId, 'payments');
         const paymentsQuery = query(paymentsColRef, orderBy('date', 'desc'));
         const paymentsSnapshot = await getDocs(paymentsQuery);
@@ -605,8 +599,8 @@ export default function GroupDetailPage() {
       newMemberObjects.forEach(member => {
         const logEntry: Omit<ActivityLog, 'id' | 'timestamp'> = {
           groupId: groupId,
-          userId: currentUser.id, // The admin performing the action
-          actorName: currentUser.name, // Name of the admin
+          userId: currentUser.id, 
+          actorName: currentUser.name, 
           actionType: 'member_added',
           description: `${currentUser.name || 'Admin'} added ${member.name || 'a new member'} to the group.`,
           relatedUserId: member.id,
@@ -763,7 +757,7 @@ export default function GroupDetailPage() {
         </CardHeader>
       </Card>
       <TooltipProvider>
-        <Tabs defaultValue="expenses" className="w-full">
+        <Tabs defaultValue="expenses" className="w-full" value={searchParams.get('tab') || 'expenses'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`)}>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
             <TabsList>
               <TabsTrigger value="expenses"><CreditCard className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
@@ -974,21 +968,39 @@ export default function GroupDetailPage() {
                                   </span>
                               </div>
                               {owedToList.length > 0 && (
-                                  <div className="pl-4 text-sm">
-                                      <p className="text-red-600 dark:text-red-400">Owes:</p>
-                                      <ul className="list-disc list-inside ml-2">
+                                  <div className="pl-4 text-sm space-y-1">
+                                      <p className="text-red-600 dark:text-red-400 font-medium">Owes:</p>
+                                      <ul className="list-none ml-2 space-y-1">
                                           {owedToList.map(item => (
-                                              <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
+                                              <li key={item.user!.id} className="flex justify-between items-center">
+                                                  <span>{`${getCurrencySymbol()}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span>
+                                                  {balance.userId === currentUser.id && isMember && (
+                                                    <Button asChild size="xs" variant="outline" className="px-2 py-1 h-auto text-xs">
+                                                      <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}>
+                                                        <Send className="mr-1.5 h-3 w-3" /> Settle
+                                                      </Link>
+                                                    </Button>
+                                                  )}
+                                              </li>
                                           ))}
                                       </ul>
                                   </div>
                               )}
                               {owedByList.length > 0 && (
-                                   <div className="pl-4 text-sm mt-1">
-                                      <p className="text-green-600 dark:text-green-400">Is owed by:</p>
-                                      <ul className="list-disc list-inside ml-2">
+                                   <div className="pl-4 text-sm mt-2 space-y-1">
+                                      <p className="text-green-600 dark:text-green-400 font-medium">Is owed by:</p>
+                                      <ul className="list-none ml-2 space-y-1">
                                           {owedByList.map(item => (
-                                              <li key={item.user!.id}>{`${getCurrencySymbol()}${item.amount.toFixed(2)} from ${item.user!.name || item.user!.id.substring(0,6)}`}</li>
+                                              <li key={item.user!.id} className="flex justify-between items-center">
+                                                  <span>{`${getCurrencySymbol()}${item.amount.toFixed(2)} from ${item.user!.name || item.user!.id.substring(0,6)}`}</span>
+                                                  {balance.userId === currentUser.id && isMember && (
+                                                    <Button asChild size="xs" variant="outline" className="px-2 py-1 h-auto text-xs">
+                                                      <Link href={`/groups/${groupId}/settle-up?payerId=${item.user!.id}&payeeId=${currentUser.id}&amount=${item.amount.toFixed(2)}`}>
+                                                        <HandCoins className="mr-1.5 h-3 w-3" /> Record Payment
+                                                      </Link>
+                                                    </Button>
+                                                  )}
+                                              </li>
                                           ))}
                                       </ul>
                                   </div>
@@ -1142,3 +1154,4 @@ export default function GroupDetailPage() {
     </div>
   );
 }
+

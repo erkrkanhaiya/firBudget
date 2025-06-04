@@ -3,7 +3,7 @@
 
 import { useState, useEffect, FormEvent, useCallback } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation'; // Import useSearchParams
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -56,13 +56,11 @@ const calculateBalancesWithPayments = (groupMembers: UserType[], expenses: Expen
         const amount = payment.amount;
 
         if (memberBalances[payerId] && memberBalances[payeeId]) {
-            // Payer's debt to payee decreases
             memberBalances[payerId].owes[payeeId] = (memberBalances[payerId].owes[payeeId] || 0) - amount;
-            memberBalances[payerId].netBalance += amount; // Net balance improves as they paid off debt
+            memberBalances[payerId].netBalance += amount; 
 
-            // Payee's amount owed by payer decreases
             memberBalances[payeeId].owedBy[payerId] = (memberBalances[payeeId].owedBy[payerId] || 0) - amount;
-            memberBalances[payeeId].netBalance -= amount; // Net balance reduces as they received payment
+            memberBalances[payeeId].netBalance -= amount; 
         }
     });
 
@@ -76,6 +74,7 @@ const calculateBalancesWithPayments = (groupMembers: UserType[], expenses: Expen
 export default function SettleUpPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams(); 
   const { currentUser } = useUser();
   const { toast } = useToast();
   const { addNotification } = useNotification();
@@ -124,7 +123,24 @@ export default function SettleUpPage() {
           return;
         }
         setGroup(fetchedGroup);
-        if (currentUser) setPayerId(currentUser.id);
+        
+        const queryPayerId = searchParams.get('payerId');
+        const queryPayeeId = searchParams.get('payeeId');
+        const queryAmount = searchParams.get('amount');
+
+        if (queryPayerId && fetchedGroup.members.some(m => m.id === queryPayerId)) {
+            setPayerId(queryPayerId);
+        } else if (currentUser && !payerId) { // Only set to current user if not pre-filled
+            setPayerId(currentUser.id);
+        }
+
+        if (queryPayeeId && fetchedGroup.members.some(m => m.id === queryPayeeId)) {
+            setPayeeId(queryPayeeId);
+        }
+        if (queryAmount && !isNaN(parseFloat(queryAmount))) {
+            setAmount(parseFloat(queryAmount).toFixed(2));
+        }
+
 
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
         const expensesQuery = query(expensesColRef);
@@ -166,17 +182,19 @@ export default function SettleUpPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [groupId, currentUser, router, toast]);
+  }, [groupId, currentUser, router, toast, searchParams, payerId]); 
   
   useEffect(() => {
     fetchGroupDataForSettlement();
   }, [fetchGroupDataForSettlement]);
   
   useEffect(() => {
-    if (payerId && balances.length > 0 && group) {
+    const queryPayeeId = searchParams.get('payeeId');
+    const queryAmount = searchParams.get('amount');
+
+    if (payerId && balances.length > 0 && group && !queryPayeeId && !queryAmount) {
       const payerBalance = balances.find(b => b.userId === payerId);
-      if (payerBalance && payerBalance.netBalance < -0.005) { // Payer owes money overall
-        // Find who the payer owes the most to within the group
+      if (payerBalance && payerBalance.netBalance < -0.005) { 
         const owesMostEntry = Object.entries(payerBalance.owes)
                                     .filter(([, owedAmount]) => owedAmount > 0.005)
                                     .sort(([,a],[,b]) => b - a)[0];
@@ -184,7 +202,7 @@ export default function SettleUpPage() {
           const suggestedPayeeId = owesMostEntry[0];
           if (group.members.some(m => m.id === suggestedPayeeId) && suggestedPayeeId !== payerId) {
             setPayeeId(suggestedPayeeId);
-            setAmount(Math.min(owesMostEntry[1], Math.abs(payerBalance.netBalance)).toFixed(2)); // Suggest paying up to what they owe this person, or their net debt if smaller
+            setAmount(Math.min(owesMostEntry[1], Math.abs(payerBalance.netBalance)).toFixed(2));
           } else {
             setPayeeId('');
             setAmount('');
@@ -198,7 +216,7 @@ export default function SettleUpPage() {
         setAmount('');
       }
     }
-  }, [payerId, balances, group]);
+  }, [payerId, balances, group, searchParams]); 
 
 
   if (isLoading) {
@@ -263,10 +281,10 @@ export default function SettleUpPage() {
 
     const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
       groupId,
-      userId: payerId, // The user performing the action or central to it
+      userId: payerId, 
       actionType: 'payment_recorded',
       description: `${payerUser.name || 'User'} paid ${getCurrencySymbol()}${numericAmount.toFixed(2)} to ${payeeUser.name || 'User'} via ${paymentMethod}. ${notes.trim() ? `Notes: ${notes.trim()}` : ''}`,
-      relatedPaymentId: '', // Will be set after payment doc is created
+      relatedPaymentId: '', 
       actorName: payerUser.name,
     };
     
@@ -274,8 +292,8 @@ export default function SettleUpPage() {
         const batch = writeBatch(db);
         
         const paymentsColRef = collection(db, 'groups', groupId, 'payments');
-        const newPaymentDocRef = doc(paymentsColRef); // Auto-generate ID
-        activityLogForFirestore.relatedPaymentId = newPaymentDocRef.id; // Link activity log to payment
+        const newPaymentDocRef = doc(paymentsColRef); 
+        activityLogForFirestore.relatedPaymentId = newPaymentDocRef.id; 
 
         batch.set(newPaymentDocRef, { ...paymentForFirestore, createdAt: serverTimestamp() });
         
@@ -294,6 +312,19 @@ export default function SettleUpPage() {
           type: "success",
           href: `/groups/${groupId}?tab=balances`
       });
+      
+      // Clear specific query params after successful submission
+      const currentUrl = new URL(window.location.href);
+      const currentPath = currentUrl.pathname;
+      const existingParams = new URLSearchParams(currentUrl.search);
+      existingParams.delete('payerId');
+      existingParams.delete('payeeId');
+      existingParams.delete('amount');
+      const newSearch = existingParams.toString() ? `?${existingParams.toString()}` : '';
+      
+      // Use router.replace to avoid adding to history stack
+      router.replace(`${currentPath}${newSearch}`, { scroll: false });
+
       router.push(`/groups/${groupId}?refresh=${Date.now()}&tab=balances`);
     } catch (error) {
         console.error("Error recording payment:", error);
@@ -311,8 +342,8 @@ export default function SettleUpPage() {
   return (
     <div className="max-w-xl mx-auto">
       <Button variant="outline" size="sm" asChild className="mb-4">
-        <Link href={`/groups/${groupId}`}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Group
+        <Link href={`/groups/${groupId}?tab=balances`}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Group Balances
         </Link>
       </Button>
       <Card>
@@ -393,7 +424,7 @@ export default function SettleUpPage() {
                             selected={paymentDate}
                             onSelect={setPaymentDate}
                             initialFocus
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || !paymentDate}
                             />
                         </PopoverContent>
                     </Popover>
@@ -427,7 +458,7 @@ export default function SettleUpPage() {
             </div>
             {payeeId && parseFloat(amount) > 0 && group.members.find(m => m.id === payerId) && group.members.find(m => m.id === payeeId) && (
               <p className="text-sm text-muted-foreground">
-                You are about to record a payment of <span className="font-semibold">{getCurrencySymbol()}{parseFloat(amount).toFixed(2)}</span> from <span className="font-semibold">{group.members.find(m => m.id === payerId)?.name || 'Payer'}</span> to <span className="font-semibold">{group.members.find(m => m.id === payeeId)?.name || 'Payee'}</span>.
+                You are about to record a payment of <span className="font-semibold">{getCurrencySymbol()}{(parseFloat(amount) || 0).toFixed(2)}</span> from <span className="font-semibold">{group.members.find(m => m.id === payerId)?.name || 'Payer'}</span> to <span className="font-semibold">{group.members.find(m => m.id === payeeId)?.name || 'Payee'}</span>.
               </p>
             )}
           </CardContent>
@@ -446,3 +477,4 @@ export default function SettleUpPage() {
     </div>
   );
 }
+
