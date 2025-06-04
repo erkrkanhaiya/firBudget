@@ -500,11 +500,11 @@ export default function GroupDetailPage() {
         if (!user) return;
         let balanceText = "";
         if (balance.netBalance > 0.005) { 
-          balanceText = `Is Owed by Group: ${currencySymbol}${balance.netBalance.toFixed(2)}`;
+          balanceText = `Is Owed by Group Fund: ${currencySymbol}${balance.netBalance.toFixed(2)}`;
         } else if (balance.netBalance < -0.005) { 
-          balanceText = `Owes to Group: ${currencySymbol}${Math.abs(balance.netBalance).toFixed(2)}`;
+          balanceText = `Owes to Group Fund: ${currencySymbol}${Math.abs(balance.netBalance).toFixed(2)}`;
         } else {
-          balanceText = "Settled with Group";
+          balanceText = "Settled with Group Fund";
         }
         balanceSummary.push([user.name || balance.userId.substring(0,6), balanceText]);
       });
@@ -1407,6 +1407,5 @@ export default function GroupDetailPage() {
     </div>
   );
 }
-
     
 
