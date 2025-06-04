@@ -220,7 +220,7 @@ export default function GroupDetailPage() {
                 createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt as string),
                 receiptUrl: data.receiptUrl,
                 receiptFileName: data.receiptFileName,
-                category: data.category,
+                // category: data.category, // Category removed
             } as Expense;
         });
         setFirestoreExpenses(fetchedExpenses);
@@ -327,14 +327,15 @@ export default function GroupDetailPage() {
         const payer = memberDetailsMap.get(exp.paidByUserId);
         return [
           format(parseISO(exp.date), "MMM d, yyyy"),
-          exp.description + (exp.receiptFileName ? ` (Receipt: ${exp.receiptFileName.substring(0,15)}...)` : "") + (exp.category ? ` [${exp.category}]` : ''),
+          // exp.description + (exp.receiptFileName ? ` (Receipt: ${exp.receiptFileName.substring(0,15)}...)` : "") + (exp.category ? ` [${exp.category}]` : ''), // Category removed
+          exp.description + (exp.receiptFileName ? ` (Receipt: ${exp.receiptFileName.substring(0,15)}...)` : ""),
           payer?.name || exp.paidByUserId.substring(0,6), 
           `${currencySymbol}${exp.amount.toFixed(2)}`
         ];
       });
       doc.autoTable({
         startY: yPos,
-        head: [['Date', 'Description (Category)', 'Paid By', 'Amount']],
+        head: [['Date', 'Description', 'Paid By', 'Amount']], // Category removed from header
         body: expenseData,
         theme: 'striped',
         headStyles: { fillColor: [52, 73, 94] }, 
@@ -877,9 +878,7 @@ export default function GroupDetailPage() {
                               <p className="text-sm text-muted-foreground">
                                   Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")}
                               </p>
-                              {expense.category && (
-                                <Badge variant="outline" className="mt-1 text-xs">{expense.category}</Badge>
-                              )}
+                              {/* Category Badge Removed Here */}
                           </div>
                         </div>
                         <div className="text-right ml-2">
@@ -1146,4 +1145,3 @@ export default function GroupDetailPage() {
     </div>
   );
 }
-

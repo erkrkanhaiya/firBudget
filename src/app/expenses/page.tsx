@@ -113,7 +113,7 @@ export default function MyExpensesPage() {
                 payerAvatarUrl: payer?.avatarUrl,
                 receiptUrl: expenseData.receiptUrl,
                 receiptFileName: expenseData.receiptFileName,
-                category: expenseData.category,
+                // category: expenseData.category, // Category removed
               });
             }
           });
@@ -231,9 +231,7 @@ export default function MyExpensesPage() {
                               In group: <Link href={`/groups/${expense.groupId}`} className="text-primary hover:underline">{expense.groupName}</Link>
                           </p>
                       )}
-                      {expense.category && (
-                        <Badge variant="secondary" className="mt-1 text-xs w-fit">{expense.category}</Badge>
-                      )}
+                      {/* Category Badge Removed Here */}
                     </div>
                     <div className="text-right">
                        <div className="text-xl font-bold flex items-center">
@@ -270,5 +268,3 @@ export default function MyExpensesPage() {
     </div>
   );
 }
-
-    

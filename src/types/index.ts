@@ -30,6 +30,9 @@ export interface ExpenseParticipant {
   amountOwed: number;
 }
 
+// ExpenseCategory type is no longer used for individual expenses,
+// but PREDEFINED_EXPENSE_CATEGORIES might still be used for group categories if they differ
+// or if we re-evaluate expense categories later. For now, let's keep it.
 export type ExpenseCategory = "Food" | "Travel" | "Utilities" | "Entertainment" | "Shopping" | "Other";
 
 export interface Expense {
@@ -43,7 +46,7 @@ export interface Expense {
   createdAt: string;
   receiptUrl?: string; // URL of the uploaded receipt in Firebase Storage
   receiptFileName?: string; // Original name of the uploaded receipt file
-  category?: ExpenseCategory | string; // Allow predefined or custom string
+  // category?: ExpenseCategory | string; // Removed category from individual expense
 }
 
 export interface Payment {
@@ -105,6 +108,7 @@ export interface NotificationItem {
 }
 
 // For AI Expense Detail Extraction
+// PREDEFINED_EXPENSE_CATEGORIES can still be useful for potential future features or if group categories use them.
 export const PREDEFINED_EXPENSE_CATEGORIES: ExpenseCategory[] = ["Food", "Travel", "Utilities", "Entertainment", "Shopping", "Other"];
 
 // Zod schemas for AI Expense Detail Extraction Flow
@@ -123,6 +127,6 @@ export const ExtractExpenseDetailsOutputSchema = z.object({
   extractedDescription: z.string().optional().describe('The vendor name or main item from the receipt (e.g., "Starbucks", "Train Ticket").'),
   extractedAmount: z.number().optional().describe('The total amount from the receipt. Should be a positive number.'),
   extractedDate: z.string().optional().describe('The date of the transaction from the receipt, ideally in YYYY-MM-DD format.'),
-  suggestedCategory: z.string().optional().describe(`Suggested category for the expense. Should be one of: ${PREDEFINED_EXPENSE_CATEGORIES.join(", ")}. If none match well, suggest "Other".`),
+  // suggestedCategory removed
 });
 export type ExtractExpenseDetailsOutput = z.infer<typeof ExtractExpenseDetailsOutputSchema>;

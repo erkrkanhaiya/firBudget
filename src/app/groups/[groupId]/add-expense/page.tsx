@@ -14,8 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft, PlusCircle, DollarSign as DollarSignIcon, Users, CalendarDays, User, Info, Loader2, Paperclip, XCircle, Image as ImageIconLucide, Sparkles } from 'lucide-react';
 import NextImage from 'next/image';
 import { useUser } from '@/contexts/UserContext';
-import type { Group, User as UserType, ExpenseParticipant, Expense, ActivityLog, ExpenseCategory } from '@/types';
-import { PREDEFINED_EXPENSE_CATEGORIES } from '@/types';
+import type { Group, User as UserType, ExpenseParticipant, Expense, ActivityLog } from '@/types'; // ExpenseCategory removed from imports if not used
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -39,7 +38,7 @@ interface StoredExpenseData {
   actorNameForLog: string | null;
   receiptUrl?: string;
   receiptFileName?: string;
-  category?: ExpenseCategory | string;
+  // category?: ExpenseCategory | string; // Category removed
 }
 
 export default function AddExpensePage() {
@@ -59,7 +58,7 @@ export default function AddExpensePage() {
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [splitEqually, setSplitEqually] = useState(true);
   const [customSplitAmounts, setCustomSplitAmounts] = useState<Record<string, string>>({});
-  const [selectedCategory, setSelectedCategory] = useState<ExpenseCategory | string>('');
+  // const [selectedCategory, setSelectedCategory] = useState<ExpenseCategory | string>(''); // Category state removed
 
 
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -78,7 +77,7 @@ export default function AddExpensePage() {
     setDescription('');
     setAmount('');
     setExpenseDate(new Date());
-    setSelectedCategory('');
+    // setSelectedCategory(''); // Category state removed
     if (currentUser && group) { 
         setPaidByUserId(currentUser.id);
         setSelectedParticipantIds(group.members.map(m => m.id));
@@ -199,7 +198,7 @@ export default function AddExpensePage() {
               date: storedExp.date,
               participants: storedExp.participants,
               createdAt: serverTimestamp(),
-              category: storedExp.category || 'Other'
+              // category: storedExp.category || 'Other' // Category removed
             };
             
             if (storedExp.receiptFileName) {
@@ -386,13 +385,14 @@ export default function AddExpensePage() {
             if (parsedDate) { setExpenseDate(parsedDate); fieldsUpdated = true; }
              else { console.warn("Could not parse AI suggested date:", result.extractedDate); toast({ title: "AI Date Format Issue", description: `AI suggested date "${result.extractedDate}" couldn't be parsed. Please set manually.`, variant: "default", duration: 7000 }); }
           }
-
-          if (result.suggestedCategory && PREDEFINED_EXPENSE_CATEGORIES.includes(result.suggestedCategory as ExpenseCategory)) {
-            setSelectedCategory(result.suggestedCategory as ExpenseCategory); fieldsUpdated = true;
-          } else if (result.suggestedCategory) {
-            setSelectedCategory("Other"); fieldsUpdated = true;
-            toast({ title: "AI Category Note", description: `AI suggested "${result.suggestedCategory}", set to "Other". You can change it.`, variant: "default", duration: 5000 });
-          }
+          
+          // Category suggestion handling removed
+          // if (result.suggestedCategory && PREDEFINED_EXPENSE_CATEGORIES.includes(result.suggestedCategory as ExpenseCategory)) {
+          //   setSelectedCategory(result.suggestedCategory as ExpenseCategory); fieldsUpdated = true;
+          // } else if (result.suggestedCategory) {
+          //   setSelectedCategory("Other"); fieldsUpdated = true;
+          //   toast({ title: "AI Category Note", description: `AI suggested "${result.suggestedCategory}", set to "Other". You can change it.`, variant: "default", duration: 5000 });
+          // }
           
           if (fieldsUpdated) {
             toast({ title: "AI Autofill Complete", description: "Fields updated based on receipt. Please review." });
@@ -532,7 +532,7 @@ export default function AddExpensePage() {
             actorNameForLog: actor?.name || 'User',
             receiptUrl: receiptUrlToStore, 
             receiptFileName: receiptFileNameToStore,
-            category: selectedCategory || 'Other',
+            // category: selectedCategory || 'Other', // Category removed
         };
 
         if (!isOnline) {
@@ -560,7 +560,7 @@ export default function AddExpensePage() {
             date: expenseDataForStorage.date,
             participants: expenseDataForStorage.participants,
             createdAt: serverTimestamp(),
-            category: expenseDataForStorage.category,
+            // category: expenseDataForStorage.category, // Category removed
         };
 
         if (expenseDataForStorage.receiptUrl) {
@@ -737,6 +737,7 @@ export default function AddExpensePage() {
                 </Popover>
               </div>
             </div>
+            {/* Category Select Removed
              <div>
               <Label htmlFor="category">Category</Label>
               <Select
@@ -756,6 +757,7 @@ export default function AddExpensePage() {
                 </SelectContent>
               </Select>
             </div>
+            */}
             <div>
               <Label htmlFor="paidBy">Paid by*</Label>
               <Select value={paidByUserId} onValueChange={setPaidByUserId} required disabled={isSubmitting || isAiProcessing}>
@@ -861,4 +863,3 @@ export default function AddExpensePage() {
     </div>
   );
 }
-
