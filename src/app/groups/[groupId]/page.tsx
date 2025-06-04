@@ -4,7 +4,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation'; // Added usePathname
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -45,14 +45,14 @@ import {
   DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from '@/hooks/use-toast';
-import { ToastAction } from "@/components/ui/toast"; // Import ToastAction for undo button
+import { ToastAction } from "@/components/ui/toast";
 import { useCurrency } from '@/contexts/CurrencyContext';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Badge } from '@/components/ui/badge';
-import { db } from '@/lib/firebase'; 
+import { db } from '@/lib/firebase';
 import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs, runTransaction, updateDoc, arrayUnion, writeBatch, serverTimestamp, where } from 'firebase/firestore';
-import { useNotification } from '@/contexts/NotificationContext'; 
+import { useNotification } from '@/contexts/NotificationContext';
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
@@ -93,7 +93,7 @@ const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
 interface SpendingByPayerChartData {
   name: string;
   totalPaid: number;
-  fill?: string; 
+  fill?: string;
 }
 
 const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
@@ -123,12 +123,13 @@ const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
 export default function GroupDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams(); 
+  const searchParams = useSearchParams();
+  const pathname = usePathname(); // Get current pathname
   const { currentUser } = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
   const { getCurrencySymbol } = useCurrency();
-  const { addNotification } = useNotification(); 
+  const { addNotification } = useNotification();
 
   const [group, setGroup] = useState<Group | null>(null);
   const [firestoreExpenses, setFirestoreExpenses] = useState<Expense[]>([]);
@@ -150,7 +151,7 @@ export default function GroupDetailPage() {
   const [isAddingMembers, setIsAddingMembers] = useState(false);
 
   const [spendingByPayerChartData, setSpendingByPayerChartData] = useState<SpendingByPayerChartData[]>([]);
-  
+
   const [undoTimeoutId, setUndoTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
 
@@ -163,13 +164,13 @@ export default function GroupDetailPage() {
   }, [group]);
 
   const calculateGroupBalances = useCallback((
-    currentGroupMembers: UserType[], 
-    groupExpenses: Expense[], 
+    currentGroupMembers: UserType[],
+    groupExpenses: Expense[],
     groupPayments: Payment[],
     groupContributions: Contribution[]
   ): Balance[] => {
     if (currentGroupMembers.length === 0) return [];
-    
+
     const memberNetBalances: Record<string, number> = {};
     currentGroupMembers.forEach(member => {
       memberNetBalances[member.id] = 0;
@@ -202,8 +203,8 @@ export default function GroupDetailPage() {
     });
 
     const finalBalances: Balance[] = [];
-    const creditors: Array<{ id: string, amount: number }> = []; 
-    const debtors: Array<{ id: string, amount: number }> = []; 
+    const creditors: Array<{ id: string, amount: number }> = [];
+    const debtors: Array<{ id: string, amount: number }> = [];
 
     currentGroupMembers.forEach(member => {
       const net = parseFloat((memberNetBalances[member.id] || 0).toFixed(2));
@@ -212,8 +213,8 @@ export default function GroupDetailPage() {
       finalBalances.push({ userId: member.id, owes: {}, owedBy: {}, netBalance: net });
     });
 
-    creditors.sort((a, b) => b.amount - a.amount); 
-    debtors.sort((a, b) => b.amount - a.amount);   
+    creditors.sort((a, b) => b.amount - a.amount);
+    debtors.sort((a, b) => b.amount - a.amount);
 
     let i = 0, j = 0;
     while (i < debtors.length && j < creditors.length) {
@@ -243,12 +244,13 @@ export default function GroupDetailPage() {
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
     if (!currentUser || !groupId) {
-      if(showLoadingSpinner) setIsLoading(false);
+      if(showLoadingSpinner) setIsLoading(false); // Potentially problematic if !currentUser causes early return
       if(!currentUser) router.push('/login');
       return;
     }
-    if(showLoadingSpinner) setIsLoading(true);
-    setAccessDenied(false);
+    // Always set loading true at the start of an attempt to fetch
+    setIsLoading(true);
+    setAccessDenied(false); // Reset access denied state at the start of each fetch attempt
 
     try {
       const groupDocRef = doc(db, 'groups', groupId);
@@ -270,18 +272,19 @@ export default function GroupDetailPage() {
         if (fetchedGroup.visibility === 'private' && !isMember) {
           toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
           setAccessDenied(true);
-          if(showLoadingSpinner) setIsLoading(false);
+          setGroup(null); // Ensure group is null if access denied
+          setIsLoading(false);
           return;
         }
-        setGroup(fetchedGroup);
+        setGroup(fetchedGroup); // Set group if access is okay
 
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
         const expensesQuery = query(expensesColRef, orderBy('date', 'desc'));
         const expensesSnapshot = await getDocs(expensesQuery);
         const fetchedExpenses = expensesSnapshot.docs.map(docSnap => {
             const data = docSnap.data();
-            return { 
-                id: docSnap.id, 
+            return {
+                id: docSnap.id,
                 ...data,
                 date: safeParseDate(data.date, `expense[${docSnap.id}].date`),
                 createdAt: safeParseDate(data.createdAt, `expense[${docSnap.id}].createdAt`),
@@ -329,17 +332,17 @@ export default function GroupDetailPage() {
         const activityLogSnapshot = await getDocs(activityLogQuery);
         const fetchedActivityLogs = activityLogSnapshot.docs.map(docSnap => {
             const data = docSnap.data();
-            return { 
-                id: docSnap.id, 
+            return {
+                id: docSnap.id,
                 ...data,
                 timestamp: safeParseDate(data.timestamp, `activityLog[${docSnap.id}].timestamp`)
             } as ActivityLog;
         });
         setFirestoreActivityLogs(fetchedActivityLogs);
-        
+
         const calculatedBalances = calculateGroupBalances(fetchedGroup.members, fetchedExpenses, fetchedPayments, fetchedContributions);
         setBalances(calculatedBalances);
-        
+
         const payerTotals: Record<string, number> = {};
         fetchedExpenses.forEach(expense => {
             payerTotals[expense.paidByUserId] = (payerTotals[expense.paidByUserId] || 0) + expense.amount;
@@ -348,34 +351,36 @@ export default function GroupDetailPage() {
         const chartData = fetchedGroup.members.map((member, index) => ({
             name: member.name || `User ${member.id.substring(0, 4)}`,
             totalPaid: payerTotals[member.id] || 0,
-            fill: `var(--chart-${(index % 5) + 1})` 
-        })).filter(data => data.totalPaid > 0) 
-           .sort((a,b) => b.totalPaid - a.totalPaid); 
+            fill: `var(--chart-${(index % 5) + 1})`
+        })).filter(data => data.totalPaid > 0)
+           .sort((a,b) => b.totalPaid - a.totalPaid);
 
         setSpendingByPayerChartData(chartData);
 
       } else {
         toast({ title: "Group not found", description: "The group you are looking for does not exist.", variant: "destructive" });
         setAccessDenied(true);
+        setGroup(null); // Ensure group is null if not found
       }
     } catch (error) {
       console.error("Error fetching group data:", error);
       toast({ title: "Error", description: "Could not fetch group details.", variant: "destructive" });
       setAccessDenied(true);
+      setGroup(null); // Ensure group is null on generic error
     } finally {
-      if(showLoadingSpinner) setIsLoading(false);
+      setIsLoading(false);
     }
   }, [groupId, currentUser, router, toast, calculateGroupBalances]);
 
   const performUndoAddItem = async (
-    itemId: string, 
+    itemId: string,
     itemType: 'expense' | 'contribution',
     itemGroupId: string,
-    itemDescription: string, // For toast message
-    actorName: string, // For notification
-    itemAmount?: number // For toast message
+    itemDescription: string,
+    actorName: string,
+    itemAmount?: number
   ) => {
-    if (!group) return;
+    if (!group) return; // Should not happen if called correctly
     setIsUndoing(true);
     try {
         const batch = writeBatch(db);
@@ -399,7 +404,7 @@ export default function GroupDetailPage() {
             message: `The ${itemType} from ${actorName} was removed from group "${group.name}".`,
             type: "info",
         });
-        fetchGroupData(false); // Refresh data without full loading spinner
+        fetchGroupData(false);
     } catch (error) {
         console.error(`Error undoing ${itemType} add:`, error);
         toast({ title: "Undo Failed", description: `Could not undo adding the ${itemType}.`, variant: "destructive" });
@@ -409,7 +414,11 @@ export default function GroupDetailPage() {
   };
 
   useEffect(() => {
-    if (undoTimeoutId) { // Clear previous timeout if component re-renders or new undo is triggered
+    fetchGroupData();
+  }, [fetchGroupData, searchParams.get('refresh')]);
+
+  useEffect(() => {
+    if (undoTimeoutId) {
         clearTimeout(undoTimeoutId);
         setUndoTimeoutId(null);
     }
@@ -417,18 +426,23 @@ export default function GroupDetailPage() {
     const undoAction = searchParams.get('undoAction');
     const itemId = searchParams.get('itemId');
 
-    if ((undoAction === 'expense' || undoAction === 'contribution') && itemId && group) {
+    // Guard: Only proceed if group data is loaded, no access denial, and not currently loading
+    if (isLoading || accessDenied || !group) {
+        return;
+    }
+
+    if ((undoAction === 'expense' || undoAction === 'contribution') && itemId) {
         const itemDetailsString = sessionStorage.getItem('undoItemDetails');
         if (itemDetailsString) {
             const itemDetails = JSON.parse(itemDetailsString);
             if (itemDetails.itemId === itemId && itemDetails.groupId === groupId && itemDetails.itemType === undoAction) {
-                // Clear from session storage and URL to prevent re-trigger
                 sessionStorage.removeItem('undoItemDetails');
-                const currentPath = router.pathname; 
+
+                // Use the pathname from usePathname() hook
                 const newSearchParams = new URLSearchParams(searchParams.toString());
                 newSearchParams.delete('undoAction');
                 newSearchParams.delete('itemId');
-                router.replace(`${currentPath}?${newSearchParams.toString()}`, { scroll: false });
+                router.replace(`${pathname}?${newSearchParams.toString()}`, { scroll: false });
 
                 const { dismiss: dismissToast } = toast({
                     title: `${itemDetails.itemType.charAt(0).toUpperCase() + itemDetails.itemType.slice(1)} Added!`,
@@ -442,10 +456,10 @@ export default function GroupDetailPage() {
                                 setUndoTimeoutId(null);
                                 dismissToast();
                                 await performUndoAddItem(
-                                    itemDetails.itemId, 
-                                    itemDetails.itemType, 
-                                    itemDetails.groupId, 
-                                    itemDetails.description, 
+                                    itemDetails.itemId,
+                                    itemDetails.itemType,
+                                    itemDetails.groupId,
+                                    itemDetails.description,
                                     itemDetails.actorName,
                                     itemDetails.amount
                                 );
@@ -456,32 +470,23 @@ export default function GroupDetailPage() {
                         </ToastAction>
                     ),
                 });
-                
+
                 const newTimeout = setTimeout(() => {
-                  // Just let the toast dismiss itself, no further action on timeout needed here
-                  // as we are already on the details page.
                   setUndoTimeoutId(null);
-                }, 7500); 
+                }, 7500);
                 setUndoTimeoutId(newTimeout);
             } else {
-                // Mismatch or old data, clear it
                 sessionStorage.removeItem('undoItemDetails');
             }
         }
     }
-     // Cleanup timeout on component unmount or if dependencies change
     return () => {
         if (undoTimeoutId) {
             clearTimeout(undoTimeoutId);
         }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, group, groupId, router, toast, addNotification, getCurrencySymbol, isUndoing]); // Added isUndoing
+  }, [searchParams, group, groupId, router, toast, addNotification, getCurrencySymbol, isUndoing, isLoading, accessDenied, pathname, undoTimeoutId]);
 
-
-  useEffect(() => {
-    fetchGroupData();
-  }, [fetchGroupData, searchParams.get('refresh')]); // Refresh when 'refresh' param changes
 
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.share) {
@@ -510,7 +515,7 @@ export default function GroupDetailPage() {
       doc.text(splitDescription, 14, yPos);
       yPos += (splitDescription.length * 5) + 5;
     }
-    
+
     doc.setFontSize(11);
     doc.setTextColor(0);
     doc.text(`Report generated on: ${format(new Date(), "MMMM d, yyyy 'at' h:mm a")}`, 14, yPos);
@@ -526,7 +531,7 @@ export default function GroupDetailPage() {
       doc.text(`- ${member.name || 'N/A'} (${member.email || 'N/A'})${member.id === group.ownerId ? ' (Admin)' : ''}`, 16, yPos);
       yPos += 6;
     });
-    yPos += 4; 
+    yPos += 4;
 
     if (firestoreContributions.length > 0) {
       doc.setFontSize(14);
@@ -555,13 +560,13 @@ export default function GroupDetailPage() {
     if (firestoreExpenses.length > 0) {
       doc.setFontSize(14);
       doc.text("Expenses", 14, yPos);
-      yPos += 2; 
+      yPos += 2;
       const expenseData = firestoreExpenses.map(exp => {
         const payer = memberDetailsMap.get(exp.paidByUserId);
         return [
           format(parseISO(exp.date), "MMM d, yyyy"),
           exp.description + (exp.receiptFileName ? ` (Receipt: ${exp.receiptFileName.substring(0,15)}...)` : ""),
-          payer?.name || exp.paidByUserId.substring(0,6), 
+          payer?.name || exp.paidByUserId.substring(0,6),
           `${currencySymbol}${exp.amount.toFixed(2)}`
         ];
       });
@@ -570,7 +575,7 @@ export default function GroupDetailPage() {
         head: [['Date', 'Description', 'Paid By', 'Amount']],
         body: expenseData,
         theme: 'striped',
-        headStyles: { fillColor: [52, 73, 94] }, 
+        headStyles: { fillColor: [52, 73, 94] },
         margin: { top: yPos }
       });
       yPos = doc.autoTable.previous.finalY + 10;
@@ -600,7 +605,7 @@ export default function GroupDetailPage() {
         head: [['Date', 'Transaction', 'Amount', 'Method', 'Notes']],
         body: paymentData,
         theme: 'striped',
-        headStyles: { fillColor: [40, 116, 166] }, 
+        headStyles: { fillColor: [40, 116, 166] },
         margin: { top: yPos }
       });
       yPos = doc.autoTable.previous.finalY + 10;
@@ -616,9 +621,9 @@ export default function GroupDetailPage() {
         const user = memberDetailsMap.get(balance.userId);
         if (!user) return;
         let balanceText = "";
-        if (balance.netBalance > 0.005) { 
+        if (balance.netBalance > 0.005) {
           balanceText = `Is Owed by Group Fund: ${currencySymbol}${balance.netBalance.toFixed(2)}`;
-        } else if (balance.netBalance < -0.005) { 
+        } else if (balance.netBalance < -0.005) {
           balanceText = `Owes to Group Fund: ${currencySymbol}${Math.abs(balance.netBalance).toFixed(2)}`;
         } else {
           balanceText = "Settled with Group Fund";
@@ -640,13 +645,13 @@ export default function GroupDetailPage() {
         const user = memberDetailsMap.get(balance.userId);
         if (!user) return;
         const owedToList = Object.entries(balance.owes)
-          .filter(([, amount]) => amount > 0.005) 
+          .filter(([, amount]) => amount > 0.005)
           .map(([owedToId, amount]) => ({
             user: memberDetailsMap.get(owedToId),
             amount
           }))
           .filter(item => item.user);
-          
+
         if (owedToList.length > 0) {
             detailedOwesText += `${user.name || balance.userId.substring(0,6)} should pay:\n`;
             owedToList.forEach(item => {
@@ -655,9 +660,9 @@ export default function GroupDetailPage() {
             detailedOwesText += "\n";
         }
       });
-      
+
       if (detailedOwesText) {
-        if (yPos > 250) { doc.addPage(); yPos = 20; } 
+        if (yPos > 250) { doc.addPage(); yPos = 20; }
         doc.setFontSize(14);
         doc.text("Simplified Settlement Suggestions (Who Owes Whom Directly)", 14, yPos);
         yPos += 10;
@@ -693,7 +698,7 @@ export default function GroupDetailPage() {
       }
     } catch (err) {
       console.error("Failed to share natively: ", err);
-      if ((err as DOMException).name !== 'AbortError') { 
+      if ((err as DOMException).name !== 'AbortError') {
         toast({ title: "Sharing Failed", description: "Could not share using system dialog.", variant: "destructive" });
       }
     }
@@ -720,27 +725,27 @@ export default function GroupDetailPage() {
       toast({ title: "Error", description: "You do not have permission to delete this group.", variant: "destructive"});
       return;
     }
-    const groupName = group.name; 
+    const groupName = group.name;
     try {
       await runTransaction(db, async (transaction) => {
         const groupDocRef = doc(db, 'groups', groupId);
-        
+
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
-        const expensesSnapshot = await getDocs(query(expensesColRef)); 
+        const expensesSnapshot = await getDocs(query(expensesColRef));
         expensesSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
 
         const paymentsColRef = collection(db, 'groups', groupId, 'payments');
         const paymentsSnapshot = await getDocs(query(paymentsColRef));
         paymentsSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
 
-        const contributionsColRef = collection(db, 'groups', groupId, 'contributions'); 
+        const contributionsColRef = collection(db, 'groups', groupId, 'contributions');
         const contributionsSnapshot = await getDocs(query(contributionsColRef));
         contributionsSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
-        
+
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
-        const activityLogSnapshot = await getDocs(query(activityLogColRef)); 
+        const activityLogSnapshot = await getDocs(query(activityLogColRef));
         activityLogSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
-        
+
         transaction.delete(groupDocRef);
       });
 
@@ -779,12 +784,12 @@ export default function GroupDetailPage() {
           return {
             id: docSnap.id,
             name: data.name,
-            email: null, 
-            avatarUrl: undefined, 
+            email: null,
+            avatarUrl: undefined,
           } as UserType;
         })
-        .filter(contact => !group.memberIds.includes(contact.id)); 
-      
+        .filter(contact => !group.memberIds.includes(contact.id));
+
       setPotentialNewMembers(contactsList);
     } catch (error) {
       console.error("Error fetching potential new members:", error);
@@ -798,7 +803,7 @@ export default function GroupDetailPage() {
     setIsAddMemberDialogOpen(open);
     if (open) {
       fetchPotentialNewMembers();
-      setSelectedContactsToAdd([]); 
+      setSelectedContactsToAdd([]);
     }
   };
 
@@ -827,7 +832,7 @@ export default function GroupDetailPage() {
           newMemberObjects.push({
             id: contact.id,
             name: contact.name,
-            email: null, 
+            email: null,
             avatarUrl: contact.avatarUrl || '',
           });
         }
@@ -842,8 +847,8 @@ export default function GroupDetailPage() {
       newMemberObjects.forEach(member => {
         const logEntry: Omit<ActivityLog, 'id' | 'timestamp'> = {
           groupId: groupId,
-          userId: currentUser.id, 
-          actorName: currentUser.name, 
+          userId: currentUser.id,
+          actorName: currentUser.name,
           actionType: 'member_added',
           description: `${currentUser.name || 'Admin'} added ${member.name || 'a new member'} to the group.`,
           relatedUserId: member.id,
@@ -861,7 +866,7 @@ export default function GroupDetailPage() {
       await batch.commit();
       toast({ title: "Members Added!", description: `${newMemberObjects.length} member(s) added to the group.` });
       setIsAddMemberDialogOpen(false);
-      fetchGroupData(false); 
+      fetchGroupData(false);
 
     } catch (error) {
       console.error("Error adding members to group:", error);
@@ -883,14 +888,14 @@ export default function GroupDetailPage() {
         </div>
     );
   }
-  
+
   if (accessDenied) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4">
         <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
         <h1 className="text-3xl font-bold mb-2">Access Denied</h1>
         <p className="text-lg text-muted-foreground mb-6">
-          {group ? "This is a private group and you are not a member." : "Group not found or you do not have permission to view it."}
+          Group not found or you do not have permission to view it.
         </p>
         <Button asChild>
           <Link href="/groups">Back to Groups</Link>
@@ -909,18 +914,24 @@ export default function GroupDetailPage() {
       </div>
     );
   }
-  
+
   if (!group) {
     return (
-         <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
-            <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-            <p className="ml-2 text-muted-foreground">Loading group data...</p>
+         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4">
+            <AlertTriangle className="w-16 h-16 text-muted-foreground mb-4" />
+            <h1 className="text-3xl font-bold mb-2">Group Not Found</h1>
+            <p className="text-lg text-muted-foreground mb-6">
+                The group details could not be loaded. It might have been deleted or an error occurred.
+            </p>
+            <Button asChild>
+                <Link href="/groups">Back to Groups</Link>
+            </Button>
         </div>
     );
   }
-  
+
   const isMember = group.memberIds.includes(currentUser.id);
-  const isOwner = group.ownerId === currentUser.id; 
+  const isOwner = group.ownerId === currentUser.id;
   const CategoryIcon = groupCategoryIcons[group.category || 'OTHER'] || Shapes;
   const currencySymbol = getCurrencySymbol();
   const remainingFunds = totalContributions - totalExpenses;
@@ -951,11 +962,11 @@ export default function GroupDetailPage() {
         <CardHeader className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="flex items-start gap-4">
             {group.photoUrl ? (
-              <Image 
-                src={group.photoUrl} 
-                alt={group.name} 
-                width={100} 
-                height={100} 
+              <Image
+                src={group.photoUrl}
+                alt={group.name}
+                width={100}
+                height={100}
                 className="rounded-lg object-cover h-24 w-24 md:h-28 md:w-28 shadow-md"
                 data-ai-hint={group.dataAiHint || "group image"}
                 priority
@@ -981,7 +992,7 @@ export default function GroupDetailPage() {
               {!isMember && group.visibility === 'public' && <Badge variant="outline" className="mt-2">Viewing as Non-Member</Badge>}
             </div>
           </div>
-          {isOwner && ( 
+          {isOwner && (
             <div className="flex gap-2 mt-4 md:mt-0 self-start">
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/groups/${groupId}/edit`}>
@@ -1013,7 +1024,7 @@ export default function GroupDetailPage() {
             </div>
           )}
         </CardHeader>
-        
+
         <CardContent className="pt-2 pb-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700">
@@ -1059,7 +1070,7 @@ export default function GroupDetailPage() {
               <TabsTrigger value="activity"><ActivityIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
             </TabsList>
              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              {isMember && ( 
+              {isMember && (
                 <>
                   <Button asChild className="flex-1 sm:flex-none">
                     <Link href={`/groups/${groupId}/add-expense`}>
@@ -1081,7 +1092,7 @@ export default function GroupDetailPage() {
                <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 sm:flex-none">
                   <Download className="mr-2 h-4 w-4" /> Download PDF
               </Button>
-              {(group.visibility === 'public' || isMember) && ( 
+              {(group.visibility === 'public' || isMember) && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" className="flex-1 sm:flex-none">
@@ -1235,7 +1246,7 @@ export default function GroupDetailPage() {
               </CardFooter>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="payments">
             <Card>
               <CardHeader>
@@ -1295,12 +1306,12 @@ export default function GroupDetailPage() {
                       const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({
                           user: memberDetailsMap.get(owedToId),
                           amount
-                      })).filter(item => item.user && item.amount > 0.005); 
-                      
+                      })).filter(item => item.user && item.amount > 0.005);
+
                       const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({
                           user: memberDetailsMap.get(owedById),
                           amount
-                      })).filter(item => item.user && item.amount > 0.005); 
+                      })).filter(item => item.user && item.amount > 0.005);
 
                       return (
                           <li key={balance.userId} className="p-3 border rounded-md">
@@ -1333,7 +1344,7 @@ export default function GroupDetailPage() {
                                       </ul>
                                   </div>
                               )}
-                               {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( 
+                               {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && (
                                    <p className="pl-4 text-sm text-muted-foreground">All settled up!</p>
                                )}
                           </li>
@@ -1346,7 +1357,7 @@ export default function GroupDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="reports">
             <Card>
               <CardHeader>
@@ -1362,9 +1373,9 @@ export default function GroupDetailPage() {
                   <CardContent>
                     {spendingByPayerChartData.length > 0 ? (
                       <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full">
-                        <BarChart 
-                          accessibilityLayer 
-                          data={spendingByPayerChartData} 
+                        <BarChart
+                          accessibilityLayer
+                          data={spendingByPayerChartData}
                           layout="vertical"
                           margin={{left: 10, right: 10}}
                         >
@@ -1448,8 +1459,8 @@ export default function GroupDetailPage() {
                                   <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}>
                                       Cancel
                                   </Button>
-                                  <Button 
-                                      onClick={handleAddSelectedMembers} 
+                                  <Button
+                                      onClick={handleAddSelectedMembers}
                                       disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers}
                                   >
                                       {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
@@ -1462,7 +1473,7 @@ export default function GroupDetailPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-3">
-                  {group.members.map(member => ( 
+                  {group.members.map(member => (
                     <li key={member.id} className="flex items-center justify-between p-2 border rounded-md">
                       <div className="flex items-center gap-3">
                           <Avatar>
@@ -1494,7 +1505,7 @@ export default function GroupDetailPage() {
                 {firestoreActivityLogs.length > 0 ? (
                   <ul className="space-y-4">
                     {firestoreActivityLogs.map(log => {
-                      const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); 
+                      const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId);
                       return (
                       <li key={log.id} className="flex items-start gap-3 text-sm p-2 border rounded-md">
                           <Avatar className="h-8 w-8 mt-1">
@@ -1504,9 +1515,9 @@ export default function GroupDetailPage() {
                           <div>
                                <p>
                                   <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span>
-                                  {log.description.includes(actor?.name || 'User') 
-                                      ? log.description.substring((actor?.name || 'User').length).trim() 
-                                      : ` ${log.description}`} 
+                                  {log.description.includes(actor?.name || 'User')
+                                      ? log.description.substring((actor?.name || 'User').length).trim()
+                                      : ` ${log.description}`}
                               </p>
                               <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p>
                           </div>
@@ -1525,4 +1536,3 @@ export default function GroupDetailPage() {
   );
 }
     
-
