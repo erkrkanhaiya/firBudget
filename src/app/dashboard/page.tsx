@@ -503,7 +503,7 @@ export default function DashboardPage() {
             </p>
           </CardContent>
           <CardFooter>
-            <Button asChild variant="destructive" size="sm" className="w-full" disabled={!currentUser}>
+            <Button asChild variant="destructive" size="sm" className="w-full" disabled={!currentUser || (netOverallBalance !== null && netOverallBalance >=0) }>
               <Link href="/settle-up"> 
                  {translate({ en: "Settle All", hi: "सभी का निपटान करें" })} <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -580,5 +580,7 @@ export default function DashboardPage() {
   );
 }
 
+
+    
 
     
