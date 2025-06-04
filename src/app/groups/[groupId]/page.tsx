@@ -267,7 +267,6 @@ export default function GroupDetailPage() {
 
     if (!currentUser || !groupId) {
       if(showLoadingSpinner) setIsLoadingPageData(false);
-      // accessDenied and groupNotFound will remain false, handled by render logic
       return;
     }
 
@@ -404,7 +403,7 @@ export default function GroupDetailPage() {
 
 
   useEffect(() => {
-    if (isLoadingAuth) return; // Wait for auth state to be known
+    if (isLoadingAuth) return;
 
     if (!currentUser) {
         router.push('/login');
@@ -989,13 +988,13 @@ export default function GroupDetailPage() {
   if (isLoadingAuth || isLoadingPageData) {
     return ( <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]"> <Loader2 className="h-12 w-12 animate-spin text-primary" /> </div> );
   }
-  if (!currentUser) { // Check after isLoadingAuth is false
+  if (!currentUser) { 
     return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold mb-2">Authentication Required</h1> <p className="text-lg text-muted-foreground mb-6">Please log in to view this page.</p> <Button asChild><Link href="/login">Go to Login</Link></Button> </div> );
   }
   if (accessDenied) {
     return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-15rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-destructive mb-4" /> <h1 className="text-3xl font-bold mb-2">Access Denied</h1> <p className="text-lg text-muted-foreground mb-6"> You do not have permission to view this group. </p> <Button asChild><Link href="/groups">Back to Groups</Link></Button> </div> );
   }
-  if (groupNotFound || !group) { // Check after isLoadingPageData is false
+  if (groupNotFound || !group) { 
     return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-10rem)] text-center p-4"> <AlertTriangle className="w-16 h-16 text-muted-foreground mb-4" /> <h1 className="text-3xl font-bold mb-2">Group Not Found</h1> <p className="text-lg text-muted-foreground mb-6"> The group you are looking for does not exist or could not be loaded. It might have been deleted. </p> <Button asChild><Link href="/groups">Back to Groups</Link></Button> </div> );
   }
 
@@ -1112,19 +1111,17 @@ export default function GroupDetailPage() {
               {isMember && ( <> 
                 <Button asChild className="flex-1 sm:flex-none">
                   <Link href={`/groups/${groupId}/add-expense`}>
-                    <span className="flex items-center"><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
+                    <span><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
                   </Link>
                 </Button>
                 <Button variant="secondary" asChild className="flex-1 sm:flex-none">
                   <Link href={`/groups/${groupId}/add-contribution`}>
-                    <span className="flex items-center"> 
-                      <CoinsIcon className="mr-2 h-4 w-4" /> Add Funds
-                    </span>
+                    <span><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
                   </Link>
                 </Button>
                 <Button variant="outline" asChild className="flex-1 sm:flex-none">
                   <Link href={`/groups/${groupId}/settle-up`}>
-                    <span className="flex items-center"><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
+                    <span><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
                   </Link>
                 </Button> 
               </> )}
