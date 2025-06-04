@@ -265,9 +265,10 @@ export default function GroupDetailPage() {
     }
 
     if (showLoadingSpinner) setIsLoadingPageData(true);
+    setGroup(null); // Clear previous group data
     setAccessDenied(false);
     setGroupNotFound(false);
-    setGroup(null);
+
 
     try {
       const groupDocRef = doc(db, 'groups', groupId);
@@ -400,18 +401,19 @@ export default function GroupDetailPage() {
   }, [groupId, currentUser, toast, calculateGroupBalances]);
 
   useEffect(() => {
-    if (!isLoadingAuth) {
-      if (currentUser && groupId) {
+    if (isLoadingAuth) return;
+
+    if (currentUser && groupId) {
         fetchGroupData();
-      } else if (!currentUser) {
+    } else if (!currentUser) {
         router.push('/login');
-        setIsLoadingPageData(false);
-      } else if (!groupId) {
+        setIsLoadingPageData(false); // Ensure loading state is false if redirecting
+    } else if (!groupId) {
         setGroupNotFound(true);
         setIsLoadingPageData(false);
-      }
     }
-  }, [isLoadingAuth, currentUser, groupId, fetchGroupData, router, searchParams.get('refresh')]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoadingAuth, currentUser, groupId, searchParams.get('refresh')]); // fetchGroupData removed to prevent loop, refresh param triggers it
 
   const performUndoAddItem = async (
     itemId: string,
@@ -481,6 +483,11 @@ export default function GroupDetailPage() {
                 const newSearchParams = new URLSearchParams(searchParams.toString());
                 newSearchParams.delete('undoAction');
                 newSearchParams.delete('itemId');
+                 // Keep refresh if it was there
+                if (searchParams.get('refresh')) {
+                    newSearchParams.set('refresh', searchParams.get('refresh')!);
+                }
+
                 router.replace(`${pathname}?${newSearchParams.toString()}`, { scroll: false });
 
                 const { dismiss: dismissToast } = toast({
@@ -515,7 +522,7 @@ export default function GroupDetailPage() {
                 }, 7500);
                 setUndoTimeoutId(newTimeout);
             } else {
-                sessionStorage.removeItem('undoItemDetails');
+                sessionStorage.removeItem('undoItemDetails'); // Clean up if details don't match
             }
         }
     }
@@ -524,7 +531,8 @@ export default function GroupDetailPage() {
             clearTimeout(undoTimeoutId);
         }
     };
-  }, [searchParams, group, groupId, router, toast, addNotification, getCurrencySymbol, isUndoing, isLoadingPageData, accessDenied, groupNotFound, pathname, undoTimeoutId, fetchGroupData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, group, isLoadingPageData, accessDenied, groupNotFound, pathname]); // Removed addNotification, getCurrencySymbol, groupId, isUndoing, router, toast as they are stable or handled
 
 
   useEffect(() => {
@@ -1099,7 +1107,23 @@ export default function GroupDetailPage() {
               <TabsTrigger value="activity"><ActivityIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
             </TabsList>
              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              {isMember && ( <> <Button asChild className="flex-1 sm:flex-none"> <Link href={`/groups/${groupId}/add-expense`}> <PlusCircle className="mr-2 h-4 w-4" /> Add Expense </Link> </Button> <Button variant="secondary" asChild className="flex-1 sm:flex-none"> <Link href={`/groups/${groupId}/add-contribution`}> <CoinsIcon className="mr-2 h-4 w-4" /> Add Funds </Link> </Button> <Button variant="outline" asChild className="flex-1 sm:flex-none"> <Link href={`/groups/${groupId}/settle-up`}> <DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up </Link> </Button> </> )}
+              {isMember && ( <> 
+                <Button asChild className="flex-1 sm:flex-none">
+                  <Link href={`/groups/${groupId}/add-expense`}>
+                    <span className="flex items-center"><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
+                  </Link>
+                </Button>
+                <Button variant="secondary" asChild className="flex-1 sm:flex-none">
+                  <Link href={`/groups/${groupId}/add-contribution`}>
+                    <span className="flex items-center"><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild className="flex-1 sm:flex-none">
+                  <Link href={`/groups/${groupId}/settle-up`}>
+                    <span className="flex items-center"><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
+                  </Link>
+                </Button> 
+              </> )}
                <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 sm:flex-none"> <Download className="mr-2 h-4 w-4" /> Download PDF </Button>
               {(group.visibility === 'public' || isMember) && ( <DropdownMenu> <DropdownMenuTrigger asChild> <Button variant="outline" className="flex-1 sm:flex-none"> <Share2 className="mr-2 h-4 w-4" /> Share Group </Button> </DropdownMenuTrigger> <DropdownMenuContent align="end" className="w-56"> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
             </div>
@@ -1234,3 +1258,4 @@ export default function GroupDetailPage() {
     </div>
   );
 }
+
