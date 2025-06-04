@@ -17,7 +17,7 @@ import type { Group, GroupVisibility, GroupCategory } from '@/types';
 import { useToast } from "@/hooks/use-toast";
 import NextImage from 'next/image'; 
 import { db, auth } from '@/lib/firebase'; 
-import { doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, Timestamp, deleteField } from 'firebase/firestore'; // Added deleteField
 import { useNotification } from '@/contexts/NotificationContext';
 import { useCurrency } from '@/contexts/CurrencyContext';
 
@@ -227,20 +227,28 @@ export default function EditGroupPage() {
         return;
     }
 
-
-    const groupDataToUpdate: Partial<Group> & {name: string} = {
+    const updatePayload: { [key: string]: any } = {
       name: groupName.trim(),
       description: groupDescription.trim(),
       photoUrl: finalPhotoUrl, 
       visibility: groupVisibility,
       category: groupCategory,
       dataAiHint: finalPhotoUrl && finalPhotoUrl.includes('placehold.co') ? (group.dataAiHint || 'group image') : '',
-      budgetAmount: numericBudget, // Save parsed budget or undefined to remove it
     };
+
+    if (groupBudget.trim() === '') {
+      // If the budget input is empty, we want to remove the field from Firestore
+      updatePayload.budgetAmount = deleteField();
+    } else if (numericBudget !== undefined) {
+      // If there's a valid numeric budget, update it
+      updatePayload.budgetAmount = numericBudget;
+    }
+    // If numericBudget is undefined AND groupBudget.trim() is not empty, it's an invalid number (already handled by validation)
+    // If groupBudget was not touched and had a value, it won't be in updatePayload, so it remains unchanged in Firestore unless cleared.
     
     try {
       const groupDocRef = doc(db, 'groups', groupId);
-      await updateDoc(groupDocRef, groupDataToUpdate);
+      await updateDoc(groupDocRef, updatePayload);
 
       toast({
         title: "Group Updated!",
