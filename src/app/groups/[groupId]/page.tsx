@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Coins as CoinsIcon, TrendingUp, FileText, Edit2, MessageSquare as MessageSquareIcon, BarChartHorizontal, Send } from 'lucide-react';
@@ -70,6 +70,7 @@ import {
   type ChartConfig
 } from "@/components/ui/chart";
 import { BarChart, CartesianGrid, XAxis, YAxis, Bar } from "recharts";
+import { cn } from '@/lib/utils';
 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -292,6 +293,7 @@ export default function GroupDetailPage() {
           toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
           setAccessDenied(true);
           setGroup(null);
+          if(showLoadingSpinner) setIsLoadingPageData(false); // Ensure loading stops
           return;
         }
         setGroup(fetchedGroup);
@@ -416,7 +418,7 @@ export default function GroupDetailPage() {
         return;
     }
     fetchGroupData(); 
-  }, [isLoadingAuth, currentUser, groupId, searchParams.get('refresh'), fetchGroupData, router]);
+  }, [isLoadingAuth, currentUser, groupId, searchParams, fetchGroupData, router]); // Added searchParams to re-fetch on undo
 
 
   const performUndoAddItem = async (
@@ -469,8 +471,8 @@ export default function GroupDetailPage() {
         clearTimeout(undoTimeoutId);
         setUndoTimeoutId(null);
     }
-
-    if (isLoadingPageData || accessDenied || groupNotFound || !group) {
+    
+    if (isLoadingPageData || accessDenied || groupNotFound || !group ) {
         return;
     }
 
@@ -487,10 +489,8 @@ export default function GroupDetailPage() {
                 const newSearchParams = new URLSearchParams(searchParams.toString());
                 newSearchParams.delete('undoAction');
                 newSearchParams.delete('itemId');
-                if (searchParams.get('refresh')) {
-                    newSearchParams.set('refresh', searchParams.get('refresh')!);
-                } else {
-                     newSearchParams.delete('refresh');
+                if (!searchParams.has('refresh')) { // Avoid duplicate refresh param
+                    newSearchParams.delete('refresh');
                 }
 
                 router.replace(`${pathname}?${newSearchParams.toString()}`, { scroll: false });
@@ -1046,11 +1046,11 @@ export default function GroupDetailPage() {
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm">
-                    <span>
-                      <Trash2 className="mr-2 h-4 w-4" /> Delete Group
-                    </span>
-                  </Button>
+                   <Button variant="destructive" size="sm">
+                     <span>
+                       <Trash2 className="mr-2 h-4 w-4" /> Delete Group
+                     </span>
+                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete the group "{group.name}" and all its associated data (expenses, activity logs, payments, contributions, notes) from Firestore. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={handleDeleteGroup} className="bg-destructive hover:bg-destructive/90"> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent>
               </AlertDialog>
@@ -1149,7 +1149,41 @@ export default function GroupDetailPage() {
                    <Download className="mr-2 h-4 w-4" /> Download PDF
                  </span>
                 </Button>
-              {(group.visibility === 'public' || isMember) && ( <DropdownMenu> <DropdownMenuTrigger asChild> <Button variant="outline" className="flex-1 sm:flex-none"> <span><Share2 className="mr-2 h-4 w-4" /> Share Group</span> </Button> </DropdownMenuTrigger> <DropdownMenuContent align="end" className="w-56"> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
+              {(group.visibility === 'public' || isMember) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className={cn(buttonVariants({variant: 'outline'}), "flex-1 sm:flex-none")}>
+                      <span>
+                        <Share2 className="mr-2 h-4 w-4" /> Share Group
+                      </span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {isWebShareSupported && (
+                      <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer">
+                        <Share2 className="mr-2 h-4 w-4" /> Share via System
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer">
+                      <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer">
+                      <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer">
+                      <Facebook className="mr-2 h-4 w-4" /> Share on Facebook
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer">
+                      <Twitter className="mr-2 h-4 w-4" /> Share on Twitter
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer">
+                      <Mail className="mr-2 h-4 w-4" /> Share via Email
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
 
