@@ -8,7 +8,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Send, BarChartHorizontal, Coins as CoinsIcon } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Send, BarChartHorizontal, Coins as CoinsIcon, TrendingUp } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment, Contribution } from '@/types';
 import { useUser } from '@/contexts/UserContext';
@@ -54,6 +54,7 @@ import { doc, getDoc, Timestamp, deleteDoc, collection, query, orderBy, getDocs,
 import { useNotification } from '@/contexts/NotificationContext'; 
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   ChartContainer,
@@ -91,14 +92,13 @@ const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
 interface SpendingByPayerChartData {
   name: string;
   totalPaid: number;
-  fill?: string; // for chart bar color
+  fill?: string; 
 }
 
 const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
   if (dateVal instanceof Timestamp) return dateVal.toDate().toISOString();
   if (typeof dateVal === 'string' && dateVal.length > 0) {
     try {
-      // Attempt to parse to ensure it's a valid date string for parseISO
       parseISO(dateVal);
       return dateVal;
     } catch (e) {
@@ -107,7 +107,6 @@ const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
     }
   }
   if (typeof dateVal === 'object' && dateVal.seconds && typeof dateVal.seconds === 'number') {
-    // Handle Firestore Timestamp-like objects that might not be instances of Timestamp
     try {
       return new Date(dateVal.seconds * 1000).toISOString();
     } catch(e) {
@@ -140,6 +139,9 @@ export default function GroupDetailPage() {
   const [accessDenied, setAccessDenied] = useState(false);
   const [isWebShareSupported, setIsWebShareSupported] = useState(false);
 
+  const [totalContributions, setTotalContributions] = useState(0);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
   const [potentialNewMembers, setPotentialNewMembers] = useState<UserType[]>([]);
   const [isLoadingPotentialMembers, setIsLoadingPotentialMembers] = useState(false);
@@ -168,20 +170,16 @@ export default function GroupDetailPage() {
       memberNetBalances[member.id] = 0;
     });
 
-    // 1. Process Contributions
     groupContributions.forEach(contrib => {
       if (memberNetBalances[contrib.contributorId] !== undefined) {
         memberNetBalances[contrib.contributorId] += contrib.amount;
       }
     });
 
-    // 2. Process Expenses
     groupExpenses.forEach(expense => {
-      // Credit the payer (money effectively comes back to them from the pool or reduces what they owe to the pool)
       if (memberNetBalances[expense.paidByUserId] !== undefined) {
         memberNetBalances[expense.paidByUserId] += expense.amount;
       }
-      // Debit participants for their share (money they owe to the pool)
       expense.participants.forEach(p => {
         if (memberNetBalances[p.userId] !== undefined) {
           memberNetBalances[p.userId] -= p.amountOwed;
@@ -189,23 +187,18 @@ export default function GroupDetailPage() {
       });
     });
 
-    // 3. Process Payments (Settlements between members, or to/from group fund if modeled that way)
-    // For settlements recorded through the "Settle Up" page which are direct peer-to-peer for simplicity:
     groupPayments.forEach(payment => {
-      // Payer's balance (what they are owed by the fund) decreases.
       if (memberNetBalances[payment.paidByUserId] !== undefined) {
         memberNetBalances[payment.paidByUserId] -= payment.amount;
       }
-      // Payee's balance (what they are owed by the fund) increases.
       if (memberNetBalances[payment.paidToUserId] !== undefined) {
         memberNetBalances[payment.paidToUserId] += payment.amount;
       }
     });
 
-    // 4. Simplify debts based on final netBalances
     const finalBalances: Balance[] = [];
-    const creditors: Array<{ id: string, amount: number }> = []; // Positive netBalance, group fund owes them
-    const debtors: Array<{ id: string, amount: number }> = []; // Negative netBalance, they owe group fund
+    const creditors: Array<{ id: string, amount: number }> = []; 
+    const debtors: Array<{ id: string, amount: number }> = []; 
 
     currentGroupMembers.forEach(member => {
       const net = parseFloat((memberNetBalances[member.id] || 0).toFixed(2));
@@ -231,7 +224,6 @@ export default function GroupDetailPage() {
             debtorBalanceEntry.owes[creditor.id] = (debtorBalanceEntry.owes[creditor.id] || 0) + amountToSettle;
             creditorBalanceEntry.owedBy[debtor.id] = (creditorBalanceEntry.owedBy[debtor.id] || 0) + amountToSettle;
         }
-
 
         debtor.amount = parseFloat((debtor.amount - amountToSettle).toFixed(2));
         creditor.amount = parseFloat((creditor.amount - amountToSettle).toFixed(2));
@@ -266,6 +258,7 @@ export default function GroupDetailPage() {
           memberIds: groupData.memberIds || [],
           createdAt: safeParseDate(groupData.createdAt, 'group.createdAt'),
           category: groupData.category || 'OTHER',
+          budgetAmount: groupData.budgetAmount,
         };
 
         const isMember = fetchedGroup.memberIds.includes(currentUser.id);
@@ -277,7 +270,6 @@ export default function GroupDetailPage() {
         }
         setGroup(fetchedGroup);
 
-        // Fetch Expenses
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
         const expensesQuery = query(expensesColRef, orderBy('date', 'desc'));
         const expensesSnapshot = await getDocs(expensesQuery);
@@ -293,8 +285,9 @@ export default function GroupDetailPage() {
             } as Expense;
         });
         setFirestoreExpenses(fetchedExpenses);
+        const currentTotalExpenses = fetchedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+        setTotalExpenses(currentTotalExpenses);
 
-        // Fetch Payments
         const paymentsColRef = collection(db, 'groups', groupId, 'payments');
         const paymentsQuery = query(paymentsColRef, orderBy('date', 'desc'));
         const paymentsSnapshot = await getDocs(paymentsQuery);
@@ -309,7 +302,6 @@ export default function GroupDetailPage() {
         });
         setFirestorePayments(fetchedPayments);
 
-        // Fetch Contributions
         const contributionsColRef = collection(db, 'groups', groupId, 'contributions');
         const contributionsQuery = query(contributionsColRef, orderBy('date', 'desc'));
         const contributionsSnapshot = await getDocs(contributionsQuery);
@@ -323,9 +315,10 @@ export default function GroupDetailPage() {
             } as Contribution;
         });
         setFirestoreContributions(fetchedContributions);
+        const currentTotalContributions = fetchedContributions.reduce((sum, contrib) => sum + contrib.amount, 0);
+        setTotalContributions(currentTotalContributions);
 
 
-        // Fetch Activity Logs
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
         const activityLogQuery = query(activityLogColRef, orderBy('timestamp', 'desc'));
         const activityLogSnapshot = await getDocs(activityLogQuery);
@@ -342,7 +335,6 @@ export default function GroupDetailPage() {
         const calculatedBalances = calculateGroupBalances(fetchedGroup.members, fetchedExpenses, fetchedPayments, fetchedContributions);
         setBalances(calculatedBalances);
         
-        // Calculate spending by payer for chart
         const payerTotals: Record<string, number> = {};
         fetchedExpenses.forEach(expense => {
             payerTotals[expense.paidByUserId] = (payerTotals[expense.paidByUserId] || 0) + expense.amount;
@@ -356,7 +348,6 @@ export default function GroupDetailPage() {
            .sort((a,b) => b.totalPaid - a.totalPaid); 
 
         setSpendingByPayerChartData(chartData);
-
 
       } else {
         toast({ title: "Group not found", description: "The group you are looking for does not exist.", variant: "destructive" });
@@ -444,7 +435,6 @@ export default function GroupDetailPage() {
       yPos = doc.autoTable.previous.finalY + 10;
     }
 
-
     if (firestoreExpenses.length > 0) {
       doc.setFontSize(14);
       doc.text("Expenses", 14, yPos);
@@ -498,7 +488,6 @@ export default function GroupDetailPage() {
       });
       yPos = doc.autoTable.previous.finalY + 10;
     }
-
 
     if (balances.length > 0) {
       doc.setFontSize(14);
@@ -770,7 +759,6 @@ export default function GroupDetailPage() {
     }
   };
 
-
   if (isLoading) {
     return (
         <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
@@ -817,10 +805,16 @@ export default function GroupDetailPage() {
   const isMember = group.memberIds.includes(currentUser.id);
   const isOwner = group.ownerId === currentUser.id; 
   const CategoryIcon = groupCategoryIcons[group.category || 'OTHER'] || Shapes;
+  const currencySymbol = getCurrencySymbol();
+  const remainingFunds = totalContributions - totalExpenses;
+  const budgetAmount = group.budgetAmount || 0;
+  const remainingBudget = budgetAmount > 0 ? budgetAmount - totalExpenses : 0;
+  const budgetProgress = budgetAmount > 0 ? Math.min((totalExpenses / budgetAmount) * 100, 100) : 0;
+
 
   const chartConfigSpendingByPayer = {
     totalPaid: {
-      label: `Total Paid (${getCurrencySymbol()})`,
+      label: `Total Paid (${currencySymbol})`,
     },
     ...spendingByPayerChartData.reduce((acc, member) => {
       acc[member.name] = { label: member.name, color: member.fill };
@@ -854,8 +848,8 @@ export default function GroupDetailPage() {
                 <CategoryIcon className="h-12 w-12 md:h-14 md:w-14 text-muted-foreground" />
               </div>
             )}
-            <div>
-              <div className="flex items-center gap-2 mb-1">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                  <CardTitle className="text-3xl">{group.name}</CardTitle>
                  {group.visibility === 'public' ? (
                     <Badge variant="outline" className="text-sm flex items-center gap-1"><Eye className="h-4 w-4"/>Public</Badge>
@@ -871,7 +865,7 @@ export default function GroupDetailPage() {
             </div>
           </div>
           {isOwner && ( 
-            <div className="flex gap-2 mt-4 md:mt-0">
+            <div className="flex gap-2 mt-4 md:mt-0 self-start">
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/groups/${groupId}/edit`}>
                     <Edit className="mr-2 h-4 w-4" /> Edit Group
@@ -902,9 +896,41 @@ export default function GroupDetailPage() {
             </div>
           )}
         </CardHeader>
+        
+        <CardContent className="pt-2 pb-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700">
+                <p className="text-xs text-green-700 dark:text-green-400">Total Contributions</p>
+                <p className="text-lg font-semibold text-green-600 dark:text-green-300">{currencySymbol}{totalContributions.toFixed(2)}</p>
+            </div>
+            <div className="p-3 rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700">
+                <p className="text-xs text-red-700 dark:text-red-400">Total Expenses</p>
+                <p className="text-lg font-semibold text-red-600 dark:text-red-300">{currencySymbol}{totalExpenses.toFixed(2)}</p>
+            </div>
+            <div className={`p-3 rounded-md border ${remainingFunds >= 0 ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700' : 'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700'}`}>
+                <p className={`text-xs ${remainingFunds >= 0 ? 'text-blue-700 dark:text-blue-400' : 'text-orange-700 dark:text-orange-400'}`}>Remaining Funds</p>
+                <p className={`text-lg font-semibold ${remainingFunds >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}>
+                    {currencySymbol}{remainingFunds.toFixed(2)}
+                </p>
+            </div>
+             {group.budgetAmount && group.budgetAmount > 0 && (
+                <div className="p-3 rounded-md bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 col-span-2 md:col-span-1">
+                    <p className="text-xs text-purple-700 dark:text-purple-400">Budget vs Spent</p>
+                    <p className="text-lg font-semibold text-purple-600 dark:text-purple-300">
+                        {currencySymbol}{totalExpenses.toFixed(2)} / {currencySymbol}{budgetAmount.toFixed(2)}
+                    </p>
+                    <Progress value={budgetProgress} className="h-2 mt-1 bg-purple-200 dark:bg-purple-700 [&>div]:bg-purple-500" />
+                     <p className={`text-xs mt-0.5 ${remainingBudget >= 0 ? 'text-purple-600 dark:text-purple-300' : 'text-orange-600 dark:text-orange-400 font-medium'}`}>
+                        {remainingBudget >= 0 ? `${currencySymbol}${remainingBudget.toFixed(2)} remaining` : `${currencySymbol}${Math.abs(remainingBudget).toFixed(2)} over budget`}
+                    </p>
+                </div>
+            )}
+          </div>
+        </CardContent>
       </Card>
+
       <TooltipProvider>
-        <Tabs defaultValue="expenses" className="w-full" value={searchParams.get('tab') || 'expenses'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`)}>
+        <Tabs defaultValue="expenses" className="w-full" value={searchParams.get('tab') || 'expenses'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`, { scroll: false })}>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
             <TabsList>
               <TabsTrigger value="expenses"><CreditCard className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
@@ -1027,9 +1053,9 @@ export default function GroupDetailPage() {
                           </div>
                         </div>
                         <div className="text-right ml-2">
-                          <p className="text-lg font-semibold">{getCurrencySymbol()}{expense.amount.toFixed(2)}</p>
+                          <p className="text-lg font-semibold">{currencySymbol}{expense.amount.toFixed(2)}</p>
                           {isMember && currentUserShare && (
-                             <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {getCurrencySymbol()}{currentUserShare.amountOwed.toFixed(2)}</p>
+                             <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {currencySymbol}{currentUserShare.amountOwed.toFixed(2)}</p>
                           )}
                         </div>
                       </li>
@@ -1072,7 +1098,7 @@ export default function GroupDetailPage() {
                           </div>
                           <div className="text-right ml-2">
                             <p className="text-lg font-semibold text-green-600 dark:text-green-400">
-                              +{getCurrencySymbol()}{contribution.amount.toFixed(2)}
+                              +{currencySymbol}{contribution.amount.toFixed(2)}
                             </p>
                           </div>
                         </li>
@@ -1123,7 +1149,7 @@ export default function GroupDetailPage() {
                             </div>
                           </div>
                           <div className="text-left sm:text-right sm:ml-2">
-                            <p className="text-lg font-semibold">{getCurrencySymbol()}{payment.amount.toFixed(2)}</p>
+                            <p className="text-lg font-semibold">{currencySymbol}{payment.amount.toFixed(2)}</p>
                           </div>
                         </li>
                       );
@@ -1135,7 +1161,6 @@ export default function GroupDetailPage() {
               </CardContent>
             </Card>
           </TabsContent>
-
 
           <TabsContent value="balances">
             <Card>
@@ -1169,7 +1194,7 @@ export default function GroupDetailPage() {
                                   </Avatar>
                                   <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span>
                                   <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                                      {getCurrencySymbol()}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"}
+                                      {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"}
                                   </span>
                               </div>
                               {owedToList.length > 0 && (
@@ -1178,7 +1203,7 @@ export default function GroupDetailPage() {
                                       <ul className="list-none ml-2 space-y-1">
                                           {owedToList.map(item => (
                                               <li key={item.user!.id} className="flex justify-between items-center">
-                                                  <span>{`${getCurrencySymbol()}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span>
+                                                  <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span>
                                                   {balance.userId === currentUser.id && isMember && (
                                                     <Button asChild size="xs" variant="outline" className="px-2 py-1 h-auto text-xs">
                                                       <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}>
@@ -1191,7 +1216,6 @@ export default function GroupDetailPage() {
                                       </ul>
                                   </div>
                               )}
-                              {/* OwedBy list might be redundant if we are showing net position and simplified payments */}
                                {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( 
                                    <p className="pl-4 text-sm text-muted-foreground">All settled up!</p>
                                )}
@@ -1228,7 +1252,7 @@ export default function GroupDetailPage() {
                           margin={{left: 10, right: 10}}
                         >
                           <CartesianGrid vertical={false} />
-                          <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${getCurrencySymbol()}${value}`} />
+                          <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${currencySymbol}${value}`} />
                           <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/>
                           <ChartTooltip
                             cursor={false}
@@ -1385,3 +1409,4 @@ export default function GroupDetailPage() {
 }
 
     
+
