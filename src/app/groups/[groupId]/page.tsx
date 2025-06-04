@@ -8,7 +8,7 @@ import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigat
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Coins as CoinsIcon, TrendingUp, FileText, Edit2, MessageSquare as MessageSquareIcon, BarChartHorizontal, Save, Send } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Coins as CoinsIcon, TrendingUp, FileText, Edit2, MessageSquare as MessageSquareIcon, BarChartHorizontal, Save } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment, Contribution, GroupNote } from '@/types';
 import { useUser } from '@/contexts/UserContext';
@@ -94,6 +94,12 @@ const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
   PARTY: PartyPopper,
   OTHER: Shapes,
 };
+
+const CategoryIconDisplay = ({ category }: { category?: GroupCategory }) => {
+  const IconComponent = category ? groupCategoryIcons[category] : groupCategoryIcons['OTHER'];
+  return <IconComponent className="h-24 w-24 text-muted-foreground/50" />;
+};
+
 
 interface SpendingByPayerChartData {
   name: string;
@@ -953,6 +959,7 @@ export default function GroupDetailPage() {
       return;
     }
     setIsDeletingNote(true);
+    const contactName = noteToDelete.title; // Using note title here
     try {
       const batch = writeBatch(db);
       const noteRef = doc(db, 'groups', groupId, 'notes', noteToDelete.id);
@@ -964,7 +971,7 @@ export default function GroupDetailPage() {
         userId: currentUser.id,
         actorName: currentUser.name,
         actionType: 'note_deleted',
-        description: `${currentUser.name || 'User'} deleted note: "${noteToDelete.title}"`,
+        description: `${currentUser.name || 'User'} deleted note: "${contactName}"`, // Using contactName which is note title
         relatedNoteId: noteToDelete.id,
       };
       batch.set(doc(activityLogColRef), { ...activityLog, timestamp: serverTimestamp() });
@@ -975,8 +982,8 @@ export default function GroupDetailPage() {
 
 
       await batch.commit();
-      toast({ title: "Note Deleted", description: `Note "${noteToDelete.title}" has been deleted.` });
-      addNotification({ title: "Note Deleted", message: `Note "${noteToDelete.title}" deleted from group "${group.name}".`, type: "info" });
+      toast({ title: "Note Deleted", description: `Note "${contactName}" has been deleted.` }); // Using contactName (note title)
+      addNotification({ title: "Note Deleted", message: `Note "${contactName}" deleted from group "${group.name}".`, type: "info" }); // Using contactName
       setNoteToDelete(null);
       fetchGroupData(false);
     } catch (error) {
@@ -1003,7 +1010,7 @@ export default function GroupDetailPage() {
 
   const isMember = group.memberIds.includes(currentUser.id);
   const isOwner = group.ownerId === currentUser.id;
-  const CategoryIcon = groupCategoryIcons[group.category || 'OTHER'] || Shapes;
+  const GroupCategoryIconRender = groupCategoryIcons[group.category || 'OTHER'] || Shapes;
   const currencySymbol = getCurrencySymbol();
   const remainingFunds = totalContributions - totalExpenses;
   const budgetAmount = group.budgetAmount || 0;
@@ -1014,62 +1021,69 @@ export default function GroupDetailPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <Button variant="outline" size="sm" asChild className="mb-0">
-        <Link href="/groups">
-          <span>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Groups
-          </span>
-        </Link>
-      </Button>
+      <div className="flex items-center justify-between">
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/groups">
+            <span>
+              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Groups
+            </span>
+          </Link>
+        </Button>
+      </div>
 
       <Card className="overflow-hidden">
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-2xl md:text-3xl font-bold">{group.name}</CardTitle>
-              {group.description && <CardDescription className="mt-1">{group.description}</CardDescription>}
+        <CardHeader className="p-0">
+            {group.photoUrl ? (
+              <div className="aspect-[16/7] w-full relative">
+                <Image src={group.photoUrl} alt={group.name} layout="fill" objectFit="cover" data-ai-hint={group.dataAiHint || "group image"} priority/>
+              </div>
+            ) : (
+              <div className="aspect-[16/7] w-full relative bg-muted flex items-center justify-center">
+                <CategoryIconDisplay category={group.category} />
+              </div>
+            )}
+          <div className="p-4 md:p-6">
+            <CardTitle className="text-2xl md:text-3xl font-bold">{group.name}</CardTitle>
+            {group.description && <CardDescription className="mt-1 text-base">{group.description}</CardDescription>}
+             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+               {group.visibility === 'public' ? ( <Badge variant="outline" className="py-1 px-2"><Eye className="h-3.5 w-3.5 mr-1"/>Public</Badge> ) : ( <Badge variant="secondary" className="py-1 px-2"><Lock className="h-3.5 w-3.5 mr-1"/>Private</Badge> )}
+               <span className="flex items-center"><GroupCategoryIconRender className="h-4 w-4 mr-1" />{group.category?.charAt(0).toUpperCase() + group.category?.slice(1).toLowerCase() || 'Other'}</span>
+               <span>&bull;</span>
+               <span>Created: {format(parseISO(group.createdAt), "MMMM d, yyyy")}</span>
+               <span>&bull;</span>
+               <span>{group.memberIds.length} Member{group.memberIds.length === 1 ? '' : 's'}</span>
+               {isMember && isOwner && <Badge variant="default" className="py-1 px-2 text-xs">Admin</Badge>}
             </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 md:p-6 pt-0">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-6">
+            {isMember && (
+                <Button onClick={() => handleOpenNoteDialog()} size="sm" variant="outline">
+                    <PlusCircle className="mr-2 h-4 w-4" /> Add Note
+                </Button>
+            )}
             {isOwner && (
-            <div className="flex gap-2 shrink-0">
+              <>
                 <Button variant="outline" size="sm" asChild>
-                <Link href={`/groups/${groupId}/edit`}>
-                    <span>
-                    <Edit className="mr-1.5 h-3.5 w-3.5" /> Edit
-                    </span>
-                </Link>
+                  <Link href={`/groups/${groupId}/edit`}>
+                    <span><Edit className="mr-1.5 h-3.5 w-3.5" /> Edit Group</span>
+                  </Link>
                 </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" size="sm">
-                      <span>
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete Group
-                      </span>
+                      <span><Trash2 className="mr-2 h-4 w-4" /> Delete Group</span>
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete the group "{group.name}" and all its associated data (expenses, activity logs, payments, contributions, notes) from Firestore. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={handleDeleteGroup} className="bg-destructive hover:bg-destructive/90"> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent>
                 </AlertDialog>
-            </div>
+              </>
             )}
           </div>
-          {group.photoUrl && (
-            <div className="mt-4 aspect-video w-full relative rounded-md overflow-hidden">
-              <Image src={group.photoUrl} alt={group.name} layout="fill" objectFit="cover" data-ai-hint={group.dataAiHint || "group image"} priority/>
-            </div>
-          )}
-        </CardHeader>
-        <CardContent className="pt-4 pb-4">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mb-4">
-             {group.visibility === 'public' ? ( <Badge variant="outline" className="py-1 px-2"><Eye className="h-3.5 w-3.5 mr-1"/>Public</Badge> ) : ( <Badge variant="secondary" className="py-1 px-2"><Lock className="h-3.5 w-3.5 mr-1"/>Private</Badge> )}
-             <CategoryIcon className="h-4 w-4 mr-1" />
-             <span>{group.category?.charAt(0).toUpperCase() + group.category?.slice(1).toLowerCase() || 'Other'}</span>
-             <span>&bull;</span>
-             <span>Created: {format(parseISO(group.createdAt), "MMMM d, yyyy")}</span>
-             <span>&bull;</span>
-             <span>{group.memberIds.length} Member{group.memberIds.length === 1 ? '' : 's'}</span>
-             {isMember && isOwner && <Badge variant="default" className="py-1 px-2 text-xs">Admin</Badge>}
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-6">
             <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-green-700 dark:text-green-400/90">Total Contributions</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-green-600 dark:text-green-300">{currencySymbol}{totalContributions.toFixed(2)}</p> </CardContent> </Card>
             <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-red-700 dark:text-red-400/90">Total Expenses</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-red-600 dark:text-red-300">{currencySymbol}{totalExpenses.toFixed(2)}</p> </CardContent> </Card>
             <Card className={`p-3 ${remainingFunds >= 0 ? 'bg-blue-50 dark:bg-blue-900/40' : 'bg-orange-50 dark:bg-orange-900/40'}`}> <CardHeader className="p-0 pb-1"> <CardDescription className={`${remainingFunds >= 0 ? 'text-blue-700 dark:text-blue-400/90' : 'text-orange-700 dark:text-orange-400/90'}`}>Remaining Funds</CardDescription> </CardHeader> <CardContent className="p-0"> <p className={`text-xl font-semibold ${remainingFunds >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}> {currencySymbol}{remainingFunds.toFixed(2)} </p> </CardContent> </Card>
@@ -1123,183 +1137,170 @@ export default function GroupDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-
       <TooltipProvider>
-        <Tabs defaultValue="expenses" className="w-full" value={searchParams.get('tab') || 'expenses'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`, { scroll: false })}>
-          <div className="flex flex-col md:flex-row items-start gap-4 mb-4">
-            <TabsList className="w-full md:w-auto overflow-x-auto shrink-0">
-              <TabsTrigger value="expenses"><CreditCard className="mr-1.5 h-3.5 w-3.5 sm:hidden md:inline-block" />Expenses</TabsTrigger>
-              <TabsTrigger value="notes"><FileText className="mr-1.5 h-3.5 w-3.5 sm:hidden md:inline-block" />Notes</TabsTrigger>
-              <TabsTrigger value="contributions"><CoinsIcon className="mr-1.5 h-3.5 w-3.5 sm:hidden md:inline-block" />Contributions</TabsTrigger>
-              <TabsTrigger value="payments"><HandCoins className="mr-1.5 h-3.5 w-3.5 sm:hidden md:inline-block" />Payments</TabsTrigger>
-              <TabsTrigger value="balances"><ListChecks className="mr-1.5 h-3.5 w-3.5 sm:hidden md:inline-block" />Balances</TabsTrigger>
-              <TabsTrigger value="reports"><BarChartHorizontal className="mr-1.5 h-3.5 w-3.5 sm:hidden md:inline-block" />Reports</TabsTrigger>
-              <TabsTrigger value="members"><Users className="mr-1.5 h-3.5 w-3.5 sm:hidden md:inline-block" />Members</TabsTrigger>
-              <TabsTrigger value="activity"><ActivityIcon className="mr-1.5 h-3.5 w-3.5 sm:hidden md:inline-block" />Activity</TabsTrigger>
-            </TabsList>
-             <div className="flex flex-col gap-2 w-full md:w-auto md:min-w-[180px] mt-4 md:mt-0">
-              {isMember && ( <>
-                <Button asChild className="w-full">
-                  <Link href={`/groups/${groupId}/add-expense`}>
-                    <span><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
-                  </Link>
-                </Button>
-                <Button variant="secondary" asChild className="w-full">
-                  <Link href={`/groups/${groupId}/add-contribution`}>
-                    <span><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild className="w-full">
-                  <Link href={`/groups/${groupId}/settle-up`}>
-                    <span><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
-                  </Link>
-                </Button>
-              </> )}
-               <Button variant="outline" onClick={handleDownloadPdf} className="w-full">
-                 <span>
-                   <Download className="mr-2 h-4 w-4" /> Download PDF
-                 </span>
-                </Button>
-              {(group.visibility === 'public' || isMember) && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className={cn(buttonVariants({variant: 'outline'}), "w-full")}>
-                       <span><Share2 className="mr-2 h-4 w-4" /> Share Group</span>
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56"> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
-            </div>
-          </div>
+        <div className="flex flex-col md:flex-row gap-6">
+          <TabsList className="flex md:flex-col md:w-48 shrink-0 overflow-x-auto md:overflow-x-visible h-auto md:h-fit p-1.5 md:p-2">
+            <TabsTrigger value="notes" className="w-full justify-start px-3 py-2 md:mb-1"><FileText className="mr-2 h-4 w-4" />Notes</TabsTrigger>
+            <TabsTrigger value="expenses" className="w-full justify-start px-3 py-2 md:mb-1"><CreditCard className="mr-2 h-4 w-4" />Expenses</TabsTrigger>
+            <TabsTrigger value="contributions" className="w-full justify-start px-3 py-2 md:mb-1"><CoinsIcon className="mr-2 h-4 w-4" />Contributions</TabsTrigger>
+            <TabsTrigger value="payments" className="w-full justify-start px-3 py-2 md:mb-1"><HandCoins className="mr-2 h-4 w-4" />Payments</TabsTrigger>
+            <TabsTrigger value="balances" className="w-full justify-start px-3 py-2 md:mb-1"><ListChecks className="mr-2 h-4 w-4" />Balances</TabsTrigger>
+            <TabsTrigger value="reports" className="w-full justify-start px-3 py-2 md:mb-1"><BarChartHorizontal className="mr-2 h-4 w-4" />Reports</TabsTrigger>
+            <TabsTrigger value="members" className="w-full justify-start px-3 py-2 md:mb-1"><Users className="mr-2 h-4 w-4" />Members</TabsTrigger>
+            <TabsTrigger value="activity" className="w-full justify-start px-3 py-2"><ActivityIcon className="mr-2 h-4 w-4" />Activity</TabsTrigger>
+          </TabsList>
 
-          <TabsContent value="expenses">
-            <Card>
-              <CardHeader> <CardTitle>Expenses</CardTitle> <CardDescription>All expenses recorded in this group from Firestore.</CardDescription> </CardHeader>
-              <CardContent>
-                {firestoreExpenses.length > 0 ? (
-                  <ul className="space-y-3">
-                    {firestoreExpenses.map(expense => {
-                      const payer = memberDetailsMap.get(expense.paidByUserId);
-                      const currentUserShare = expense.participants.find(p => p.userId === currentUser.id);
-                      return (
-                      <li key={expense.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center gap-3 flex-1 min-w-0 mb-2 sm:mb-0">
-                          <Avatar className="h-9 w-9 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar>
-                          <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1"> <p className="font-medium truncate" title={expense.description}>{expense.description}</p>
-                                {expense.receiptFileName && ( <Tooltip> <TooltipTrigger asChild> {expense.receiptUrl ? ( <Link href={expense.receiptUrl} target="_blank" rel="noopener noreferrer" aria-label={`View receipt for ${expense.description}`}> <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0"> <Paperclip className="h-3.5 w-3.5" /> </Button> </Link> ) : ( <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/50 hover:text-primary shrink-0 cursor-not-allowed" disabled> <Paperclip className="h-3.5 w-3.5" /> </Button> )} </TooltipTrigger> <TooltipContent> <p> {expense.receiptUrl ? "View Receipt: " : "Receipt: "} {expense.receiptFileName} </p> {!expense.receiptUrl && <p className="text-xs">(Offline, not uploaded)</p>} </TooltipContent> </Tooltip> )}
-                              </div> <p className="text-sm text-muted-foreground"> Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")} </p>
-                          </div>
-                        </div>
-                        <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{currencySymbol}{expense.amount.toFixed(2)}</p> {isMember && currentUserShare && ( <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {currencySymbol}{currentUserShare.amountOwed.toFixed(2)}</p> )} </div>
-                      </li> )})}
-                  </ul>
-                ) : ( <p className="text-muted-foreground text-center py-6">No expenses recorded yet in Firestore for this group.</p> )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="notes">
-            <Card>
-              <CardHeader className="flex flex-row justify-between items-center">
-                <div>
-                  <CardTitle>Group Notes</CardTitle>
-                  <CardDescription>Shared notes and information for this group.</CardDescription>
-                </div>
-                {isMember && (
-                  <Button onClick={() => handleOpenNoteDialog()} size="sm">
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Note
+          <div className="flex-1 min-w-0"> {/* This div will take remaining space and handle overflow for tab content */}
+          <Tabs defaultValue="notes" className="w-full" value={searchParams.get('tab') || 'notes'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`, { scroll: false })}>
+            <div className="flex flex-col sm:flex-row items-start gap-4 mb-4 justify-end">
+              {/* Main action buttons column */}
+              <div className="flex flex-col gap-2 w-full sm:w-auto sm:min-w-[180px] mt-4 sm:mt-0 order-first sm:order-last">
+                {isMember && ( <>
+                  <Button asChild className="w-full">
+                    <Link href={`/groups/${groupId}/add-expense`}>
+                      <span><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
+                    </Link>
                   </Button>
-                )}
-              </CardHeader>
-              <CardContent>
-                {firestoreGroupNotes.length > 0 ? (
-                  <ul className="space-y-3">
-                    {firestoreGroupNotes.map(note => {
-                       const canEditOrDelete = isOwner || (currentUser && note.createdByUserId === currentUser.id);
-                      return (
-                        <li key={note.id} className="p-3 border rounded-lg hover:bg-muted/50">
-                          <div className="flex justify-between items-start mb-1">
-                            <h4 className="font-semibold text-md">{note.title}</h4>
-                            {canEditOrDelete && (
-                              <div className="flex gap-1">
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenNoteDialog(note)}>
-                                  <Edit2 className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setNoteToDelete(note)}>
-                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            By {note.createdByName} on {format(parseISO(note.createdAt), "MMM d, yyyy")}
-                            {note.createdAt !== note.updatedAt && ` (edited ${format(parseISO(note.updatedAt), "MMM d, yyyy")})`}
-                          </p>
-                          <p className="text-sm mt-1.5 whitespace-pre-wrap">{note.content || <span className="italic text-muted-foreground">No content</span>}</p>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="text-muted-foreground text-center py-6">No notes added yet for this group.</p>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="contributions">
-            <Card>
-              <CardHeader> <CardTitle>Fund Contributions</CardTitle> <CardDescription>All funds contributed by members to this group's pool.</CardDescription> </CardHeader>
-              <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-3"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"> <div className="flex items-center gap-3"> <Avatar className="h-9 w-9 shrink-0"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && <span className="italic">- "{contribution.description}"</span>} </p> </div> </div> <div className="text-right ml-2 shrink-0"> <p className="text-md font-semibold text-green-600 dark:text-green-400"> +{currencySymbol}{contribution.amount.toFixed(2)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No contributions recorded yet for this group.</p> )} </CardContent>
-               <CardFooter>
-                <Button asChild className="ml-auto">
-                  <Link href={`/groups/${groupId}/add-contribution`}>
-                    <span>
-                      <CoinsIcon className="mr-2 h-4 w-4" /> Record Contribution
-                    </span>
-                  </Link>
+                  <Button variant="secondary" asChild className="w-full">
+                    <Link href={`/groups/${groupId}/add-contribution`}>
+                      <span><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
+                    </Link>
+                  </Button>
+                  <Button variant="outline" asChild className="w-full">
+                    <Link href={`/groups/${groupId}/settle-up`}>
+                      <span><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
+                    </Link>
+                  </Button>
+                </> )}
+                <Button variant="outline" onClick={handleDownloadPdf} className="w-full">
+                  <span>
+                    <Download className="mr-2 h-4 w-4" /> Download PDF
+                  </span>
                 </Button>
-              </CardFooter>
-            </Card>
-          </TabsContent>
+                {(group.visibility === 'public' || isMember) && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className={cn(buttonVariants({variant: 'outline'}), "w-full")}>
+                        <span><Share2 className="mr-2 h-4 w-4" /> Share Group</span>
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56"> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
+              </div>
+            </div>
+            <TabsContent value="notes">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Group Notes</CardTitle>
+                  <CardDescription>Shared notes and information for this group. Rich text editor coming soon!</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {firestoreGroupNotes.length > 0 ? (
+                    <ul className="space-y-4">
+                      {firestoreGroupNotes.map(note => {
+                        const canEditOrDelete = isOwner || (currentUser && note.createdByUserId === currentUser.id);
+                        return (
+                          <li key={note.id} className="p-3.5 border rounded-lg hover:bg-muted/20 transition-colors">
+                            <div className="flex justify-between items-start mb-1.5">
+                              <h4 className="font-semibold text-lg">{note.title}</h4>
+                              {canEditOrDelete && (
+                                <div className="flex gap-1">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenNoteDialog(note)}>
+                                    <Edit2 className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setNoteToDelete(note)}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              By {note.createdByName} on {format(parseISO(note.createdAt), "MMM d, yyyy")}
+                              {note.createdAt !== note.updatedAt && ` (edited ${format(parseISO(note.updatedAt), "MMM d, yyyy")})`}
+                            </p>
+                            <p className="text-sm mt-2 whitespace-pre-wrap">{note.content || <span className="italic text-muted-foreground">No content</span>}</p>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="text-muted-foreground text-center py-6">No notes added yet for this group.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="payments">
-            <Card>
-              <CardHeader> <CardTitle>Payment History</CardTitle> <CardDescription>All settlement payments recorded in this group from Firestore.</CardDescription> </CardHeader>
-              <CardContent> {firestorePayments.length > 0 ? ( <ul className="space-y-3"> {firestorePayments.map(payment => { const payer = memberDetailsMap.get(payment.paidByUserId); const payee = memberDetailsMap.get(payment.paidToUserId); return ( <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"> <div className="flex items-center gap-3 mb-1.5 sm:mb-0 flex-1 min-w-0"> <Avatar className="h-9 w-9 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name}/> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar> <div className="flex-1 min-w-0"> <p className="font-medium truncate"> {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)} </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method.replace("_", " ")} </p> {payment.notes && <p className="text-xs text-muted-foreground italic mt-0.5">Note: {payment.notes}</p>} </div> </div> <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{currencySymbol}{payment.amount.toFixed(2)}</p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No payments recorded yet in Firestore for this group.</p> )} </CardContent>
-            </Card>
-          </TabsContent>
+            <TabsContent value="expenses">
+              <Card>
+                <CardHeader> <CardTitle>Expenses</CardTitle> <CardDescription>All expenses recorded in this group from Firestore.</CardDescription> </CardHeader>
+                <CardContent>
+                  {firestoreExpenses.length > 0 ? (
+                    <ul className="space-y-3">
+                      {firestoreExpenses.map(expense => {
+                        const payer = memberDetailsMap.get(expense.paidByUserId);
+                        const currentUserShare = expense.participants.find(p => p.userId === currentUser.id);
+                        return (
+                        <li key={expense.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors">
+                          <div className="flex items-center gap-3 flex-1 min-w-0 mb-2 sm:mb-0">
+                            <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5"> <p className="font-medium truncate" title={expense.description}>{expense.description}</p>
+                                  {expense.receiptFileName && ( <Tooltip> <TooltipTrigger asChild> {expense.receiptUrl ? ( <Link href={expense.receiptUrl} target="_blank" rel="noopener noreferrer" aria-label={`View receipt for ${expense.description}`}> <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0"> <Paperclip className="h-4 w-4" /> </Button> </Link> ) : ( <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/50 hover:text-primary shrink-0 cursor-not-allowed" disabled> <Paperclip className="h-4 w-4" /> </Button> )} </TooltipTrigger> <TooltipContent> <p> {expense.receiptUrl ? "View Receipt: " : "Receipt: "} {expense.receiptFileName} </p> {!expense.receiptUrl && <p className="text-xs">(Offline, not uploaded)</p>} </TooltipContent> </Tooltip> )}
+                                </div> <p className="text-sm text-muted-foreground"> Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")} </p>
+                            </div>
+                          </div>
+                          <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{currencySymbol}{expense.amount.toFixed(2)}</p> {isMember && currentUserShare && ( <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {currencySymbol}{currentUserShare.amountOwed.toFixed(2)}</p> )} </div>
+                        </li> )})}
+                    </ul>
+                  ) : ( <p className="text-muted-foreground text-center py-6">No expenses recorded yet in Firestore for this group.</p> )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="balances">
-            <Card>
-              <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription> </CardHeader>
-              <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3 border rounded-lg"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-8 w-8"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-3 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-1.5 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Button asChild size="xs" variant="outline" className="px-2 py-0.5 h-auto text-xs"> <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}> <span><Send className="mr-1 h-2.5 w-2.5" /> Settle</span> </Link> </Button> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-3 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
-            </Card>
-          </TabsContent>
+            <TabsContent value="contributions">
+              <Card>
+                <CardHeader> <CardTitle>Fund Contributions</CardTitle> <CardDescription>All funds contributed by members to this group's pool.</CardDescription> </CardHeader>
+                <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-3"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && <span className="italic">- "{contribution.description}"</span>} </p> </div> </div> <div className="text-right ml-2 shrink-0"> <p className="text-md font-semibold text-green-600 dark:text-green-400"> +{currencySymbol}{contribution.amount.toFixed(2)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No contributions recorded yet for this group.</p> )} </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="reports">
-            <Card>
-              <CardHeader> <CardTitle>Reports</CardTitle> <CardDescription>Visual insights into group spending.</CardDescription> </CardHeader>
-              <CardContent className="space-y-6"> <Card> <CardHeader> <CardTitle>Total Spending by Payer</CardTitle> <CardDescription>Which member has paid the most for group expenses.</CardDescription> </CardHeader> <CardContent> {spendingByPayerChartData.length > 0 ? ( <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full"> <BarChart accessibilityLayer data={spendingByPayerChartData} layout="vertical" margin={{left: 10, right: 10}}> <CartesianGrid vertical={false} /> <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${currencySymbol}${value}`} /> <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/> <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} /> <ChartLegend content={<ChartLegendContent />} /> <Bar dataKey="totalPaid" radius={4}> </Bar> </BarChart> </ChartContainer> ) : ( <p className="text-muted-foreground text-center py-6">No spending data to display for the chart.</p> )} </CardContent> </Card> </CardContent>
-            </Card>
-          </TabsContent>
+            <TabsContent value="payments">
+              <Card>
+                <CardHeader> <CardTitle>Payment History</CardTitle> <CardDescription>All settlement payments recorded in this group from Firestore.</CardDescription> </CardHeader>
+                <CardContent> {firestorePayments.length > 0 ? ( <ul className="space-y-3"> {firestorePayments.map(payment => { const payer = memberDetailsMap.get(payment.paidByUserId); const payee = memberDetailsMap.get(payment.paidToUserId); return ( <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3 mb-1.5 sm:mb-0 flex-1 min-w-0"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name}/> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar> <div className="flex-1 min-w-0"> <p className="font-medium truncate"> {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)} </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method.replace("_", " ")} </p> {payment.notes && <p className="text-xs text-muted-foreground italic mt-0.5">Note: {payment.notes}</p>} </div> </div> <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{currencySymbol}{payment.amount.toFixed(2)}</p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No payments recorded yet in Firestore for this group.</p> )} </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="members">
-            <Card>
-              <CardHeader className="flex flex-row justify-between items-center"> <div> <CardTitle>Members ({group.members.length})</CardTitle> <CardDescription>People participating in this group (from Firestore).</CardDescription> </div> {isOwner && ( <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}> <DialogTrigger asChild> <Button variant="outline" size="sm"> <UserPlus className="mr-2 h-4 w-4"/>Add Member </Button> </DialogTrigger> <DialogContent className="sm:max-w-[480px]"> <DialogHeader> <DialogTitle>Add Members to "{group.name}"</DialogTitle> <DialogDescription> Select contacts to add to this group. Only contacts not already in the group are shown. </DialogDescription> </DialogHeader> <div className="py-4"> {isLoadingPotentialMembers ? ( <div className="space-y-2"> {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)} </div> ) : potentialNewMembers.length > 0 ? ( <ScrollArea className="h-[250px] pr-3"> <div className="space-y-2"> {potentialNewMembers.map(contact => ( <label key={contact.id} htmlFor={`contact-${contact.id}`} className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer" > <Checkbox id={`contact-${contact.id}`} checked={selectedContactsToAdd.includes(contact.id)} onCheckedChange={() => handleToggleContactSelection(contact.id)} /> <Avatar className="h-8 w-8"> <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} /> <AvatarFallback>{getInitials(contact.name)}</AvatarFallback> </Avatar> <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span> </label> ))} </div> </ScrollArea> ) : ( <p className="text-sm text-muted-foreground text-center py-4"> No new contacts available to add, or all your contacts are already in this group. </p> )} </div> <DialogFooter> <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}> Cancel </Button> <Button onClick={handleAddSelectedMembers} disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers} > {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`} </Button> </DialogFooter> </DialogContent> </Dialog> )} </CardHeader>
-              <CardContent> <ul className="space-y-3"> {group.members.map(member => ( <li key={member.id} className="flex items-center justify-between p-3 border rounded-lg"> <div className="flex items-center gap-3"> <Avatar className="h-9 w-9"> <AvatarImage src={member.avatarUrl || undefined} /> <AvatarFallback>{getInitials(member.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium">{member.name || member.id.substring(0,10)}</p> <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p> </div> </div> <div> {member.id === group.ownerId && <Badge variant="default" className="text-xs">Admin</Badge>} </div> </li> ))} </ul> </CardContent>
-            </Card>
-          </TabsContent>
+            <TabsContent value="balances">
+              <Card>
+                <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription> </CardHeader>
+                <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3.5 border rounded-lg"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-9 w-9"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-3 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-1.5 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Button asChild size="xs" variant="outline" className="px-2 py-0.5 h-auto text-xs"> <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}> <span><Send className="mr-1 h-2.5 w-2.5" /> Settle</span> </Link> </Button> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-3 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="activity">
-            <Card>
-              <CardHeader> <CardTitle>Activity Log</CardTitle> <CardDescription>Recent actions within this group from Firestore.</CardDescription> </CardHeader>
-              <CardContent> {firestoreActivityLogs.length > 0 ? ( <ul className="space-y-3"> {firestoreActivityLogs.map(log => { const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); return ( <li key={log.id} className="flex items-start gap-3 text-sm p-3 border rounded-lg"> <Avatar className="h-8 w-8 mt-0.5 shrink-0"> <AvatarImage src={actor?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(actor?.name)}</AvatarFallback> </Avatar> <div className="flex-1"> <p> <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span> {log.description.includes(actor?.name || 'User') ? log.description.substring((actor?.name || 'User').length).trim() : ` ${log.description}`} </p> <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p> </div> </li> )})} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No activity recorded yet in Firestore for this group.</p> )} </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="reports">
+              <Card>
+                <CardHeader> <CardTitle>Reports</CardTitle> <CardDescription>Visual insights into group spending.</CardDescription> </CardHeader>
+                <CardContent className="space-y-6"> <Card> <CardHeader> <CardTitle>Total Spending by Payer</CardTitle> <CardDescription>Which member has paid the most for group expenses.</CardDescription> </CardHeader> <CardContent> {spendingByPayerChartData.length > 0 ? ( <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full"> <BarChart accessibilityLayer data={spendingByPayerChartData} layout="vertical" margin={{left: 10, right: 10}}> <CartesianGrid vertical={false} /> <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${currencySymbol}${value}`} /> <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/> <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} /> <ChartLegend content={<ChartLegendContent />} /> <Bar dataKey="totalPaid" radius={4}> </Bar> </BarChart> </ChartContainer> ) : ( <p className="text-muted-foreground text-center py-6">No spending data to display for the chart.</p> )} </CardContent> </Card> </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="members">
+              <Card>
+                <CardHeader className="flex flex-row justify-between items-center"> <div> <CardTitle>Members ({group.members.length})</CardTitle> <CardDescription>People participating in this group (from Firestore).</CardDescription> </div> {isOwner && ( <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}> <DialogTrigger asChild> <Button variant="outline" size="sm"> <UserPlus className="mr-2 h-4 w-4"/>Add Member </Button> </DialogTrigger> <DialogContent className="sm:max-w-[480px]"> <DialogHeader> <DialogTitle>Add Members to "{group.name}"</DialogTitle> <DialogDescription> Select contacts to add to this group. Only contacts not already in the group are shown. </DialogDescription> </DialogHeader> <div className="py-4"> {isLoadingPotentialMembers ? ( <div className="space-y-2"> {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)} </div> ) : potentialNewMembers.length > 0 ? ( <ScrollArea className="h-[250px] pr-3"> <div className="space-y-2"> {potentialNewMembers.map(contact => ( <label key={contact.id} htmlFor={`contact-${contact.id}`} className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer" > <Checkbox id={`contact-${contact.id}`} checked={selectedContactsToAdd.includes(contact.id)} onCheckedChange={() => handleToggleContactSelection(contact.id)} /> <Avatar className="h-8 w-8"> <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} /> <AvatarFallback>{getInitials(contact.name)}</AvatarFallback> </Avatar> <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span> </label> ))} </div> </ScrollArea> ) : ( <p className="text-sm text-muted-foreground text-center py-4"> No new contacts available to add, or all your contacts are already in this group. </p> )} </div> <DialogFooter> <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}> Cancel </Button> <Button onClick={handleAddSelectedMembers} disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers} > {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`} </Button> </DialogFooter> </DialogContent> </Dialog> )} </CardHeader>
+                <CardContent> <ul className="space-y-3"> {group.members.map(member => ( <li key={member.id} className="flex items-center justify-between p-3.5 border rounded-lg"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10"> <AvatarImage src={member.avatarUrl || undefined} /> <AvatarFallback>{getInitials(member.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium">{member.name || member.id.substring(0,10)}</p> <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p> </div> </div> <div> {member.id === group.ownerId && <Badge variant="default" className="text-xs">Admin</Badge>} </div> </li> ))} </ul> </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="activity">
+              <Card>
+                <CardHeader> <CardTitle>Activity Log</CardTitle> <CardDescription>Recent actions within this group from Firestore.</CardDescription> </CardHeader>
+                <CardContent> {firestoreActivityLogs.length > 0 ? ( <ul className="space-y-3"> {firestoreActivityLogs.map(log => { const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); return ( <li key={log.id} className="flex items-start gap-3 text-sm p-3.5 border rounded-lg"> <Avatar className="h-9 w-9 mt-0.5 shrink-0"> <AvatarImage src={actor?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(actor?.name)}</AvatarFallback> </Avatar> <div className="flex-1"> <p> <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span> {log.description.includes(actor?.name || 'User') ? log.description.substring((actor?.name || 'User').length).trim() : ` ${log.description}`} </p> <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p> </div> </li> )})} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No activity recorded yet in Firestore for this group.</p> )} </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+          </div> {/* End of flex-1 for tab content */}
+        </div> {/* End of flex container for tabs list and content area */}
       </TooltipProvider>
     </div>
   );
 }
-
