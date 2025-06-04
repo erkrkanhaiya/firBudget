@@ -220,7 +220,6 @@ export default function GroupDetailPage() {
                 createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt as string),
                 receiptUrl: data.receiptUrl,
                 receiptFileName: data.receiptFileName,
-                // category: data.category, // Category removed
             } as Expense;
         });
         setFirestoreExpenses(fetchedExpenses);
@@ -327,7 +326,6 @@ export default function GroupDetailPage() {
         const payer = memberDetailsMap.get(exp.paidByUserId);
         return [
           format(parseISO(exp.date), "MMM d, yyyy"),
-          // exp.description + (exp.receiptFileName ? ` (Receipt: ${exp.receiptFileName.substring(0,15)}...)` : "") + (exp.category ? ` [${exp.category}]` : ''), // Category removed
           exp.description + (exp.receiptFileName ? ` (Receipt: ${exp.receiptFileName.substring(0,15)}...)` : ""),
           payer?.name || exp.paidByUserId.substring(0,6), 
           `${currencySymbol}${exp.amount.toFixed(2)}`
@@ -335,7 +333,7 @@ export default function GroupDetailPage() {
       });
       doc.autoTable({
         startY: yPos,
-        head: [['Date', 'Description', 'Paid By', 'Amount']], // Category removed from header
+        head: [['Date', 'Description', 'Paid By', 'Amount']],
         body: expenseData,
         theme: 'striped',
         headStyles: { fillColor: [52, 73, 94] }, 
@@ -860,7 +858,7 @@ export default function GroupDetailPage() {
                                           </Button>
                                         </Link>
                                       ) : (
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0 cursor-not-allowed" disabled>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/50 hover:text-primary shrink-0 cursor-not-allowed" disabled>
                                           <Paperclip className="h-4 w-4" />
                                         </Button>
                                       )}
@@ -870,7 +868,7 @@ export default function GroupDetailPage() {
                                         {expense.receiptUrl ? "View Receipt: " : "Receipt: "}
                                         {expense.receiptFileName}
                                       </p>
-                                      {!expense.receiptUrl && <p className="text-xs">(URL missing, offline entry or upload error)</p>}
+                                      {!expense.receiptUrl && <p className="text-xs">(Offline, not uploaded)</p>}
                                     </TooltipContent>
                                   </Tooltip>
                                 )}
@@ -878,7 +876,6 @@ export default function GroupDetailPage() {
                               <p className="text-sm text-muted-foreground">
                                   Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")}
                               </p>
-                              {/* Category Badge Removed Here */}
                           </div>
                         </div>
                         <div className="text-right ml-2">

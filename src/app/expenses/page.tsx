@@ -113,7 +113,6 @@ export default function MyExpensesPage() {
                 payerAvatarUrl: payer?.avatarUrl,
                 receiptUrl: expenseData.receiptUrl,
                 receiptFileName: expenseData.receiptFileName,
-                // category: expenseData.category, // Category removed
               });
             }
           });
@@ -208,7 +207,7 @@ export default function MyExpensesPage() {
                                   </Button>
                                 </Link>
                               ) : (
-                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary cursor-not-allowed" disabled>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/50 hover:text-primary cursor-not-allowed" disabled>
                                   <Paperclip className="h-4 w-4" />
                                 </Button>
                               )}
@@ -218,7 +217,7 @@ export default function MyExpensesPage() {
                                 {expense.receiptUrl ? "View Receipt: " : "Receipt: "}
                                 {expense.receiptFileName}
                               </p>
-                              {!expense.receiptUrl && <p className="text-xs">(URL missing, offline entry or upload error)</p>}
+                              {!expense.receiptUrl && <p className="text-xs">(Offline, not uploaded)</p>}
                             </TooltipContent>
                           </Tooltip>
                         )}
@@ -231,7 +230,6 @@ export default function MyExpensesPage() {
                               In group: <Link href={`/groups/${expense.groupId}`} className="text-primary hover:underline">{expense.groupName}</Link>
                           </p>
                       )}
-                      {/* Category Badge Removed Here */}
                     </div>
                     <div className="text-right">
                        <div className="text-xl font-bold flex items-center">
