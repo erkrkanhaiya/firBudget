@@ -260,7 +260,7 @@ export default function GroupDetailPage() {
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
     if (showLoadingSpinner) setIsLoadingPageData(true);
-    setGroup(null);
+    setGroup(null); 
     setAccessDenied(false);
     setGroupNotFound(false);
 
@@ -395,7 +395,7 @@ export default function GroupDetailPage() {
     } catch (error) {
       console.error("Error fetching group data:", error);
       toast({ title: "Error fetching group", description: "Could not fetch group details. Please try refreshing.", variant: "destructive" });
-      setGroup(null); // Ensure group is null on error
+      setGroup(null); 
     } finally {
        if(showLoadingSpinner) setIsLoadingPageData(false);
     }
@@ -803,7 +803,7 @@ export default function GroupDetailPage() {
         const subcollections = ['expenses', 'payments', 'contributions', 'activityLog', 'notes'];
         for (const subcollection of subcollections) {
             const colRef = collection(db, 'groups', groupId, subcollection);
-            const snapshot = await getDocs(query(colRef)); // No transaction needed for getDocs
+            const snapshot = await getDocs(query(colRef)); 
             snapshot.forEach(docSnap => transaction.delete(docSnap.ref));
         }
         transaction.delete(groupDocRef);
@@ -906,12 +906,12 @@ export default function GroupDetailPage() {
       let actionType: ActivityLog['actionType'] = 'note_added';
       let activityDescription = `${currentUser.name || 'User'} added note: "${noteData.title}"`;
 
-      if (editingNote) { // Editing existing note
+      if (editingNote) { 
         actionType = 'note_edited';
         activityDescription = `${currentUser.name || 'User'} edited note: "${noteData.title}"`;
         const noteRef = doc(db, 'groups', groupId, 'notes', editingNote.id);
         batch.update(noteRef, noteData);
-      } else { // Adding new note
+      } else { 
         const notesColRef = collection(db, 'groups', groupId, 'notes');
         const newNoteRef = doc(notesColRef);
         noteId = newNoteRef.id;
@@ -1116,7 +1116,7 @@ export default function GroupDetailPage() {
                 </Button>
                 <Button variant="secondary" asChild className="flex-1 sm:flex-none">
                   <Link href={`/groups/${groupId}/add-contribution`}>
-                    <span><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
+                     <span><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
                   </Link>
                 </Button>
                 <Button variant="outline" asChild className="flex-1 sm:flex-none">
