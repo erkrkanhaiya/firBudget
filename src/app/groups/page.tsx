@@ -206,8 +206,10 @@ export default function GroupsPage() {
                 <CardFooter>
                   <Button asChild className="w-full">
                     <Link href={`/groups/${group.id}`}>
-                      {group.visibility === 'public' && !isMember ? 'View Group' : 'Open Group'}
-                      <ArrowRight className="ml-2 h-4 w-4" />
+                      <span>
+                        {group.visibility === 'public' && !isMember ? 'View Group' : 'Open Group'}
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </span>
                     </Link>
                   </Button>
                 </CardFooter>
