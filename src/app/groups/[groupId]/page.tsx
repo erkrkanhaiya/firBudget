@@ -8,7 +8,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Send } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Send, BarChartHorizontal } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment } from '@/types';
 import { useUser } from '@/contexts/UserContext';
@@ -42,6 +42,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from '@/hooks/use-toast';
 import { useCurrency } from '@/contexts/CurrencyContext';
@@ -54,6 +55,16 @@ import { useNotification } from '@/contexts/NotificationContext';
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  ChartStyle,
+  type ChartConfig
+} from "@/components/ui/chart";
+import { BarChart, CartesianGrid, XAxis, YAxis, Bar } from "recharts";
 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -78,6 +89,12 @@ const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
   OTHER: Shapes,
 };
 
+interface SpendingByPayerChartData {
+  name: string;
+  totalPaid: number;
+  fill?: string; // for chart bar color
+}
+
 
 export default function GroupDetailPage() {
   const params = useParams();
@@ -91,7 +108,7 @@ export default function GroupDetailPage() {
 
   const [group, setGroup] = useState<Group | null>(null);
   const [firestoreExpenses, setFirestoreExpenses] = useState<Expense[]>([]);
-  const [firestorePayments, setFirestorePayments] = useState<Payment[]>([]); // State for payments
+  const [firestorePayments, setFirestorePayments] = useState<Payment[]>([]);
   const [firestoreActivityLogs, setFirestoreActivityLogs] = useState<ActivityLog[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -103,6 +120,8 @@ export default function GroupDetailPage() {
   const [isLoadingPotentialMembers, setIsLoadingPotentialMembers] = useState(false);
   const [selectedContactsToAdd, setSelectedContactsToAdd] = useState<string[]>([]);
   const [isAddingMembers, setIsAddingMembers] = useState(false);
+
+  const [spendingByPayerChartData, setSpendingByPayerChartData] = useState<SpendingByPayerChartData[]>([]);
   
   const memberDetailsMap = useMemo(() => {
     if (!group || !group.members) return new Map<string, UserType>();
@@ -233,7 +252,6 @@ export default function GroupDetailPage() {
         });
         setFirestorePayments(fetchedPayments);
 
-
         const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
         const activityLogQuery = query(activityLogColRef, orderBy('timestamp', 'desc'));
         const activityLogSnapshot = await getDocs(activityLogQuery);
@@ -249,6 +267,22 @@ export default function GroupDetailPage() {
         
         const calculatedBalances = calculateGroupBalances(fetchedGroup, fetchedExpenses, fetchedPayments, fetchedGroup.members);
         setBalances(calculatedBalances);
+        
+        // Calculate spending by payer for chart
+        const payerTotals: Record<string, number> = {};
+        fetchedExpenses.forEach(expense => {
+            payerTotals[expense.paidByUserId] = (payerTotals[expense.paidByUserId] || 0) + expense.amount;
+        });
+
+        const chartData = fetchedGroup.members.map((member, index) => ({
+            name: member.name || `User ${member.id.substring(0, 4)}`,
+            totalPaid: payerTotals[member.id] || 0,
+            fill: `var(--chart-${(index % 5) + 1})` // Cycle through chart colors
+        })).filter(data => data.totalPaid > 0) // Only show members who paid something
+           .sort((a,b) => b.totalPaid - a.totalPaid); // Sort by most paid
+
+        setSpendingByPayerChartData(chartData);
+
 
       } else {
         toast({ title: "Group not found", description: "The group you are looking for does not exist.", variant: "destructive" });
@@ -681,6 +715,17 @@ export default function GroupDetailPage() {
   const isOwner = group.ownerId === currentUser.id; 
   const CategoryIcon = groupCategoryIcons[group.category || 'OTHER'] || Shapes;
 
+  const chartConfigSpendingByPayer = {
+    totalPaid: {
+      label: `Total Paid (${getCurrencySymbol()})`,
+    },
+    // Dynamically add members to chartConfig for legend and tooltip
+    ...spendingByPayerChartData.reduce((acc, member) => {
+      acc[member.name] = { label: member.name, color: member.fill };
+      return acc;
+    }, {} as ChartConfig)
+  } satisfies ChartConfig;
+
   return (
     <div className="space-y-6">
       <Button variant="outline" size="sm" asChild className="mb-4">
@@ -763,6 +808,7 @@ export default function GroupDetailPage() {
               <TabsTrigger value="expenses"><CreditCard className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
               <TabsTrigger value="payments"><HandCoins className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Payments</TabsTrigger>
               <TabsTrigger value="balances"><ListChecks className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Balances</TabsTrigger>
+              <TabsTrigger value="reports"><BarChartHorizontal className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Reports</TabsTrigger>
               <TabsTrigger value="members"><Users className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Members</TabsTrigger>
               <TabsTrigger value="activity"><ActivityIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
             </TabsList>
@@ -1015,6 +1061,49 @@ export default function GroupDetailPage() {
                 ) : (
                    <p className="text-muted-foreground text-center py-4">Balances are being calculated or no expenses/payments yet in Firestore.</p>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="reports">
+            <Card>
+              <CardHeader>
+                <CardTitle>Reports</CardTitle>
+                <CardDescription>Visual insights into group spending.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Total Spending by Payer</CardTitle>
+                    <CardDescription>Which member has paid the most for group expenses.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {spendingByPayerChartData.length > 0 ? (
+                      <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full">
+                        <BarChart 
+                          accessibilityLayer 
+                          data={spendingByPayerChartData} 
+                          layout="vertical"
+                          margin={{left: 10, right: 10}}
+                        >
+                          <CartesianGrid vertical={false} />
+                          <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${getCurrencySymbol()}${value}`} />
+                          <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/>
+                          <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent hideLabel />}
+                          />
+                           <ChartLegend content={<ChartLegendContent />} />
+                          <Bar dataKey="totalPaid" radius={4}>
+                            {/* Recharts will use the fill property from data for each bar */}
+                          </Bar>
+                        </BarChart>
+                      </ChartContainer>
+                    ) : (
+                      <p className="text-muted-foreground text-center py-4">No spending data to display for the chart.</p>
+                    )}
+                  </CardContent>
+                </Card>
               </CardContent>
             </Card>
           </TabsContent>
