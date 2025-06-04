@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Coins as CoinsIcon, TrendingUp, FileText, Edit2, MessageSquare as MessageSquareIcon, BarChartHorizontal, Send, Save } from 'lucide-react';
@@ -261,7 +261,7 @@ export default function GroupDetailPage() {
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
     if (showLoadingSpinner) setIsLoadingPageData(true);
-    setGroup(null); 
+    setGroup(null);
     setAccessDenied(false);
     setGroupNotFound(false);
 
@@ -293,7 +293,7 @@ export default function GroupDetailPage() {
           toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
           setAccessDenied(true);
           setGroup(null);
-          if(showLoadingSpinner) setIsLoadingPageData(false); // Ensure loading stops
+          if(showLoadingSpinner) setIsLoadingPageData(false);
           return;
         }
         setGroup(fetchedGroup);
@@ -397,7 +397,7 @@ export default function GroupDetailPage() {
     } catch (error) {
       console.error("Error fetching group data:", error);
       toast({ title: "Error fetching group", description: "Could not fetch group details. Please try refreshing.", variant: "destructive" });
-      setGroup(null); 
+      setGroup(null);
     } finally {
        if(showLoadingSpinner) setIsLoadingPageData(false);
     }
@@ -405,20 +405,20 @@ export default function GroupDetailPage() {
 
 
   useEffect(() => {
-    if (isLoadingAuth) return; 
+    if (isLoadingAuth) return;
 
     if (!currentUser) {
-        router.push('/login'); 
-        setIsLoadingPageData(false); 
-        return;
-    }
-    if (!groupId) {
-        setGroupNotFound(true); 
+        router.push('/login');
         setIsLoadingPageData(false);
         return;
     }
-    fetchGroupData(); 
-  }, [isLoadingAuth, currentUser, groupId, searchParams, fetchGroupData, router]); // Added searchParams to re-fetch on undo
+    if (!groupId) {
+        setGroupNotFound(true);
+        setIsLoadingPageData(false);
+        return;
+    }
+    fetchGroupData();
+  }, [isLoadingAuth, currentUser, groupId, searchParams, fetchGroupData, router]);
 
 
   const performUndoAddItem = async (
@@ -457,7 +457,7 @@ export default function GroupDetailPage() {
               type: "info",
           });
         }
-        fetchGroupData(false); 
+        fetchGroupData(false);
     } catch (error) {
         console.error(`Error undoing ${itemType} add:`, error);
         toast({ title: "Undo Failed", description: `Could not undo adding the ${itemType}.`, variant: "destructive" });
@@ -471,7 +471,7 @@ export default function GroupDetailPage() {
         clearTimeout(undoTimeoutId);
         setUndoTimeoutId(null);
     }
-    
+
     if (isLoadingPageData || accessDenied || groupNotFound || !group ) {
         return;
     }
@@ -484,12 +484,12 @@ export default function GroupDetailPage() {
         if (itemDetailsString) {
             const itemDetails = JSON.parse(itemDetailsString);
             if (itemDetails.itemId === itemId && itemDetails.groupId === groupId && itemDetails.itemType === undoActionParam) {
-                sessionStorage.removeItem('undoItemDetails'); 
+                sessionStorage.removeItem('undoItemDetails');
 
                 const newSearchParams = new URLSearchParams(searchParams.toString());
                 newSearchParams.delete('undoAction');
                 newSearchParams.delete('itemId');
-                if (!searchParams.has('refresh')) { // Avoid duplicate refresh param
+                if (!searchParams.has('refresh')) {
                     newSearchParams.delete('refresh');
                 }
 
@@ -504,9 +504,9 @@ export default function GroupDetailPage() {
                         <ToastAction
                             altText="Undo"
                             onClick={async () => {
-                                if (undoTimeoutId) clearTimeout(undoTimeoutId); 
+                                if (undoTimeoutId) clearTimeout(undoTimeoutId);
                                 setUndoTimeoutId(null);
-                                dismissToast(); 
+                                dismissToast();
                                 await performUndoAddItem(
                                     itemDetails.itemId,
                                     itemDetails.itemType,
@@ -525,7 +525,7 @@ export default function GroupDetailPage() {
 
                 const newTimeout = setTimeout(() => {
                   setUndoTimeoutId(null);
-                }, 7500); 
+                }, 7500);
                 setUndoTimeoutId(newTimeout);
             } else {
                 sessionStorage.removeItem('undoItemDetails');
@@ -1013,8 +1013,8 @@ export default function GroupDetailPage() {
   const chartConfigSpendingByPayer = { totalPaid: { label: `Total Paid (${currencySymbol})`, }, ...spendingByPayerChartData.reduce((acc, member) => { acc[member.name] = { label: member.name, color: member.fill }; return acc; }, {} as ChartConfig) } satisfies ChartConfig;
 
   return (
-    <div className="space-y-6">
-      <Button variant="outline" size="sm" asChild className="mb-4">
+    <div className="space-y-6 pb-8">
+      <Button variant="outline" size="sm" asChild className="mb-0">
         <Link href="/groups">
           <span>
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Groups
@@ -1022,67 +1022,88 @@ export default function GroupDetailPage() {
         </Link>
       </Button>
 
-      <Card>
-        <CardHeader className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          <div className="flex items-start gap-4">
-            {group.photoUrl ? ( <Image src={group.photoUrl} alt={group.name} width={100} height={100} className="rounded-lg object-cover h-24 w-24 md:h-28 md:w-28 shadow-md" data-ai-hint={group.dataAiHint || "group image"} priority /> ) : ( <div className="rounded-lg h-24 w-24 md:h-28 md:w-28 flex items-center justify-center bg-muted shadow-md"> <CategoryIcon className="h-12 w-12 md:h-14 md:w-14 text-muted-foreground" /> </div> )}
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1 flex-wrap"> <CardTitle className="text-3xl">{group.name}</CardTitle> {group.visibility === 'public' ? ( <Badge variant="outline" className="text-sm flex items-center gap-1"><Eye className="h-4 w-4"/>Public</Badge> ) : ( <Badge variant="secondary" className="text-sm flex items-center gap-1"><Lock className="h-4 w-4"/>Private</Badge> )} </div>
-              <CardDescription className="text-base">{group.description}</CardDescription>
-              <p className="text-xs text-muted-foreground mt-2">Created on: {format(parseISO(group.createdAt), "MMMM d, yyyy")}</p>
-              {isMember && isOwner && <Badge variant="default" className="mt-2">You are the Admin</Badge>}
-              {isMember && !isOwner && <Badge variant="outline" className="mt-2">You are a Member</Badge>}
-              {!isMember && group.visibility === 'public' && <Badge variant="outline" className="mt-2">Viewing as Non-Member</Badge>}
+      <Card className="overflow-hidden">
+        <CardHeader className="p-0">
+            <div className="relative h-48 md:h-64 w-full">
+                {group.photoUrl ? (
+                    <Image src={group.photoUrl} alt={group.name} layout="fill" objectFit="cover" className="bg-muted" data-ai-hint={group.dataAiHint || "group image"} priority />
+                ) : (
+                    <div className="h-full w-full flex items-center justify-center bg-muted">
+                        <CategoryIcon className="h-24 w-24 text-muted-foreground/50" />
+                    </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
+                <div className="absolute bottom-0 left-0 p-4 md:p-6 text-primary-foreground">
+                    <CardTitle className="text-3xl md:text-4xl font-bold drop-shadow-md">{group.name}</CardTitle>
+                    {group.description && <CardDescription className="text-base text-primary-foreground/90 mt-1 drop-shadow-sm">{group.description}</CardDescription>}
+                </div>
+                 {isOwner && (
+                    <div className="absolute top-3 right-3 flex gap-2">
+                         <Button variant="outline" size="sm" asChild className="bg-background/80 hover:bg-background text-foreground backdrop-blur-sm">
+                            <Link href={`/groups/${groupId}/edit`}>
+                            <span>
+                                <Edit className="mr-1.5 h-3.5 w-3.5" /> Edit
+                            </span>
+                            </Link>
+                        </Button>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="sm" className="bg-destructive/90 hover:bg-destructive text-destructive-foreground backdrop-blur-sm">
+                                <span>
+                                <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+                                </span>
+                            </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete the group "{group.name}" and all its associated data (expenses, activity logs, payments, contributions, notes) from Firestore. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={handleDeleteGroup} className="bg-destructive hover:bg-destructive/90"> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
+                 )}
             </div>
-          </div>
-          {isOwner && (
-            <div className="flex gap-2 mt-4 md:mt-0 self-start">
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/groups/${groupId}/edit`}>
-                  <span>
-                    <Edit className="mr-2 h-4 w-4" /> Edit Group
-                  </span>
-                </Link>
-              </Button>
-              <AlertDialog>
-                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm">
-                    <span>
-                      <Trash2 className="mr-2 h-4 w-4" /> Delete Group
-                    </span>
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete the group "{group.name}" and all its associated data (expenses, activity logs, payments, contributions, notes) from Firestore. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={handleDeleteGroup} className="bg-destructive hover:bg-destructive/90"> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          )}
         </CardHeader>
-        <CardContent className="pt-2 pb-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700"> <p className="text-xs text-green-700 dark:text-green-400">Total Contributions</p> <p className="text-lg font-semibold text-green-600 dark:text-green-300">{currencySymbol}{totalContributions.toFixed(2)}</p> </div>
-            <div className="p-3 rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700"> <p className="text-xs text-red-700 dark:text-red-400">Total Expenses</p> <p className="text-lg font-semibold text-red-600 dark:text-red-300">{currencySymbol}{totalExpenses.toFixed(2)}</p> </div>
-            <div className={`p-3 rounded-md border ${remainingFunds >= 0 ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700' : 'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700'}`}> <p className={`text-xs ${remainingFunds >= 0 ? 'text-blue-700 dark:text-blue-400' : 'text-orange-700 dark:text-orange-400'}`}>Remaining Funds</p> <p className={`text-lg font-semibold ${remainingFunds >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}> {currencySymbol}{remainingFunds.toFixed(2)} </p> </div>
-             {group.budgetAmount && group.budgetAmount > 0 && ( <div className="p-3 rounded-md bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 col-span-2 md:col-span-1"> <p className="text-xs text-purple-700 dark:text-purple-400">Budget vs Spent</p> <p className="text-lg font-semibold text-purple-600 dark:text-purple-300"> {currencySymbol}{totalExpenses.toFixed(2)} / {currencySymbol}{budgetAmount.toFixed(2)} </p> <Progress value={budgetProgress} className="h-2 mt-1 bg-purple-200 dark:bg-purple-700 [&>div]:bg-purple-500" /> <p className={`text-xs mt-0.5 ${remainingBudget >= 0 ? 'text-purple-600 dark:text-purple-300' : 'text-orange-600 dark:text-orange-400 font-medium'}`}> {remainingBudget >= 0 ? `${currencySymbol}${remainingBudget.toFixed(2)} remaining` : `${currencySymbol}${Math.abs(remainingBudget).toFixed(2)} over budget`} </p> </div> )}
+        <CardContent className="pt-4 pb-4">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mb-4">
+             {group.visibility === 'public' ? ( <Badge variant="outline" className="py-1 px-2"><Eye className="h-3.5 w-3.5 mr-1"/>Public</Badge> ) : ( <Badge variant="secondary" className="py-1 px-2"><Lock className="h-3.5 w-3.5 mr-1"/>Private</Badge> )}
+             <CategoryIcon className="h-4 w-4 mr-1" />
+             <span>{group.category?.charAt(0).toUpperCase() + group.category?.slice(1).toLowerCase() || 'Other'}</span>
+             <span>&bull;</span>
+             <span>Created: {format(parseISO(group.createdAt), "MMMM d, yyyy")}</span>
+             <span>&bull;</span>
+             <span>{group.memberIds.length} Member{group.memberIds.length === 1 ? '' : 's'}</span>
+             {isMember && isOwner && <Badge variant="default" className="py-1 px-2 text-xs">Admin</Badge>}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+            <div className="p-3.5 rounded-lg bg-green-50 dark:bg-green-900/40 border border-green-200 dark:border-green-700/60 space-y-0.5"> <p className="text-xs text-green-700 dark:text-green-400/90">Total Contributions</p> <p className="text-xl font-semibold text-green-600 dark:text-green-300">{currencySymbol}{totalContributions.toFixed(2)}</p> </div>
+            <div className="p-3.5 rounded-lg bg-red-50 dark:bg-red-900/40 border border-red-200 dark:border-red-700/60 space-y-0.5"> <p className="text-xs text-red-700 dark:text-red-400/90">Total Expenses</p> <p className="text-xl font-semibold text-red-600 dark:text-red-300">{currencySymbol}{totalExpenses.toFixed(2)}</p> </div>
+            <div className={`p-3.5 rounded-lg border space-y-0.5 ${remainingFunds >= 0 ? 'bg-blue-50 dark:bg-blue-900/40 border-blue-200 dark:border-blue-700/60' : 'bg-orange-50 dark:bg-orange-900/40 border-orange-200 dark:border-orange-700/60'}`}> <p className={`text-xs ${remainingFunds >= 0 ? 'text-blue-700 dark:text-blue-400/90' : 'text-orange-700 dark:text-orange-400/90'}`}>Remaining Funds</p> <p className={`text-xl font-semibold ${remainingFunds >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}> {currencySymbol}{remainingFunds.toFixed(2)} </p> </div>
+             {group.budgetAmount && group.budgetAmount > 0 && ( <div className="p-3.5 rounded-lg bg-purple-50 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-700/60 space-y-1">
+                <div className="flex justify-between items-baseline">
+                    <p className="text-xs text-purple-700 dark:text-purple-400/90">Budget vs Spent</p>
+                    <p className="text-xs text-purple-600 dark:text-purple-300/80">{currencySymbol}{budgetAmount.toFixed(2)} total</p>
+                </div>
+                <Progress value={budgetProgress} className="h-2 bg-purple-200 dark:bg-purple-800/70 [&>div]:bg-purple-500 dark:[&>div]:bg-purple-400" />
+                <p className={`text-xs text-right ${remainingBudget >= 0 ? 'text-purple-600 dark:text-purple-400/90' : 'text-orange-600 dark:text-orange-400 font-medium'}`}> {remainingBudget >= 0 ? `${currencySymbol}${remainingBudget.toFixed(2)} remaining` : `${currencySymbol}${Math.abs(remainingBudget).toFixed(2)} over`} </p>
+             </div> )}
           </div>
         </CardContent>
       </Card>
 
       <Dialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen}>
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>{editingNote ? 'Edit Note' : 'Add New Note'}</DialogTitle>
             <DialogDescription>
-              {editingNote ? 'Update the details of your note.' : 'Create a new note for this group.'}
+              {editingNote ? 'Update the details of your note for this group.' : 'Create a new shared note for this group.'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="note-title" className="text-right">Title*</Label>
-              <Input id="note-title" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} className="col-span-3" placeholder="Note title" disabled={isSavingNote} />
+            <div className="space-y-1.5">
+              <Label htmlFor="note-title">Title*</Label>
+              <Input id="note-title" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Enter note title" disabled={isSavingNote} />
             </div>
-            <div className="grid grid-cols-4 items-start gap-4">
-              <Label htmlFor="note-content" className="text-right pt-2">Content</Label>
-              <Textarea id="note-content" value={noteContent} onChange={(e) => setNoteContent(e.target.value)} className="col-span-3 min-h-[100px]" placeholder="Write your note here..." disabled={isSavingNote} />
+            <div className="space-y-1.5">
+              <Label htmlFor="note-content">Content</Label>
+              <Textarea id="note-content" value={noteContent} onChange={(e) => setNoteContent(e.target.value)} className="min-h-[120px]" placeholder="Write your note details here..." disabled={isSavingNote} />
             </div>
           </div>
           <DialogFooter>
@@ -1116,35 +1137,35 @@ export default function GroupDetailPage() {
       <TooltipProvider>
         <Tabs defaultValue="expenses" className="w-full" value={searchParams.get('tab') || 'expenses'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`, { scroll: false })}>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-            <TabsList>
-              <TabsTrigger value="expenses"><CreditCard className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
-              <TabsTrigger value="notes"><FileText className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Notes</TabsTrigger>
-              <TabsTrigger value="contributions"><CoinsIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Contributions</TabsTrigger>
-              <TabsTrigger value="payments"><HandCoins className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Payments</TabsTrigger>
-              <TabsTrigger value="balances"><ListChecks className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Balances</TabsTrigger>
-              <TabsTrigger value="reports"><BarChartHorizontal className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Reports</TabsTrigger>
-              <TabsTrigger value="members"><Users className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Members</TabsTrigger>
-              <TabsTrigger value="activity"><ActivityIcon className="mr-2 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
+            <TabsList className="overflow-x-auto sm:overflow-visible">
+              <TabsTrigger value="expenses"><CreditCard className="mr-1.5 h-4 w-4 sm:hidden md:inline-block" />Expenses</TabsTrigger>
+              <TabsTrigger value="notes"><FileText className="mr-1.5 h-4 w-4 sm:hidden md:inline-block" />Notes</TabsTrigger>
+              <TabsTrigger value="contributions"><CoinsIcon className="mr-1.5 h-4 w-4 sm:hidden md:inline-block" />Contributions</TabsTrigger>
+              <TabsTrigger value="payments"><HandCoins className="mr-1.5 h-4 w-4 sm:hidden md:inline-block" />Payments</TabsTrigger>
+              <TabsTrigger value="balances"><ListChecks className="mr-1.5 h-4 w-4 sm:hidden md:inline-block" />Balances</TabsTrigger>
+              <TabsTrigger value="reports"><BarChartHorizontal className="mr-1.5 h-4 w-4 sm:hidden md:inline-block" />Reports</TabsTrigger>
+              <TabsTrigger value="members"><Users className="mr-1.5 h-4 w-4 sm:hidden md:inline-block" />Members</TabsTrigger>
+              <TabsTrigger value="activity"><ActivityIcon className="mr-1.5 h-4 w-4 sm:hidden md:inline-block" />Activity</TabsTrigger>
             </TabsList>
-             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               {isMember && ( <>
-                <Button asChild className="flex-1 sm:flex-none">
+                <Button asChild className="flex-1 min-w-[140px] sm:flex-none">
                   <Link href={`/groups/${groupId}/add-expense`}>
                     <span><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
                   </Link>
                 </Button>
-                <Button variant="secondary" asChild className="flex-1 sm:flex-none">
+                <Button variant="secondary" asChild className="flex-1 min-w-[140px] sm:flex-none">
                   <Link href={`/groups/${groupId}/add-contribution`}>
                     <span><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
                   </Link>
                 </Button>
-                <Button variant="outline" asChild className="flex-1 sm:flex-none">
+                <Button variant="outline" asChild className="flex-1 min-w-[140px] sm:flex-none">
                   <Link href={`/groups/${groupId}/settle-up`}>
                     <span><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
                   </Link>
                 </Button>
               </> )}
-               <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 sm:flex-none">
+               <Button variant="outline" onClick={handleDownloadPdf} className="flex-1 min-w-[140px] sm:flex-none">
                  <span>
                    <Download className="mr-2 h-4 w-4" /> Download PDF
                  </span>
@@ -1152,38 +1173,11 @@ export default function GroupDetailPage() {
               {(group.visibility === 'public' || isMember) && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                     <button className={cn(buttonVariants({variant: 'outline'}), "flex-1 sm:flex-none")}>
-                      <span>
-                        <Share2 className="mr-2 h-4 w-4" /> Share Group
-                      </span>
+                    <button className={cn(buttonVariants({variant: 'outline'}), "flex-1 min-w-[140px] sm:flex-none")}>
+                       <span><Share2 className="mr-2 h-4 w-4" /> Share Group</span>
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {isWebShareSupported && (
-                      <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer">
-                        <Share2 className="mr-2 h-4 w-4" /> Share via System
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer">
-                      <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer">
-                      <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer">
-                      <Facebook className="mr-2 h-4 w-4" /> Share on Facebook
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer">
-                      <Twitter className="mr-2 h-4 w-4" /> Share on Twitter
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer">
-                      <Mail className="mr-2 h-4 w-4" /> Share via Email
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+                  <DropdownMenuContent align="end" className="w-56"> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
             </div>
           </div>
 
@@ -1197,19 +1191,19 @@ export default function GroupDetailPage() {
                       const payer = memberDetailsMap.get(expense.paidByUserId);
                       const currentUserShare = expense.participants.find(p => p.userId === currentUser.id);
                       return (
-                      <li key={expense.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <Avatar className="h-10 w-10"> <AvatarImage src={payer?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar>
+                      <li key={expense.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center gap-3.5 flex-1 min-w-0 mb-2 sm:mb-0">
+                          <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar>
                           <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5"> <p className="font-medium truncate">{expense.description}</p>
-                                {expense.receiptFileName && ( <Tooltip> <TooltipTrigger asChild> {expense.receiptUrl ? ( <Link href={expense.receiptUrl} target="_blank" rel="noopener noreferrer" aria-label={`View receipt for ${expense.description}`}> <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0"> <Paperclip className="h-4 w-4" /> </Button> </Link> ) : ( <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/50 hover:text-primary shrink-0 cursor-not-allowed" disabled> <Paperclip className="h-4 w-4" /> </Button> )} </TooltipTrigger> <TooltipContent> <p> {expense.receiptUrl ? "View Receipt: " : "Receipt: "} {expense.receiptFileName} </p> {!expense.receiptUrl && <p className="text-xs">(Offline, not uploaded)</p>} </TooltipContent> </Tooltip> )}
+                              <div className="flex items-center gap-1.5"> <p className="font-medium truncate" title={expense.description}>{expense.description}</p>
+                                {expense.receiptFileName && ( <Tooltip> <TooltipTrigger asChild> {expense.receiptUrl ? ( <Link href={expense.receiptUrl} target="_blank" rel="noopener noreferrer" aria-label={`View receipt for ${expense.description}`}> <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary shrink-0"> <Paperclip className="h-4 w-4" /> </Button> </Link> ) : ( <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground/50 hover:text-primary shrink-0 cursor-not-allowed" disabled> <Paperclip className="h-4 w-4" /> </Button> )} </TooltipTrigger> <TooltipContent> <p> {expense.receiptUrl ? "View Receipt: " : "Receipt: "} {expense.receiptFileName} </p> {!expense.receiptUrl && <p className="text-xs">(Offline, not uploaded)</p>} </TooltipContent> </Tooltip> )}
                               </div> <p className="text-sm text-muted-foreground"> Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")} </p>
                           </div>
                         </div>
-                        <div className="text-right ml-2"> <p className="text-lg font-semibold">{currencySymbol}{expense.amount.toFixed(2)}</p> {isMember && currentUserShare && ( <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {currencySymbol}{currentUserShare.amountOwed.toFixed(2)}</p> )} </div>
+                        <div className="text-left sm:text-right sm:ml-3 shrink-0"> <p className="text-lg font-semibold">{currencySymbol}{expense.amount.toFixed(2)}</p> {isMember && currentUserShare && ( <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {currencySymbol}{currentUserShare.amountOwed.toFixed(2)}</p> )} </div>
                       </li> )})}
                   </ul>
-                ) : ( <p className="text-muted-foreground text-center py-4">No expenses recorded yet in Firestore for this group.</p> )}
+                ) : ( <p className="text-muted-foreground text-center py-6">No expenses recorded yet in Firestore for this group.</p> )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1233,17 +1227,17 @@ export default function GroupDetailPage() {
                     {firestoreGroupNotes.map(note => {
                       const canEditOrDelete = isOwner || (currentUser && note.createdByUserId === currentUser.id);
                       return (
-                        <Card key={note.id} className="shadow-sm">
-                          <CardHeader>
+                        <Card key={note.id} className="shadow-sm hover:shadow-md transition-shadow">
+                          <CardHeader className="pb-3">
                             <div className="flex justify-between items-start">
-                              <CardTitle className="text-lg">{note.title}</CardTitle>
+                              <CardTitle className="text-lg font-semibold">{note.title}</CardTitle>
                               {canEditOrDelete && (
-                                <div className="flex gap-1">
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOpenNoteDialog(note)}>
+                                <div className="flex gap-1 -mr-2 -mt-1">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenNoteDialog(note)}>
                                     <Edit2 className="h-4 w-4" />
                                     <span className="sr-only">Edit Note</span>
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setNoteToDelete(note)}>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setNoteToDelete(note)}>
                                     <Trash2 className="h-4 w-4 text-destructive" />
                                     <span className="sr-only">Delete Note</span>
                                   </Button>
@@ -1256,14 +1250,14 @@ export default function GroupDetailPage() {
                             </CardDescription>
                           </CardHeader>
                           <CardContent>
-                            <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                            <p className="text-sm whitespace-pre-wrap">{note.content || <span className="italic text-muted-foreground">No content</span>}</p>
                           </CardContent>
                         </Card>
                       );
                     })}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground text-center py-4">No notes added yet for this group.</p>
+                  <p className="text-muted-foreground text-center py-6">No notes added yet for this group.</p>
                 )}
               </CardContent>
             </Card>
@@ -1272,7 +1266,7 @@ export default function GroupDetailPage() {
           <TabsContent value="contributions">
             <Card>
               <CardHeader> <CardTitle>Fund Contributions</CardTitle> <CardDescription>All funds contributed by members to this group's pool.</CardDescription> </CardHeader>
-              <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-4"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && ` - ${contribution.description}`} </p> </div> </div> <div className="text-right ml-2"> <p className="text-lg font-semibold text-green-600 dark:text-green-400"> +{currencySymbol}{contribution.amount.toFixed(2)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-4">No contributions recorded yet for this group.</p> )} </CardContent>
+              <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-3"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3.5 border rounded-lg hover:bg-muted/50 transition-colors"> <div className="flex items-center gap-3.5"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && <span className="italic">- "{contribution.description}"</span>} </p> </div> </div> <div className="text-right ml-3 shrink-0"> <p className="text-lg font-semibold text-green-600 dark:text-green-400"> +{currencySymbol}{contribution.amount.toFixed(2)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No contributions recorded yet for this group.</p> )} </CardContent>
                <CardFooter>
                 <Button asChild className="ml-auto">
                   <Link href={`/groups/${groupId}/add-contribution`}>
@@ -1288,35 +1282,35 @@ export default function GroupDetailPage() {
           <TabsContent value="payments">
             <Card>
               <CardHeader> <CardTitle>Payment History</CardTitle> <CardDescription>All settlement payments recorded in this group from Firestore.</CardDescription> </CardHeader>
-              <CardContent> {firestorePayments.length > 0 ? ( <ul className="space-y-4"> {firestorePayments.map(payment => { const payer = memberDetailsMap.get(payment.paidByUserId); const payee = memberDetailsMap.get(payment.paidToUserId); return ( <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md hover:bg-muted/50"> <div className="flex items-center gap-3 mb-2 sm:mb-0 flex-1 min-w-0"> <Avatar className="h-10 w-10"> <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name}/> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar> <div className="flex-1 min-w-0"> <p className="font-medium truncate"> {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)} </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method} </p> {payment.notes && <p className="text-xs text-muted-foreground italic">Note: {payment.notes}</p>} </div> </div> <div className="text-left sm:text-right sm:ml-2"> <p className="text-lg font-semibold">{currencySymbol}{payment.amount.toFixed(2)}</p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-4">No payments recorded yet in Firestore for this group.</p> )} </CardContent>
+              <CardContent> {firestorePayments.length > 0 ? ( <ul className="space-y-3"> {firestorePayments.map(payment => { const payer = memberDetailsMap.get(payment.paidByUserId); const payee = memberDetailsMap.get(payment.paidToUserId); return ( <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/50 transition-colors"> <div className="flex items-center gap-3.5 mb-2 sm:mb-0 flex-1 min-w-0"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name}/> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar> <div className="flex-1 min-w-0"> <p className="font-medium truncate"> {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)} </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method.replace("_", " ")} </p> {payment.notes && <p className="text-xs text-muted-foreground italic mt-0.5">Note: {payment.notes}</p>} </div> </div> <div className="text-left sm:text-right sm:ml-3 shrink-0"> <p className="text-lg font-semibold">{currencySymbol}{payment.amount.toFixed(2)}</p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No payments recorded yet in Firestore for this group.</p> )} </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="balances">
             <Card>
               <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription> </CardHeader>
-              <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3 border rounded-md"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-8 w-8"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> {owedToList.length > 0 && ( <div className="pl-4 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-2 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Button asChild size="xs" variant="outline" className="px-2 py-1 h-auto text-xs"> <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}> <span><Send className="mr-1.5 h-3 w-3" /> Settle</span> </Link> </Button> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-4 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-4">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
+              <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3.5 border rounded-lg"> <div className="flex items-center gap-2.5 mb-2.5"> <Avatar className="h-9 w-9"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-4 text-sm space-y-1.5"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-2 space-y-1.5"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Button asChild size="xs" variant="outline" className="px-2.5 py-1 h-auto text-xs"> <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}> <span><Send className="mr-1.5 h-3 w-3" /> Settle</span> </Link> </Button> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-4 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="reports">
             <Card>
               <CardHeader> <CardTitle>Reports</CardTitle> <CardDescription>Visual insights into group spending.</CardDescription> </CardHeader>
-              <CardContent className="space-y-6"> <Card> <CardHeader> <CardTitle>Total Spending by Payer</CardTitle> <CardDescription>Which member has paid the most for group expenses.</CardDescription> </CardHeader> <CardContent> {spendingByPayerChartData.length > 0 ? ( <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full"> <BarChart accessibilityLayer data={spendingByPayerChartData} layout="vertical" margin={{left: 10, right: 10}}> <CartesianGrid vertical={false} /> <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${currencySymbol}${value}`} /> <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/> <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} /> <ChartLegend content={<ChartLegendContent />} /> <Bar dataKey="totalPaid" radius={4}> </Bar> </BarChart> </ChartContainer> ) : ( <p className="text-muted-foreground text-center py-4">No spending data to display for the chart.</p> )} </CardContent> </Card> </CardContent>
+              <CardContent className="space-y-6"> <Card> <CardHeader> <CardTitle>Total Spending by Payer</CardTitle> <CardDescription>Which member has paid the most for group expenses.</CardDescription> </CardHeader> <CardContent> {spendingByPayerChartData.length > 0 ? ( <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full"> <BarChart accessibilityLayer data={spendingByPayerChartData} layout="vertical" margin={{left: 10, right: 10}}> <CartesianGrid vertical={false} /> <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${currencySymbol}${value}`} /> <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/> <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} /> <ChartLegend content={<ChartLegendContent />} /> <Bar dataKey="totalPaid" radius={4}> </Bar> </BarChart> </ChartContainer> ) : ( <p className="text-muted-foreground text-center py-6">No spending data to display for the chart.</p> )} </CardContent> </Card> </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="members">
             <Card>
               <CardHeader className="flex flex-row justify-between items-center"> <div> <CardTitle>Members ({group.members.length})</CardTitle> <CardDescription>People participating in this group (from Firestore).</CardDescription> </div> {isOwner && ( <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}> <DialogTrigger asChild> <Button variant="outline" size="sm"> <UserPlus className="mr-2 h-4 w-4"/>Add Member </Button> </DialogTrigger> <DialogContent className="sm:max-w-[480px]"> <DialogHeader> <DialogTitle>Add Members to "{group.name}"</DialogTitle> <DialogDescription> Select contacts to add to this group. Only contacts not already in the group are shown. </DialogDescription> </DialogHeader> <div className="py-4"> {isLoadingPotentialMembers ? ( <div className="space-y-2"> {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)} </div> ) : potentialNewMembers.length > 0 ? ( <ScrollArea className="h-[250px] pr-3"> <div className="space-y-2"> {potentialNewMembers.map(contact => ( <label key={contact.id} htmlFor={`contact-${contact.id}`} className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer" > <Checkbox id={`contact-${contact.id}`} checked={selectedContactsToAdd.includes(contact.id)} onCheckedChange={() => handleToggleContactSelection(contact.id)} /> <Avatar className="h-8 w-8"> <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} /> <AvatarFallback>{getInitials(contact.name)}</AvatarFallback> </Avatar> <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span> </label> ))} </div> </ScrollArea> ) : ( <p className="text-sm text-muted-foreground text-center py-4"> No new contacts available to add, or all your contacts are already in this group. </p> )} </div> <DialogFooter> <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}> Cancel </Button> <Button onClick={handleAddSelectedMembers} disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers} > {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`} </Button> </DialogFooter> </DialogContent> </Dialog> )} </CardHeader>
-              <CardContent> <ul className="space-y-3"> {group.members.map(member => ( <li key={member.id} className="flex items-center justify-between p-2 border rounded-md"> <div className="flex items-center gap-3"> <Avatar> <AvatarImage src={member.avatarUrl || undefined} /> <AvatarFallback>{getInitials(member.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium">{member.name || member.id.substring(0,10)}</p> <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p> </div> </div> <div> {member.id === group.ownerId && <Badge variant="outline" className="text-primary">Admin</Badge>} </div> </li> ))} </ul> </CardContent>
+              <CardContent> <ul className="space-y-3"> {group.members.map(member => ( <li key={member.id} className="flex items-center justify-between p-3 border rounded-lg"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10"> <AvatarImage src={member.avatarUrl || undefined} /> <AvatarFallback>{getInitials(member.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium">{member.name || member.id.substring(0,10)}</p> <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p> </div> </div> <div> {member.id === group.ownerId && <Badge variant="default" className="bg-primary/80 text-xs">Admin</Badge>} </div> </li> ))} </ul> </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="activity">
             <Card>
               <CardHeader> <CardTitle>Activity Log</CardTitle> <CardDescription>Recent actions within this group from Firestore.</CardDescription> </CardHeader>
-              <CardContent> {firestoreActivityLogs.length > 0 ? ( <ul className="space-y-4"> {firestoreActivityLogs.map(log => { const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); return ( <li key={log.id} className="flex items-start gap-3 text-sm p-2 border rounded-md"> <Avatar className="h-8 w-8 mt-1"> <AvatarImage src={actor?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(actor?.name)}</AvatarFallback> </Avatar> <div> <p> <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span> {log.description.includes(actor?.name || 'User') ? log.description.substring((actor?.name || 'User').length).trim() : ` ${log.description}`} </p> <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p> </div> </li> )})} </ul> ) : ( <p className="text-muted-foreground text-center py-4">No activity recorded yet in Firestore for this group.</p> )} </CardContent>
+              <CardContent> {firestoreActivityLogs.length > 0 ? ( <ul className="space-y-3"> {firestoreActivityLogs.map(log => { const actor = memberDetailsMap.get(log.userId) || group.members.find(m=>m.id === log.userId); return ( <li key={log.id} className="flex items-start gap-3 text-sm p-3 border rounded-lg"> <Avatar className="h-9 w-9 mt-0.5 shrink-0"> <AvatarImage src={actor?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(actor?.name)}</AvatarFallback> </Avatar> <div className="flex-1"> <p> <span className="font-medium">{actor?.name || log.userId.substring(0,6)}</span> {log.description.includes(actor?.name || 'User') ? log.description.substring((actor?.name || 'User').length).trim() : ` ${log.description}`} </p> <p className="text-xs text-muted-foreground">{format(parseISO(log.timestamp), "MMM d, yyyy 'at' h:mm a")}</p> </div> </li> )})} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No activity recorded yet in Firestore for this group.</p> )} </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
