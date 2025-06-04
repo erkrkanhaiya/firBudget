@@ -21,6 +21,29 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc, collection, query, getDocs, Timestamp, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
 
+const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
+  if (dateVal instanceof Timestamp) return dateVal.toDate().toISOString();
+  if (typeof dateVal === 'string' && dateVal.length > 0) {
+    try {
+      parseISO(dateVal); // Validate if it's a parseable ISO string
+      return dateVal;
+    } catch (e) {
+      console.warn(`Invalid date string for ${fieldName}:`, dateVal);
+      return '1970-01-01T00:00:00.000Z';
+    }
+  }
+   if (typeof dateVal === 'object' && dateVal.seconds && typeof dateVal.seconds === 'number') {
+    try {
+      return new Date(dateVal.seconds * 1000).toISOString();
+    } catch(e) {
+       console.warn(`Error converting Firestore-like Timestamp object for ${fieldName}:`, dateVal);
+       return '1970-01-01T00:00:00.000Z';
+    }
+  }
+  console.warn(`Unexpected data type or missing value for ${fieldName}:`, dateVal, `- defaulting.`);
+  return '1970-01-01T00:00:00.000Z';
+};
+
 
 const calculateGroupBalancesForSettlement = (
     currentGroupMembers: UserType[], 
@@ -82,11 +105,14 @@ const calculateGroupBalancesForSettlement = (
       const amountToSettle = parseFloat(Math.min(debtor.amount, creditor.amount).toFixed(2));
 
       if (amountToSettle > 0.005) {
-        const debtorBalanceEntry = finalBalances.find(b => b.userId === debtor.id)!;
-        const creditorBalanceEntry = finalBalances.find(b => b.userId === creditor.id)!;
+        const debtorBalanceEntry = finalBalances.find(b => b.userId === debtor.id);
+        const creditorBalanceEntry = finalBalances.find(b => b.userId === creditor.id);
+        
+        if (debtorBalanceEntry && creditorBalanceEntry) {
+            debtorBalanceEntry.owes[creditor.id] = (debtorBalanceEntry.owes[creditor.id] || 0) + amountToSettle;
+            creditorBalanceEntry.owedBy[debtor.id] = (creditorBalanceEntry.owedBy[debtor.id] || 0) + amountToSettle;
+        }
 
-        debtorBalanceEntry.owes[creditor.id] = (debtorBalanceEntry.owes[creditor.id] || 0) + amountToSettle;
-        creditorBalanceEntry.owedBy[debtor.id] = (creditorBalanceEntry.owedBy[debtor.id] || 0) + amountToSettle;
 
         debtor.amount = parseFloat((debtor.amount - amountToSettle).toFixed(2));
         creditor.amount = parseFloat((creditor.amount - amountToSettle).toFixed(2));
@@ -141,7 +167,7 @@ export default function SettleUpPage() {
           ...groupData,
           members: groupData.members || [],
           memberIds: groupData.memberIds || [],
-          createdAt: groupData.createdAt.toDate().toISOString(),
+          createdAt: safeParseDate(groupData.createdAt, 'group.createdAt'),
         };
 
         if (!fetchedGroup.memberIds.includes(currentUser.id)) {
@@ -178,8 +204,8 @@ export default function SettleUpPage() {
             return { 
                 id: docSnap.id, 
                 ...data,
-                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
-                 createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+                date: safeParseDate(data.date, `expense[${docSnap.id}].date`),
+                createdAt: safeParseDate(data.createdAt, `expense[${docSnap.id}].createdAt`),
             } as Expense;
         });
         
@@ -192,8 +218,8 @@ export default function SettleUpPage() {
             return {
                 id: docSnap.id,
                 ...data,
-                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
-                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+                date: safeParseDate(data.date, `payment[${docSnap.id}].date`),
+                createdAt: safeParseDate(data.createdAt, `payment[${docSnap.id}].createdAt`),
             } as Payment;
         });
 
@@ -206,8 +232,8 @@ export default function SettleUpPage() {
             return {
                 id: docSnap.id,
                 ...data,
-                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
-                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+                date: safeParseDate(data.date, `contribution[${docSnap.id}].date`),
+                createdAt: safeParseDate(data.createdAt, `contribution[${docSnap.id}].createdAt`),
             } as Contribution;
         });
         
@@ -237,11 +263,10 @@ export default function SettleUpPage() {
 
     if (payerId && balances.length > 0 && group && !queryPayeeId && !queryAmount) {
       const payerBalance = balances.find(b => b.userId === payerId);
-      if (payerBalance) { // Check if payerBalance is found
-        // Find who the payer owes the most to based on the 'owes' object from simplified balances
+      if (payerBalance) { 
         const owesMostEntry = Object.entries(payerBalance.owes)
-                                    .filter(([, owedAmount]) => owedAmount > 0.005) // Ensure a real amount is owed
-                                    .sort(([,a],[,b]) => b - a)[0]; // Get the largest debt
+                                    .filter(([, owedAmount]) => owedAmount > 0.005) 
+                                    .sort(([,a],[,b]) => b - a)[0]; 
 
         if (owesMostEntry) {
           const suggestedPayeeId = owesMostEntry[0];
@@ -251,16 +276,14 @@ export default function SettleUpPage() {
             setPayeeId(suggestedPayeeId);
             setAmount(suggestedAmount.toFixed(2));
           } else {
-            setPayeeId(''); // Clear if suggested payee is invalid or same as payer
+            setPayeeId(''); 
             setAmount('');
           }
         } else {
-           // Payer doesn't owe anyone according to simplified balances
           setPayeeId('');
           setAmount('');
         }
       } else {
-        // Payer not found in balances or no debts
         setPayeeId('');
         setAmount('');
       }

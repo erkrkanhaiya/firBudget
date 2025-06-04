@@ -94,6 +94,31 @@ interface SpendingByPayerChartData {
   fill?: string; // for chart bar color
 }
 
+const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
+  if (dateVal instanceof Timestamp) return dateVal.toDate().toISOString();
+  if (typeof dateVal === 'string' && dateVal.length > 0) {
+    try {
+      // Attempt to parse to ensure it's a valid date string for parseISO
+      parseISO(dateVal);
+      return dateVal;
+    } catch (e) {
+      console.warn(`Invalid date string for ${fieldName}:`, dateVal);
+      return '1970-01-01T00:00:00.000Z';
+    }
+  }
+  if (typeof dateVal === 'object' && dateVal.seconds && typeof dateVal.seconds === 'number') {
+    // Handle Firestore Timestamp-like objects that might not be instances of Timestamp
+    try {
+      return new Date(dateVal.seconds * 1000).toISOString();
+    } catch(e) {
+       console.warn(`Error converting Firestore-like Timestamp object for ${fieldName}:`, dateVal);
+       return '1970-01-01T00:00:00.000Z';
+    }
+  }
+  console.warn(`Unexpected data type or missing value for ${fieldName}:`, dateVal, `- defaulting.`);
+  return '1970-01-01T00:00:00.000Z';
+};
+
 
 export default function GroupDetailPage() {
   const params = useParams();
@@ -199,11 +224,14 @@ export default function GroupDetailPage() {
       const amountToSettle = parseFloat(Math.min(debtor.amount, creditor.amount).toFixed(2));
 
       if (amountToSettle > 0.005) {
-        const debtorBalanceEntry = finalBalances.find(b => b.userId === debtor.id)!;
-        const creditorBalanceEntry = finalBalances.find(b => b.userId === creditor.id)!;
+        const debtorBalanceEntry = finalBalances.find(b => b.userId === debtor.id);
+        const creditorBalanceEntry = finalBalances.find(b => b.userId === creditor.id);
 
-        debtorBalanceEntry.owes[creditor.id] = (debtorBalanceEntry.owes[creditor.id] || 0) + amountToSettle;
-        creditorBalanceEntry.owedBy[debtor.id] = (creditorBalanceEntry.owedBy[debtor.id] || 0) + amountToSettle;
+        if(debtorBalanceEntry && creditorBalanceEntry) {
+            debtorBalanceEntry.owes[creditor.id] = (debtorBalanceEntry.owes[creditor.id] || 0) + amountToSettle;
+            creditorBalanceEntry.owedBy[debtor.id] = (creditorBalanceEntry.owedBy[debtor.id] || 0) + amountToSettle;
+        }
+
 
         debtor.amount = parseFloat((debtor.amount - amountToSettle).toFixed(2));
         creditor.amount = parseFloat((creditor.amount - amountToSettle).toFixed(2));
@@ -236,7 +264,7 @@ export default function GroupDetailPage() {
           ...groupData,
           members: groupData.members || [],
           memberIds: groupData.memberIds || [],
-          createdAt: groupData.createdAt.toDate().toISOString(),
+          createdAt: safeParseDate(groupData.createdAt, 'group.createdAt'),
           category: groupData.category || 'OTHER',
         };
 
@@ -258,8 +286,8 @@ export default function GroupDetailPage() {
             return { 
                 id: docSnap.id, 
                 ...data,
-                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
-                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt as string),
+                date: safeParseDate(data.date, `expense[${docSnap.id}].date`),
+                createdAt: safeParseDate(data.createdAt, `expense[${docSnap.id}].createdAt`),
                 receiptUrl: data.receiptUrl,
                 receiptFileName: data.receiptFileName,
             } as Expense;
@@ -275,8 +303,8 @@ export default function GroupDetailPage() {
             return {
                 id: docSnap.id,
                 ...data,
-                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
-                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+                date: safeParseDate(data.date, `payment[${docSnap.id}].date`),
+                createdAt: safeParseDate(data.createdAt, `payment[${docSnap.id}].createdAt`),
             } as Payment;
         });
         setFirestorePayments(fetchedPayments);
@@ -290,8 +318,8 @@ export default function GroupDetailPage() {
             return {
                 id: docSnap.id,
                 ...data,
-                date: (data.date instanceof Timestamp ? data.date.toDate().toISOString() : data.date as string),
-                createdAt: (data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+                date: safeParseDate(data.date, `contribution[${docSnap.id}].date`),
+                createdAt: safeParseDate(data.createdAt, `contribution[${docSnap.id}].createdAt`),
             } as Contribution;
         });
         setFirestoreContributions(fetchedContributions);
@@ -306,7 +334,7 @@ export default function GroupDetailPage() {
             return { 
                 id: docSnap.id, 
                 ...data,
-                timestamp: (data.timestamp instanceof Timestamp ? data.timestamp.toDate().toISOString() : data.timestamp as string)
+                timestamp: safeParseDate(data.timestamp, `activityLog[${docSnap.id}].timestamp`)
             } as ActivityLog;
         });
         setFirestoreActivityLogs(fetchedActivityLogs);

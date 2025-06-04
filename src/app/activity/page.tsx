@@ -29,6 +29,30 @@ interface ClientFormattedDateProps {
   formatString?: string;
 }
 
+const safeParseDateActivity = (dateVal: any, fieldName: string = 'date'): string => {
+  if (dateVal instanceof Timestamp) return dateVal.toDate().toISOString();
+  if (typeof dateVal === 'string' && dateVal.length > 0) {
+    try {
+      parseISO(dateVal); 
+      return dateVal;
+    } catch (e) {
+      console.warn(`Invalid date string for ${fieldName}:`, dateVal);
+      return '1970-01-01T00:00:00.000Z';
+    }
+  }
+   if (typeof dateVal === 'object' && dateVal.seconds && typeof dateVal.seconds === 'number') {
+    try {
+      return new Date(dateVal.seconds * 1000).toISOString();
+    } catch(e) {
+       console.warn(`Error converting Firestore-like Timestamp object for ${fieldName}:`, dateVal);
+       return '1970-01-01T00:00:00.000Z';
+    }
+  }
+  console.warn(`Unexpected data type or missing value for ${fieldName}:`, dateVal, `- defaulting.`);
+  return '1970-01-01T00:00:00.000Z';
+};
+
+
 const ClientFormattedDate: React.FC<ClientFormattedDateProps> = ({ timestamp, formatString = "MMMM d, yyyy 'at' h:mm a" }) => {
   const [formattedDate, setFormattedDate] = useState<string | null>(null);
 
@@ -37,14 +61,18 @@ const ClientFormattedDate: React.FC<ClientFormattedDateProps> = ({ timestamp, fo
       const date = parseISO(timestamp);
       setFormattedDate(format(date, formatString));
     } catch (error) {
-      console.error("Error formatting date:", error);
+      console.error("Error formatting date:", error, "Input timestamp:", timestamp);
       setFormattedDate("Invalid date");
     }
   }, [timestamp, formatString]);
 
-  if (formattedDate === null) {
+  if (formattedDate === null && timestamp !== '1970-01-01T00:00:00.000Z') { // Avoid showing "Loading date..." for default invalid dates
     return <span className="text-xs text-muted-foreground">Loading date...</span>;
   }
+   if (formattedDate === "Invalid date" || timestamp === '1970-01-01T00:00:00.000Z') {
+    return <span className="text-xs text-muted-foreground">Date unavailable</span>;
+  }
+
 
   return <>{formattedDate}</>;
 };
@@ -89,7 +117,7 @@ export default function ActivityFeedPage() {
                 memberIds: data.memberIds || [],
                 ownerId: data.ownerId,
                 visibility: data.visibility,
-                createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
+                createdAt: safeParseDateActivity(data.createdAt, `group[${docSnap.id}].createdAt`),
              } as GroupType);
         });
         
@@ -99,9 +127,6 @@ export default function ActivityFeedPage() {
           return;
         }
 
-        // 2. For each group, fetch its activity logs
-        // This part already fetches all activity logs regardless of actionType.
-        // So, contribution_added logs should be included if they exist.
         const activityLogQueries = userGroupIds.map(groupId => {
           const logsColRef = collection(db, 'groups', groupId, 'activityLog');
           return getDocs(query(logsColRef, orderBy('timestamp', 'desc')));
@@ -115,18 +140,33 @@ export default function ActivityFeedPage() {
           const group = groupsDataMap.get(groupId);
 
           snapshot.forEach(docSnap => {
-            const logData = docSnap.data() as Omit<ActivityLog, 'id' | 'timestamp'> & { timestamp: Timestamp | string };
-            // Determine actor based on logData.userId which should be the person performing the action
-            const actor = group?.members.find(m => m.id === logData.userId) || 
-                          (logData.userId === currentUser.id ? currentUser : null); 
+            const logData = docSnap.data() as Omit<ActivityLog, 'id' | 'timestamp'> & { timestamp: Timestamp | string | object };
+            
+            let resolvedActor = null;
+            let resolvedActorName = logData.actorName;
+            let resolvedAvatarUrl = logData.actorAvatarUrl;
+
+            if (!resolvedActorName) { 
+                resolvedActor = group?.members.find(m => m.id === logData.userId) ||
+                              (logData.userId === currentUser.id ? currentUser : null);
+                resolvedActorName = resolvedActor?.name;
+                resolvedAvatarUrl = resolvedActor?.avatarUrl;
+            } else {
+                resolvedActor = group?.members.find(m => m.name === logData.actorName && m.id === logData.userId) || 
+                                group?.members.find(m => m.name === logData.actorName) ||
+                                (logData.actorName === currentUser.name ? currentUser : null);
+                if (resolvedActor && !resolvedAvatarUrl) {
+                    resolvedAvatarUrl = resolvedActor.avatarUrl;
+                }
+            }
             
             fetchedLogs.push({
               id: docSnap.id,
               ...logData,
-              timestamp: (logData.timestamp instanceof Timestamp ? logData.timestamp.toDate().toISOString() : logData.timestamp as string),
+              timestamp: safeParseDateActivity(logData.timestamp, `activityLog[${docSnap.id}].timestamp`),
               groupName: group?.name,
-              actorName: actor?.name || logData.actorName, // Fallback to actorName if stored directly in log
-              actorAvatarUrl: actor?.avatarUrl || logData.actorAvatarUrl
+              actorName: resolvedActorName || 'Unknown User', 
+              actorAvatarUrl: resolvedAvatarUrl
             });
           });
         });
@@ -199,15 +239,14 @@ export default function ActivityFeedPage() {
               {relevantActivityLogs.map((log) => {
                  const defaultActorName = log.actorName || 'Unknown User';
                  let displayDescription = log.description;
-                 // Check if the description already starts with the actor's name to avoid duplication
-                 if (log.description.toLowerCase().startsWith(defaultActorName.toLowerCase())) {
+                 
+                 if (log.description?.toLowerCase().startsWith(defaultActorName.toLowerCase())) {
                     displayDescription = log.description.substring(defaultActorName.length).trim();
                     if (displayDescription.startsWith('added') || displayDescription.startsWith('paid') || displayDescription.startsWith('recorded') || displayDescription.startsWith('contributed')) {
-                         // Add a space if it was directly appended
                          displayDescription = ' ' + displayDescription;
                     }
                  } else {
-                    displayDescription = ' ' + log.description; // ensure space if name wasn't prefix
+                    displayDescription = log.description ? ' ' + log.description : ' performed an action'; 
                  }
 
 
