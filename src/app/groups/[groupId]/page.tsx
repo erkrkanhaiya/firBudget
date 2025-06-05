@@ -1072,7 +1072,7 @@ export default function GroupDetailPage() {
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="destructive" size="sm">
-                                  <span><Trash2 className="mr-2 h-4 w-4" /> Delete Group</span>
+                                  <span className='flex items-center'><Trash2 className="mr-2 h-4 w-4" /> Delete Group</span>
                                 </Button>
                               </AlertDialogTrigger>
                               <AlertDialogContent> <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete the group "{group.name}" and all its associated data (expenses, activity logs, payments, contributions, notes) from Firestore. </AlertDialogDescription> </AlertDialogHeader> <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction onClick={handleDeleteGroup} className="bg-destructive hover:bg-destructive/90"> Delete </AlertDialogAction> </AlertDialogFooter> </AlertDialogContent>
@@ -1230,7 +1230,24 @@ export default function GroupDetailPage() {
               <TabsContent value="reports">
                 <Card>
                   <CardHeader> <CardTitle>Reports</CardTitle> <CardDescription>Visual insights into group spending.</CardDescription> </CardHeader>
-                  <CardContent className="space-y-6"> <Card> <CardHeader> <CardTitle>Total Spending by Payer</CardTitle> <CardDescription>Which member has paid the most for group expenses.</CardDescription> </CardHeader> <CardContent> {spendingByPayerChartData.length > 0 ? ( <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full"> <BarChart accessibilityLayer data={spendingByPayerChartData} layout="vertical" margin={{left: 10, right: 10}}> <CartesianGrid vertical={false} /> <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${currencySymbol}${value}`} /> <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/> <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} /> <ChartLegend content={<ChartLegendContent />} /> <Bar dataKey="totalPaid" radius={4}> </Bar> </BarChart> </ChartContainer> ) : ( <p className="text-muted-foreground text-center py-6">No spending data to display for the chart.</p> )} </CardContent> </Card> </CardContent>
+                  <CardContent className="space-y-6"> <Card> <CardHeader> <CardTitle>Total Spending by Payer</CardTitle> 
+                  <CardDescription>Which member has paid the most for group expenses.</CardDescription> 
+                  </CardHeader>
+                  <CardContent> {spendingByPayerChartData.length > 0 ? ( <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full"> 
+                    <BarChart accessibilityLayer data={spendingByPayerChartData} layout="vertical" margin={{left: 10, right: 10}}>
+                      <CartesianGrid vertical={false} /> <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${currencySymbol}${value}`} /> 
+                        <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/> 
+                          <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} /> 
+                          <ChartLegend content={<ChartLegendContent />} />
+                           <Bar dataKey="totalPaid" radius={4}> </Bar>
+                      </BarChart>
+                      </ChartContainer> ) :
+                       ( 
+                       <p className="text-muted-foreground text-center py-6">No spending data to display for the chart.</p> 
+                       )} 
+                      </CardContent>
+                      </Card>
+                   </CardContent>
                 </Card>
               </TabsContent>
 
