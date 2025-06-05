@@ -1058,13 +1058,13 @@ export default function GroupDetailPage() {
                     </div>
                      <div className="flex flex-wrap gap-2">
                         {isMember && (
-                            <Button onClick={() => handleOpenNoteDialog()} size="sm" variant="outline">
+                            <Button onClick={() => handleOpenNoteDialog()} size="sm" variant="outline" className="justify-start">
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add Note
                             </Button>
                         )}
                         {isOwner && (
                         <>
-                            <Button variant="outline" size="sm" asChild>
+                            <Button variant="outline" size="sm" asChild className="justify-start">
                               <Link href={`/groups/${groupId}/edit`}>
                                   <span className='flex items-center'><Edit className="mr-1.5 h-3.5 w-3.5" /> Edit Group</span>
                               </Link>
@@ -1091,7 +1091,7 @@ export default function GroupDetailPage() {
         <Card className={`p-3 ${remainingFunds >= 0 ? 'bg-blue-50 dark:bg-blue-900/40' : 'bg-orange-50 dark:bg-orange-900/40'}`}> <CardHeader className="p-0 pb-1"> <CardDescription className={`${remainingFunds >= 0 ? 'text-blue-700 dark:text-blue-400/90' : 'text-orange-700 dark:text-orange-400/90'}`}>Remaining Funds</CardDescription> </CardHeader> <CardContent className="p-0"> <p className={`text-xl font-semibold ${remainingFunds >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}> {currencySymbol}{remainingFunds.toFixed(2)} </p> </CardContent> </Card>
           {group.budgetAmount && group.budgetAmount > 0 && ( <Card className="p-3"> <CardHeader className="p-0 pb-1"> <div className="flex justify-between items-baseline"> <CardDescription className="text-purple-700 dark:text-purple-400/90">Budget vs Spent</CardDescription> <span className="text-xs text-purple-600 dark:text-purple-300/80">{currencySymbol}{budgetAmount.toFixed(2)} total</span></div> </CardHeader> <CardContent className="p-0"> <Progress value={budgetProgress} className="h-2 my-1" /> <p className={`text-xs text-right ${remainingBudget >= 0 ? 'text-purple-600 dark:text-purple-400/90' : 'text-orange-600 dark:text-orange-400 font-medium'}`}> {remainingBudget >= 0 ? `${currencySymbol}${remainingBudget.toFixed(2)} remaining` : `${currencySymbol}${Math.abs(remainingBudget).toFixed(2)} over`} </p> </CardContent> </Card> )}
       </div>
-      
+
       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 my-6">
         {isMember && ( <>
           <Button asChild className="w-full sm:w-auto justify-start">
@@ -1111,62 +1111,17 @@ export default function GroupDetailPage() {
           </Button>
         </> )}
         <Button variant="outline" onClick={handleDownloadPdf} className="w-full sm:w-auto justify-start">
-          <span className='flex items-center'><Download className="mr-2 h-4 w-4" /> Download PDF</span>
+          <Download className="mr-2 h-4 w-4" /> Download PDF
         </Button>
         {(group.visibility === 'public' || isMember) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className={cn(buttonVariants({variant: 'outline'}), "w-full sm:w-auto justify-start")}>
-                  <span className='flex items-center'><Share2 className="mr-2 h-4 w-4" /> Share Group</span>
+                  <Share2 className="mr-2 h-4 w-4" /> Share Group
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 "> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
       </div>
-
-      <Dialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen}>
-        <DialogContent className="sm:max-w-[520px]">
-          <DialogHeader>
-            <DialogTitle>{editingNote ? 'Edit Note' : 'Add New Note'}</DialogTitle>
-            <DialogDescription>
-              {editingNote ? 'Update the details of your note for this group.' : 'Create a new shared note for this group.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="note-title">Title*</Label>
-              <Input id="note-title" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Enter note title" disabled={isSavingNote} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="note-content">Content</Label>
-              <Textarea id="note-content" value={noteContent} onChange={(e) => setNoteContent(e.target.value)} className="min-h-[120px]" placeholder="Write your note details here..." disabled={isSavingNote} />
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild><Button type="button" variant="outline" disabled={isSavingNote}>Cancel</Button></DialogClose>
-            <Button type="button" onClick={handleSaveNote} disabled={isSavingNote || !noteTitle.trim()}>
-              {isSavingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingNote ? <Save className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />)}
-              {isSavingNote ? 'Saving...' : (editingNote ? 'Save Changes' : 'Add Note')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!noteToDelete} onOpenChange={(open) => !open && setNoteToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to delete this note?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The note "{noteToDelete?.title}" will be permanently deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setNoteToDelete(null)} disabled={isDeletingNote}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteNote} disabled={isDeletingNote} className="bg-destructive hover:bg-destructive/90">
-              {isDeletingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       
       <Tabs defaultValue="notes" className="w-full" value={searchParams.get('tab') || 'notes'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`, { scroll: false })}>
           <div className="mt-6 flex flex-col md:flex-row gap-x-6 gap-y-4">
@@ -1281,7 +1236,11 @@ export default function GroupDetailPage() {
 
               <TabsContent value="members">
                 <Card>
-                  <CardHeader className="flex flex-row justify-between items-center"> <div> <CardTitle>Members ({group.members.length})</CardTitle> <CardDescription>People participating in this group (from Firestore).</CardDescription> </div> {isOwner && ( <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}> <DialogTrigger asChild> <Button variant="outline" size="sm"> <span><UserPlus className="mr-2 h-4 w-4"/>Add Member</span> </Button> </DialogTrigger> <DialogContent className="sm:max-w-[480px]"> <DialogHeader> <DialogTitle>Add Members to "{group.name}"</DialogTitle> <DialogDescription> Select contacts to add to this group. Only contacts not already in the group are shown. </DialogDescription> </DialogHeader> <div className="py-4"> {isLoadingPotentialMembers ? ( <div className="space-y-2"> {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)} </div> ) : potentialNewMembers.length > 0 ? ( <ScrollArea className="h-[250px] pr-3"> <div className="space-y-2"> {potentialNewMembers.map(contact => ( <label key={contact.id} htmlFor={`contact-${contact.id}`} className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer" > <Checkbox id={`contact-${contact.id}`} checked={selectedContactsToAdd.includes(contact.id)} onCheckedChange={() => handleToggleContactSelection(contact.id)} /> <Avatar className="h-8 w-8"> <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} /> <AvatarFallback>{getInitials(contact.name)}</AvatarFallback> </Avatar> <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span> </label> ))} </div> </ScrollArea> ) : ( <p className="text-sm text-muted-foreground text-center py-4"> No new contacts available to add, or all your contacts are already in this group. </p> )} </div> <DialogFooter> <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}> Cancel </Button> <Button onClick={handleAddSelectedMembers} disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers} > {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`} </Button> </DialogFooter> </DialogContent> </Dialog> )} </CardHeader>
+                  <CardHeader className="flex flex-row justify-between items-center"> <div> <CardTitle>Members ({group.members.length})</CardTitle> <CardDescription>People participating in this group (from Firestore).</CardDescription> </div> {isOwner && ( <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}> <DialogTrigger asChild> 
+                    <button className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+                      <span><UserPlus className="mr-2 h-4 w-4"/>Add Member</span>
+                    </button>
+                  </DialogTrigger> <DialogContent className="sm:max-w-[480px]"> <DialogHeader> <DialogTitle>Add Members to "{group.name}"</DialogTitle> <DialogDescription> Select contacts to add to this group. Only contacts not already in the group are shown. </DialogDescription> </DialogHeader> <div className="py-4"> {isLoadingPotentialMembers ? ( <div className="space-y-2"> {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)} </div> ) : potentialNewMembers.length > 0 ? ( <ScrollArea className="h-[250px] pr-3"> <div className="space-y-2"> {potentialNewMembers.map(contact => ( <label key={contact.id} htmlFor={`contact-${contact.id}`} className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer" > <Checkbox id={`contact-${contact.id}`} checked={selectedContactsToAdd.includes(contact.id)} onCheckedChange={() => handleToggleContactSelection(contact.id)} /> <Avatar className="h-8 w-8"> <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} /> <AvatarFallback>{getInitials(contact.name)}</AvatarFallback> </Avatar> <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span> </label> ))} </div> </ScrollArea> ) : ( <p className="text-sm text-muted-foreground text-center py-4"> No new contacts available to add, or all your contacts are already in this group. </p> )} </div> <DialogFooter> <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}> Cancel </Button> <Button onClick={handleAddSelectedMembers} disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers} > {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`} </Button> </DialogFooter> </DialogContent> </Dialog> )} </CardHeader>
                   <CardContent> <ul className="space-y-3"> {group.members.map(member => ( <li key={member.id} className="flex items-center justify-between p-3.5 border rounded-lg"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10"> <AvatarImage src={member.avatarUrl || undefined} /> <AvatarFallback>{getInitials(member.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium">{member.name || member.id.substring(0,10)}</p> <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p> </div> </div> <div> {member.id === group.ownerId && <Badge variant="default" className="text-xs">Admin</Badge>} </div> </li> ))} </ul> </CardContent>
                 </Card>
               </TabsContent>
@@ -1295,6 +1254,51 @@ export default function GroupDetailPage() {
             </div> 
           </div>
       </Tabs>
+
+      <Dialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>{editingNote ? 'Edit Note' : 'Add New Note'}</DialogTitle>
+            <DialogDescription>
+              {editingNote ? 'Update the details of your note for this group.' : 'Create a new shared note for this group.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="note-title">Title*</Label>
+              <Input id="note-title" value={noteTitle} onChange={(e) => setNoteTitle(e.target.value)} placeholder="Enter note title" disabled={isSavingNote} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="note-content">Content</Label>
+              <Textarea id="note-content" value={noteContent} onChange={(e) => setNoteContent(e.target.value)} className="min-h-[120px]" placeholder="Write your note details here..." disabled={isSavingNote} />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline" disabled={isSavingNote}>Cancel</Button></DialogClose>
+            <Button type="button" onClick={handleSaveNote} disabled={isSavingNote || !noteTitle.trim()}>
+              {isSavingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingNote ? <Save className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />)}
+              {isSavingNote ? 'Saving...' : (editingNote ? 'Save Changes' : 'Add Note')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!noteToDelete} onOpenChange={(open) => !open && setNoteToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this note?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The note "{noteToDelete?.title}" will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setNoteToDelete(null)} disabled={isDeletingNote}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteNote} disabled={isDeletingNote} className="bg-destructive hover:bg-destructive/90">
+              {isDeletingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
