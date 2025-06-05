@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, where, Timestamp, or } from 'firebase/firestore';
-import type { Group as GroupType, GroupCategory } from '@/types'; 
+import type { Group as GroupType, GroupCategory } from '@/types';
 
 const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
   TRIP: Plane,
@@ -36,7 +36,7 @@ export default function GroupsPage() {
 
   useEffect(() => {
     const fetchGroups = async () => {
-      if (isLoadingAuth) return; 
+      if (isLoadingAuth) return;
 
       if (!currentUser) {
         setIsLoadingGroups(false);
@@ -47,15 +47,15 @@ export default function GroupsPage() {
       setError(null);
       try {
         const groupsCollectionRef = collection(db, 'groups');
-        
-        const q = query(groupsCollectionRef, 
+
+        const q = query(groupsCollectionRef,
           or(
             where("visibility", "==", "public"),
             where("memberIds", "array-contains", currentUser.id)
           )
         );
         const querySnapshot = await getDocs(q);
-        
+
         const groupsMap = new Map<string, GroupType>();
 
         querySnapshot.forEach((doc) => {
@@ -66,17 +66,17 @@ export default function GroupsPage() {
             return;
           }
           const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(data.createdAt?.seconds * 1000 || Date.now()).toISOString();
-          groupsMap.set(doc.id, { 
-            id: doc.id, 
+          groupsMap.set(doc.id, {
+            id: doc.id,
             ...data,
-            members: data.members || [], 
-            memberIds: data.memberIds || [], 
+            members: data.members || [],
+            memberIds: data.memberIds || [],
             createdAt,
             category: data.category || 'OTHER',
           } as GroupType);
         });
-        
-        const sortedGroups = Array.from(groupsMap.values()).sort((a, b) => 
+
+        const sortedGroups = Array.from(groupsMap.values()).sort((a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
         setVisibleGroups(sortedGroups);
@@ -162,58 +162,58 @@ export default function GroupsPage() {
           {visibleGroups.map((group) => {
             const isMember = currentUser && group.memberIds.includes(currentUser.id);
             return (
-              <Card key={group.id} className="flex flex-col">
-                <CardHeader>
-                  {group.photoUrl ? (
-                    <div className="relative aspect-video w-full mb-4 rounded-md overflow-hidden">
-                      <Image
-                        src={group.photoUrl}
-                        alt={group.name}
-                        fill
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                        className="object-cover"
-                        data-ai-hint={group.dataAiHint || "group image"}
-                        priority={false} 
-                      />
-                    </div>
-                  ) : (
-                     <div className="relative aspect-video w-full mb-4 rounded-md overflow-hidden bg-muted flex items-center justify-center">
-                        <CategoryIconDisplay category={group.category} />
-                     </div>
-                  )}
-                  <CardTitle className="text-xl">{group.name}</CardTitle>
-                  <CardDescription className="truncate h-10">{group.description || 'No description provided.'}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex-grow space-y-2">
-                  <div className="flex items-center text-sm text-muted-foreground">
-                    <Users className="mr-2 h-4 w-4" />
-                    <span>{group.memberIds.length} member{group.memberIds.length === 1 ? '' : 's'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {group.visibility === 'public' ? (
-                      <Badge variant="outline" className="flex items-center gap-1">
-                        <Eye className="h-3 w-3" /> Public
-                      </Badge>
+              <Link key={group.id} href={`/groups/${group.id}`}>
+                <Card key={group.id} className="flex flex-col">
+                  <CardHeader>
+                    {group.photoUrl ? (
+                      <div className="relative aspect-video w-full mb-4 rounded-md overflow-hidden">
+                        <Image
+                          src={group.photoUrl}
+                          alt={group.name}
+                          fill
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                          className="object-cover"
+                          data-ai-hint={group.dataAiHint || "group image"}
+                          priority={false}
+                        />
+                      </div>
                     ) : (
-                      <Badge variant="secondary" className="flex items-center gap-1">
-                        <Lock className="h-3 w-3" /> Private
-                      </Badge>
+                      <div className="relative aspect-video w-full mb-4 rounded-md overflow-hidden bg-muted flex items-center justify-center">
+                        <CategoryIconDisplay category={group.category} />
+                      </div>
                     )}
-                    {isMember && group.ownerId === currentUser!.id && <Badge variant="default" className="bg-primary/80">Admin</Badge>}
-                    {isMember && group.ownerId !== currentUser!.id && <Badge variant="outline">Member</Badge>}
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button asChild className="w-full">
-                    <Link href={`/groups/${group.id}`}>
-                      <span>
+                    <CardTitle className="text-xl">{group.name}</CardTitle>
+                    <CardDescription className="truncate h-10">{group.description || 'No description provided.'}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex-grow space-y-2">
+                    <div className="flex items-center text-sm text-muted-foreground">
+                      <Users className="mr-2 h-4 w-4" />
+                      <span>{group.memberIds.length} member{group.memberIds.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {group.visibility === 'public' ? (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Eye className="h-3 w-3" /> Public
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <Lock className="h-3 w-3" /> Private
+                        </Badge>
+                      )}
+                      {isMember && group.ownerId === currentUser!.id && <Badge variant="default" className="bg-primary/80">Admin</Badge>}
+                      {isMember && group.ownerId !== currentUser!.id && <Badge variant="outline">Member</Badge>}
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button asChild className="w-full">
+                      <span className='flex items-center'>
                         {group.visibility === 'public' && !isMember ? 'View Group' : 'Open Group'}
                         <ArrowRight className="ml-2 h-4 w-4" />
                       </span>
-                    </Link>
-                  </Button>
-                </CardFooter>
-              </Card>
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </Link>
             );
           })}
         </div>

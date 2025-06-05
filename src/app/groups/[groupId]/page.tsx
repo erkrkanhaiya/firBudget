@@ -22,7 +22,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"; 
 import {
   Dialog,
@@ -1024,8 +1024,8 @@ export default function GroupDetailPage() {
       <div className="flex items-center justify-between">
         <Button variant="outline" size="sm" asChild>
           <Link href="/groups">
-            <span>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back to Groups
+            <span className='flex items-center'>
+              <ArrowLeft className="mr-2 h-4 w-4 " /> Back to Groups
             </span>
           </Link>
         </Button>
@@ -1056,7 +1056,6 @@ export default function GroupDetailPage() {
                         <span>{group.memberIds.length} Member{group.memberIds.length === 1 ? '' : 's'}</span>
                         {isMember && isOwner && <Badge variant="default" className="py-0.5 px-1.5 text-xs">Admin</Badge>}
                     </div>
-                    {/* Moved Add Note, Edit Group, Delete Group here */}
                      <div className="flex flex-wrap gap-2">
                         {isMember && (
                             <Button onClick={() => handleOpenNoteDialog()} size="sm" variant="outline">
@@ -1066,9 +1065,9 @@ export default function GroupDetailPage() {
                         {isOwner && (
                         <>
                             <Button variant="outline" size="sm" asChild>
-                            <Link href={`/groups/${groupId}/edit`}>
-                                <span><Edit className="mr-1.5 h-3.5 w-3.5" /> Edit Group</span>
-                            </Link>
+                              <Link href={`/groups/${groupId}/edit`}>
+                                  <span className='flex items-center'><Edit className="mr-1.5 h-3.5 w-3.5" /> Edit Group</span>
+                              </Link>
                             </Button>
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
@@ -1086,43 +1085,42 @@ export default function GroupDetailPage() {
         </CardHeader>
       </Card>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-6 mt-5">
         <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-green-700 dark:text-green-400/90">Total Contributions</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-green-600 dark:text-green-300">{currencySymbol}{totalContributions.toFixed(2)}</p> </CardContent> </Card>
         <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-red-700 dark:text-red-400/90">Total Expenses</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-red-600 dark:text-red-300">{currencySymbol}{totalExpenses.toFixed(2)}</p> </CardContent> </Card>
         <Card className={`p-3 ${remainingFunds >= 0 ? 'bg-blue-50 dark:bg-blue-900/40' : 'bg-orange-50 dark:bg-orange-900/40'}`}> <CardHeader className="p-0 pb-1"> <CardDescription className={`${remainingFunds >= 0 ? 'text-blue-700 dark:text-blue-400/90' : 'text-orange-700 dark:text-orange-400/90'}`}>Remaining Funds</CardDescription> </CardHeader> <CardContent className="p-0"> <p className={`text-xl font-semibold ${remainingFunds >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}> {currencySymbol}{remainingFunds.toFixed(2)} </p> </CardContent> </Card>
           {group.budgetAmount && group.budgetAmount > 0 && ( <Card className="p-3"> <CardHeader className="p-0 pb-1"> <div className="flex justify-between items-baseline"> <CardDescription className="text-purple-700 dark:text-purple-400/90">Budget vs Spent</CardDescription> <span className="text-xs text-purple-600 dark:text-purple-300/80">{currencySymbol}{budgetAmount.toFixed(2)} total</span></div> </CardHeader> <CardContent className="p-0"> <Progress value={budgetProgress} className="h-2 my-1" /> <p className={`text-xs text-right ${remainingBudget >= 0 ? 'text-purple-600 dark:text-purple-400/90' : 'text-orange-600 dark:text-orange-400 font-medium'}`}> {remainingBudget >= 0 ? `${currencySymbol}${remainingBudget.toFixed(2)} remaining` : `${currencySymbol}${Math.abs(remainingBudget).toFixed(2)} over`} </p> </CardContent> </Card> )}
       </div>
       
-      {/* Main Action Buttons moved here */}
       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 my-6">
         {isMember && ( <>
           <Button asChild className="w-full sm:w-auto justify-start">
             <Link href={`/groups/${groupId}/add-expense`}>
-              <span><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
+              <span className='flex items-center'><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
             </Link>
           </Button>
           <Button variant="secondary" asChild className="w-full sm:w-auto justify-start">
             <Link href={`/groups/${groupId}/add-contribution`}>
-              <span><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
+              <span className='flex items-center'><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
             </Link>
           </Button>
           <Button variant="outline" asChild className="w-full sm:w-auto justify-start">
             <Link href={`/groups/${groupId}/settle-up`}>
-              <span><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
+              <span className='flex items-center'><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
             </Link>
           </Button>
         </> )}
         <Button variant="outline" onClick={handleDownloadPdf} className="w-full sm:w-auto justify-start">
-          <span><Download className="mr-2 h-4 w-4" /> Download PDF</span>
+          <span className='flex items-center'><Download className="mr-2 h-4 w-4" /> Download PDF</span>
         </Button>
         {(group.visibility === 'public' || isMember) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className={cn(buttonVariants({variant: 'outline'}), "w-full sm:w-auto justify-start")}>
-                  <span><Share2 className="mr-2 h-4 w-4" /> Share Group</span>
+                  <span className='flex items-center'><Share2 className="mr-2 h-4 w-4" /> Share Group</span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56"> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
+            <DropdownMenuContent align="end" className="w-56 "> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
       </div>
 
       <Dialog open={isNoteDialogOpen} onOpenChange={setIsNoteDialogOpen}>
@@ -1171,7 +1169,6 @@ export default function GroupDetailPage() {
       </AlertDialog>
       
       <Tabs defaultValue="notes" className="w-full" value={searchParams.get('tab') || 'notes'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`, { scroll: false })}>
-        <TooltipProvider>
           <div className="mt-6 flex flex-col md:flex-row gap-x-6 gap-y-4">
             <TabsList className="flex-col md:w-48 shrink-0 h-auto md:h-fit p-1.5 md:p-2 self-start md:sticky md:top-20 overflow-x-auto md:overflow-x-visible">
               <TabsTrigger value="notes" className="w-full justify-start px-3 py-2 md:mb-1"><FileText className="mr-2 h-4 w-4" />Notes</TabsTrigger>
@@ -1284,7 +1281,7 @@ export default function GroupDetailPage() {
 
               <TabsContent value="members">
                 <Card>
-                  <CardHeader className="flex flex-row justify-between items-center"> <div> <CardTitle>Members ({group.members.length})</CardTitle> <CardDescription>People participating in this group (from Firestore).</CardDescription> </div> {isOwner && ( <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}> <DialogTrigger asChild> <Button variant="outline" size="sm"> <UserPlus className="mr-2 h-4 w-4"/>Add Member </Button> </DialogTrigger> <DialogContent className="sm:max-w-[480px]"> <DialogHeader> <DialogTitle>Add Members to "{group.name}"</DialogTitle> <DialogDescription> Select contacts to add to this group. Only contacts not already in the group are shown. </DialogDescription> </DialogHeader> <div className="py-4"> {isLoadingPotentialMembers ? ( <div className="space-y-2"> {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)} </div> ) : potentialNewMembers.length > 0 ? ( <ScrollArea className="h-[250px] pr-3"> <div className="space-y-2"> {potentialNewMembers.map(contact => ( <label key={contact.id} htmlFor={`contact-${contact.id}`} className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer" > <Checkbox id={`contact-${contact.id}`} checked={selectedContactsToAdd.includes(contact.id)} onCheckedChange={() => handleToggleContactSelection(contact.id)} /> <Avatar className="h-8 w-8"> <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} /> <AvatarFallback>{getInitials(contact.name)}</AvatarFallback> </Avatar> <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span> </label> ))} </div> </ScrollArea> ) : ( <p className="text-sm text-muted-foreground text-center py-4"> No new contacts available to add, or all your contacts are already in this group. </p> )} </div> <DialogFooter> <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}> Cancel </Button> <Button onClick={handleAddSelectedMembers} disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers} > {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`} </Button> </DialogFooter> </DialogContent> </Dialog> )} </CardHeader>
+                  <CardHeader className="flex flex-row justify-between items-center"> <div> <CardTitle>Members ({group.members.length})</CardTitle> <CardDescription>People participating in this group (from Firestore).</CardDescription> </div> {isOwner && ( <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}> <DialogTrigger asChild> <Button variant="outline" size="sm"> <span><UserPlus className="mr-2 h-4 w-4"/>Add Member</span> </Button> </DialogTrigger> <DialogContent className="sm:max-w-[480px]"> <DialogHeader> <DialogTitle>Add Members to "{group.name}"</DialogTitle> <DialogDescription> Select contacts to add to this group. Only contacts not already in the group are shown. </DialogDescription> </DialogHeader> <div className="py-4"> {isLoadingPotentialMembers ? ( <div className="space-y-2"> {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)} </div> ) : potentialNewMembers.length > 0 ? ( <ScrollArea className="h-[250px] pr-3"> <div className="space-y-2"> {potentialNewMembers.map(contact => ( <label key={contact.id} htmlFor={`contact-${contact.id}`} className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer" > <Checkbox id={`contact-${contact.id}`} checked={selectedContactsToAdd.includes(contact.id)} onCheckedChange={() => handleToggleContactSelection(contact.id)} /> <Avatar className="h-8 w-8"> <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} /> <AvatarFallback>{getInitials(contact.name)}</AvatarFallback> </Avatar> <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span> </label> ))} </div> </ScrollArea> ) : ( <p className="text-sm text-muted-foreground text-center py-4"> No new contacts available to add, or all your contacts are already in this group. </p> )} </div> <DialogFooter> <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}> Cancel </Button> <Button onClick={handleAddSelectedMembers} disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers} > {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`} </Button> </DialogFooter> </DialogContent> </Dialog> )} </CardHeader>
                   <CardContent> <ul className="space-y-3"> {group.members.map(member => ( <li key={member.id} className="flex items-center justify-between p-3.5 border rounded-lg"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10"> <AvatarImage src={member.avatarUrl || undefined} /> <AvatarFallback>{getInitials(member.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium">{member.name || member.id.substring(0,10)}</p> <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p> </div> </div> <div> {member.id === group.ownerId && <Badge variant="default" className="text-xs">Admin</Badge>} </div> </li> ))} </ul> </CardContent>
                 </Card>
               </TabsContent>
@@ -1297,7 +1294,6 @@ export default function GroupDetailPage() {
               </TabsContent>
             </div> 
           </div>
-        </TooltipProvider>
       </Tabs>
     </div>
   );
