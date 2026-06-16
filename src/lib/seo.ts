@@ -1,11 +1,24 @@
 import type { Metadata } from "next";
 
+/** Resolve the canonical site URL for SEO, sitemap, and robots. */
+export function getSiteUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+
+  const vercelUrl = process.env.VERCEL_URL?.replace(/\/$/, "");
+  if (vercelUrl) return `https://${vercelUrl}`;
+
+  return "https://hisabkaro.app";
+}
+
 export const siteConfig = {
   name: "HisabKaro",
   tagline: "Free Group Expense Splitter & Bill Sharing App",
   description:
     "HisabKaro is a free expense splitter app to track shared bills, split costs with friends and roommates, calculate group balances automatically, and settle up via UPI or cash. Supports USD & INR.",
-  url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://hisabkaro.app",
+  get url() {
+    return getSiteUrl();
+  },
   email: "support@hisabkaro.app",
   locale: "en_US",
   twitterHandle: "@hisabkaro",
@@ -65,7 +78,7 @@ export const seoKeywords = [
 ];
 
 export const publicRoutes = [
-  { path: "", changeFrequency: "weekly" as const, priority: 1 },
+  { path: "/", changeFrequency: "weekly" as const, priority: 1 },
   { path: "/blog", changeFrequency: "weekly" as const, priority: 0.85 },
   { path: "/about", changeFrequency: "monthly" as const, priority: 0.8 },
   { path: "/contact", changeFrequency: "monthly" as const, priority: 0.7 },

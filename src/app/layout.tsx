@@ -31,6 +31,9 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+  verification: {
+    google: 'IGFzh1aTQbGiWG5r0UW5ymvH1JKvqrFgxvgj__ubcy4',
+  },
   other: {
     'mobile-web-app-capable': 'yes',
   },
