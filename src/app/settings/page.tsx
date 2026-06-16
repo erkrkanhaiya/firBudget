@@ -8,7 +8,8 @@ import { AlertTriangle, Settings as SettingsIcon, Palette, DollarSign, Languages
 import { useUser } from '@/contexts/UserContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage, Language } from '@/contexts/LanguageContext';
-import { useCurrency, Currency } from '@/contexts/CurrencyContext';
+import { useCurrency } from '@/contexts/CurrencyContext';
+import type { Currency } from '@/types';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch'; // For theme toggle if desired here

@@ -27,6 +27,7 @@ import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useNotification } from '@/contexts/NotificationContext';
 import { extractExpenseDetails } from '@/ai/flows/extract-expense-details-flow';
+import { buildExpenseParticipants } from '@/lib/expense-utils';
 
 interface StoredExpenseData {
   groupId: string;
@@ -418,48 +419,27 @@ export default function AddExpensePage() {
         }
 
         const numericAmount = parseFloat(amount);
-        let expenseParticipants: ExpenseParticipant[];
+        const participantResult = buildExpenseParticipants(
+          numericAmount,
+          selectedParticipantIds,
+          splitEqually,
+          customSplitAmounts,
+          (userId) => group.members.find(m => m.id === userId)?.name ?? undefined
+        );
 
-        if (splitEqually) {
-        const share = numericAmount / selectedParticipantIds.length;
-        expenseParticipants = selectedParticipantIds.map(userId => ({
-            userId,
-            amountOwed: parseFloat(share.toFixed(2)),
-        }));
-        } else {
-        let currentTotalCustomSplit = 0;
-        expenseParticipants = [];
-
-        for (const userId of selectedParticipantIds) {
-            const customAmountStr = customSplitAmounts[userId];
-            if (customAmountStr === undefined || customAmountStr.trim() === '') {
-                toast({ title: "Custom Split Error", description: `Please enter an amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
-                setIsSubmitting(false);
-                return;
-            }
-            const customAmount = parseFloat(customAmountStr);
-            if (isNaN(customAmount) || customAmount < 0) {
-            toast({ title: "Invalid Amount", description: `Please enter a valid, non-negative amount for ${group.members.find(m=>m.id===userId)?.name}.`, variant: "destructive" });
-            setIsSubmitting(false);
-            return;
-            }
-            expenseParticipants.push({ userId, amountOwed: parseFloat(customAmount.toFixed(2)) });
-            currentTotalCustomSplit += customAmount;
-        }
-
-        currentTotalCustomSplit = parseFloat(currentTotalCustomSplit.toFixed(2));
-        const totalExpenseAmount = parseFloat(numericAmount.toFixed(2));
-
-        if (Math.abs(currentTotalCustomSplit - totalExpenseAmount) > 0.005) {
-            toast({
-            title: "Custom Split Mismatch",
-            description: `The sum of custom shares (${getCurrencySymbol()}${currentTotalCustomSplit.toFixed(2)}) must equal the total expense amount (${getCurrencySymbol()}${totalExpenseAmount.toFixed(2)}). Remaining: ${getCurrencySymbol()}${(totalExpenseAmount - currentTotalCustomSplit).toFixed(2)}`,
+        if ('error' in participantResult) {
+          toast({
+            title: splitEqually ? "Split Error" : "Custom Split Mismatch",
+            description: splitEqually
+              ? participantResult.error
+              : `${participantResult.error} Remaining: ${getCurrencySymbol()}${remainingToAllocate.toFixed(2)}`,
             variant: "destructive",
-            });
-            setIsSubmitting(false);
-            return;
+          });
+          setIsSubmitting(false);
+          return;
         }
-        }
+
+        const expenseParticipants = participantResult.participants;
 
         const actor = group.members.find(u => u.id === paidByUserId) || currentUser;
         

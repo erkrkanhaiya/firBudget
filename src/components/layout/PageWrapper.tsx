@@ -11,14 +11,15 @@ interface PageWrapperProps {
 }
 
 const AUTH_ROUTES = ['/login', '/signup'];
-const PUBLIC_LANDING_ROUTES = ['/', '/about', '/contact']; // Added new public routes
+const PUBLIC_LANDING_ROUTES = ['/', '/about', '/contact'];
 
 export function PageWrapper({ children }: PageWrapperProps) {
   const pathname = usePathname();
   const isAuthRoute = AUTH_ROUTES.includes(pathname);
-  const isPublicLandingRoute = PUBLIC_LANDING_ROUTES.includes(pathname);
+  const isPublicLandingRoute =
+    PUBLIC_LANDING_ROUTES.includes(pathname) || pathname.startsWith('/blog');
 
-  if (isAuthRoute || isPublicLandingRoute) { // If it's an auth route OR a public landing route
+  if (isAuthRoute || isPublicLandingRoute) {
     return (
       <>
         {children}

@@ -117,7 +117,6 @@ export interface ActivityLog {
   actorName?: string | null;
   actorAvatarUrl?: string | null;
   groupName?: string;
-  groupId?: string;
 }
 
 export interface Balance {

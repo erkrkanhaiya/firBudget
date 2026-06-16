@@ -8,11 +8,32 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { PageWrapper } from '@/components/layout/PageWrapper';
+import { buildPageMetadata, siteConfig } from '@/lib/seo';
 
 export const metadata: Metadata = {
-  title: 'HisabKaro - Smart Expense Sharing',
-  description: 'Effortlessly manage shared expenses with friends and groups.',
-  manifest: '/manifest.json', // Link to the manifest file
+  ...buildPageMetadata({
+    title: `${siteConfig.name} — ${siteConfig.tagline}`,
+    description: siteConfig.description,
+    path: '',
+  }),
+  manifest: '/manifest.json',
+  title: {
+    default: `${siteConfig.name} — ${siteConfig.tagline}`,
+    template: `%s | ${siteConfig.name}`,
+  },
+  metadataBase: new URL(siteConfig.url),
+  applicationName: siteConfig.name,
+  appleWebApp: {
+    capable: true,
+    title: siteConfig.name,
+    statusBarStyle: 'default',
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
 };
 
 export default function RootLayout({

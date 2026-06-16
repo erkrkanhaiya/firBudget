@@ -69,7 +69,7 @@ const ClientFormattedDate: React.FC<ClientFormattedDateProps> = ({ timestamp, fo
 
 interface EnrichedActivityLog extends ActivityLog {
   groupName?: string;
-  actorName?: string;
+  actorName?: string | null;
   actorAvatarUrl?: string | null;
 }
 
@@ -150,7 +150,7 @@ export default function DashboardPage() {
           return;
         }
 
-        let fetchedLogs: EnrichedActivityLog[] = [];
+        const fetchedLogs: EnrichedActivityLog[] = [];
         let calculatedNetBalance = 0;
 
         const groupDataPromises = userGroupIds.map(async (groupId) => {
@@ -167,9 +167,9 @@ export default function DashboardPage() {
               ...logData,
               timestamp: (logData.timestamp instanceof Timestamp ? logData.timestamp.toDate().toISOString() : logData.timestamp as string),
               groupName: group?.name,
-              actorName: actor?.name,
-              actorAvatarUrl: actor?.avatarUrl,
-              groupId: group?.id
+              actorName: actor?.name ?? undefined,
+              actorAvatarUrl: actor?.avatarUrl ?? undefined,
+              groupId,
             });
           });
 
@@ -535,7 +535,7 @@ export default function DashboardPage() {
               <Card key={log.id}>
                 <CardContent className="p-4 flex items-start space-x-4">
                   <Avatar className="h-10 w-10 border mt-1">
-                    <AvatarImage src={log.actorAvatarUrl || undefined} alt={log.actorName} />
+                    <AvatarImage src={log.actorAvatarUrl || undefined} alt={log.actorName ?? undefined} />
                     <AvatarFallback>{getInitials(log.actorName)}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">

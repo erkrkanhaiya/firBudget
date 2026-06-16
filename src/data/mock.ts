@@ -24,6 +24,7 @@ export const mockGroups: Group[] = [
     dataAiHint: 'europe travel',
     ownerId: 'user1',
     members: [mockUsers[0], mockUsers[1], mockUsers[2]],
+    memberIds: ['user1', 'user2', 'user3'],
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days ago
     visibility: 'public',
   },
@@ -35,6 +36,7 @@ export const mockGroups: Group[] = [
     dataAiHint: 'apartment living',
     ownerId: 'user2',
     members: [mockUsers[0], mockUsers[1], mockUsers[3]],
+    memberIds: ['user1', 'user2', 'user4'],
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(), // 30 days ago
     visibility: 'private',
   },
@@ -44,6 +46,7 @@ export const mockGroups: Group[] = [
     description: 'Quick trip to the mountains.',
     ownerId: 'user1',
     members: [mockUsers[0], mockUsers[3]],
+    memberIds: ['user1', 'user4'],
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
     visibility: 'private',
   },

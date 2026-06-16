@@ -1,6 +1,5 @@
 
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
 
 // This middleware is currently conceptual and doesn't enforce strict auth checks
 // because Firebase client-side auth is handled differently.
@@ -9,9 +8,7 @@ import type { NextRequest } from 'next/server';
 // const PROTECTED_ROUTES = ['/dashboard', '/groups', '/profile', '/expenses', '/activity'];
 // const AUTH_ROUTES = ['/login', '/signup']; 
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  
+export function middleware() {
   // Client-side UserContext and Firebase onAuthStateChanged will handle most redirect logic
   // based on authentication state. This middleware can be kept simple or used for other purposes
   // like localization redirects or A/B testing in a more advanced setup.

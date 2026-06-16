@@ -113,3 +113,81 @@ body {
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+@layer utilities {
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-12px); }
+  }
+
+  @keyframes float-slow {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-8px) rotate(1deg); }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.05); }
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% center; }
+    100% { background-position: -200% center; }
+  }
+
+  @keyframes orbit {
+    from { transform: rotate(0deg) translateX(140px) rotate(0deg); }
+    to { transform: rotate(360deg) translateX(140px) rotate(-360deg); }
+  }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes gradient-shift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  .animate-float { animation: float 5s ease-in-out infinite; }
+  .animate-float-slow { animation: float-slow 7s ease-in-out infinite; }
+  .animate-pulse-glow { animation: pulse-glow 4s ease-in-out infinite; }
+  .animate-shimmer {
+    background-size: 200% auto;
+    animation: shimmer 4s linear infinite;
+  }
+  .animate-gradient-shift {
+    background-size: 200% 200%;
+    animation: gradient-shift 6s ease infinite;
+  }
+  .animate-fade-up { animation: fade-up 0.7s ease-out forwards; }
+  .animate-scale-in { animation: scale-in 0.8s ease-out forwards; }
+
+  .animation-delay-100 { animation-delay: 100ms; }
+  .animation-delay-200 { animation-delay: 200ms; }
+  .animation-delay-300 { animation-delay: 300ms; }
+  .animation-delay-400 { animation-delay: 400ms; }
+  .animation-delay-500 { animation-delay: 500ms; }
+  .animation-delay-700 { animation-delay: 700ms; }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+  }
+  .reveal-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent;
+    background-size: 200% auto;
+  }
+}

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" role="img" aria-label="HisabKaro Blog - expense splitting tips and guides">
+  <defs>
+    <linearGradient id="hero-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#eef5fc"/>
+      <stop offset="100%" stop-color="#d6e8f8"/>
+    </linearGradient>
+    <linearGradient id="hero-accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#438cd9"/>
+      <stop offset="100%" stop-color="#4db3eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="400" fill="url(#hero-bg)"/>
+  <circle cx="1050" cy="80" r="120" fill="#438cd9" opacity="0.08"/>
+  <circle cx="150" cy="320" r="90" fill="#4db3eb" opacity="0.1"/>
+  <g transform="translate(720, 70)">
+    <rect x="0" y="0" width="200" height="260" rx="16" fill="#fff" stroke="#c8ddf0" stroke-width="2"/>
+    <rect x="24" y="28" width="80" height="10" rx="5" fill="#438cd9" opacity="0.7"/>
+    <rect x="24" y="52" width="150" height="8" rx="4" fill="#cbd5e1"/>
+    <rect x="24" y="72" width="120" height="8" rx="4" fill="#cbd5e1"/>
+    <rect x="24" y="92" width="140" height="8" rx="4" fill="#cbd5e1"/>
+    <line x1="24" y1="120" x2="176" y2="120" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="6 4"/>
+    <rect x="24" y="200" width="152" height="36" rx="8" fill="url(#hero-accent)"/>
+    <text x="100" y="224" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif" font-size="16" font-weight="700">Split equally</text>
+  </g>
+  <g transform="translate(560, 120)">
+    <circle cx="40" cy="40" r="36" fill="#438cd9" opacity="0.15"/>
+    <circle cx="40" cy="32" r="14" fill="#438cd9"/>
+    <path d="M16 72 Q40 52 64 72" fill="#438cd9"/>
+    <circle cx="120" cy="40" r="36" fill="#4db3eb" opacity="0.15"/>
+    <circle cx="120" cy="32" r="14" fill="#4db3eb"/>
+    <path d="M96 72 Q120 52 144 72" fill="#4db3eb"/>
+    <circle cx="200" cy="40" r="36" fill="#438cd9" opacity="0.15"/>
+    <circle cx="200" cy="32" r="14" fill="#438cd9"/>
+    <path d="M176 72 Q200 52 224 72" fill="#438cd9"/>
+  </g>
+  <text x="80" y="130" fill="#1e293b" font-family="system-ui,sans-serif" font-size="22" font-weight="600" letter-spacing="2">HISABKARO BLOG</text>
+  <text x="80" y="190" fill="#1e293b" font-family="system-ui,sans-serif" font-size="44" font-weight="800">Split smarter.</text>
+  <text x="80" y="240" fill="#1e293b" font-family="system-ui,sans-serif" font-size="44" font-weight="800">Settle fairly.</text>
+  <text x="80" y="300" fill="#64748b" font-family="system-ui,sans-serif" font-size="20">Guides for friends, roommates, trips and UPI bill splits</text>
+</svg>

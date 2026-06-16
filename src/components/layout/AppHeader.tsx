@@ -19,7 +19,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/contexts/UserContext';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
-import React, {useEffect, useState} from 'react';
+import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useNotification } from '@/contexts/NotificationContext'; 
 import { formatDistanceToNow, parseISO } from 'date-fns';
@@ -37,14 +37,7 @@ export function AppHeader() {
   const { translate } = useLanguage();
   const router = useRouter();
   const { notifications, markAsRead, clearAllNotifications, unreadCount } = useNotification(); 
-  const [isWebShareSupported, setIsWebShareSupported] = useState(false);
 
-
-  useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.share) {
-      setIsWebShareSupported(true);
-    }
-  }, []);
 
   const handleLogout = async () => {
     await logout(); 

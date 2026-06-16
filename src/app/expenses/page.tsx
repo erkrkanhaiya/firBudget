@@ -83,7 +83,6 @@ export default function MyExpensesPage() {
         }
 
         // 2. For each group, fetch its expenses and filter if current user is involved
-        const allExpensesPromises: Promise<QuerySnapshot<Expense>>[] = [];
         const expenseQueries = userGroupIds.map(groupId => {
           const expensesColRef = collection(db, 'groups', groupId, 'expenses');
           return getDocs(query(expensesColRef));
@@ -91,7 +90,7 @@ export default function MyExpensesPage() {
         
         const groupExpenseSnapshots = await Promise.all(expenseQueries);
         
-        let fetchedExpenses: EnrichedExpense[] = [];
+        const fetchedExpenses: EnrichedExpense[] = [];
         groupExpenseSnapshots.forEach((snapshot, index) => {
           const groupId = userGroupIds[index];
           const group = groupsDataMap.get(groupId);
@@ -109,8 +108,8 @@ export default function MyExpensesPage() {
                 date: (expenseData.date instanceof Timestamp ? expenseData.date.toDate().toISOString() : expenseData.date as string),
                 createdAt: (expenseData.createdAt instanceof Timestamp ? expenseData.createdAt.toDate().toISOString() : new Date().toISOString()),
                 groupName: group?.name,
-                payerName: payer?.name,
-                payerAvatarUrl: payer?.avatarUrl,
+                payerName: payer?.name ?? undefined,
+                payerAvatarUrl: payer?.avatarUrl ?? undefined,
                 receiptUrl: expenseData.receiptUrl,
                 receiptFileName: expenseData.receiptFileName,
               });

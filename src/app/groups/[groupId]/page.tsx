@@ -74,7 +74,8 @@ import { cn } from '@/lib/utils';
 
 
 interface jsPDFWithAutoTable extends jsPDF {
-  autoTable: (options: any) => jsPDFWithAutoTable;
+  autoTable: (options: Record<string, unknown>) => jsPDFWithAutoTable;
+  lastAutoTable: { finalY: number };
 }
 
 const getInitials = (name: string | undefined | null) => {
@@ -547,7 +548,7 @@ export default function GroupDetailPage() {
 
 
   useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.share) {
+    if (typeof navigator !== "undefined" && 'share' in navigator) {
       setIsWebShareSupported(true);
     }
   }, []);
@@ -601,7 +602,7 @@ export default function GroupDetailPage() {
         styles: { fontSize: 10, cellPadding: 1.5 },
         columnStyles: { 0: { fontStyle: 'bold' } }
     });
-    yPos = doc.autoTable.previous.finalY + 8;
+    yPos = doc.lastAutoTable.finalY + 8;
 
 
     doc.setFontSize(12);
@@ -639,7 +640,7 @@ export default function GroupDetailPage() {
         styles: { fontSize: 9, cellPadding: 1.5 },
         margin: { top: yPos }
       });
-      yPos = doc.autoTable.previous.finalY + 8;
+      yPos = doc.lastAutoTable.finalY + 8;
     }
 
     if (firestoreExpenses.length > 0) {
@@ -665,7 +666,7 @@ export default function GroupDetailPage() {
         styles: { fontSize: 9, cellPadding: 1.5 },
         margin: { top: yPos }
       });
-      yPos = doc.autoTable.previous.finalY + 8;
+      yPos = doc.lastAutoTable.finalY + 8;
     } else {
       doc.setFontSize(10);
       doc.text("No expenses recorded for this group.", 14, yPos);
@@ -697,7 +698,7 @@ export default function GroupDetailPage() {
         styles: { fontSize: 9, cellPadding: 1.5 },
         margin: { top: yPos }
       });
-      yPos = doc.autoTable.previous.finalY + 8;
+      yPos = doc.lastAutoTable.finalY + 8;
     }
 
     if (balances.length > 0) {
@@ -728,7 +729,7 @@ export default function GroupDetailPage() {
         styles: { fontSize: 9, cellPadding: 1.5 },
         margin: { top: yPos }
       });
-      yPos = doc.autoTable.previous.finalY + 8;
+      yPos = doc.lastAutoTable.finalY + 8;
 
       let detailedOwesText = "";
       balances.forEach(balance => {
@@ -1049,7 +1050,7 @@ export default function GroupDetailPage() {
                     
                     <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         {group.visibility === 'public' ? ( <Badge variant="outline" className="py-0.5 px-1.5"><Eye className="h-3 w-3 mr-1"/>Public</Badge> ) : ( <Badge variant="secondary" className="py-0.5 px-1.5"><Lock className="h-3 w-3 mr-1"/>Private</Badge> )}
-                        <span className="flex items-center"><GroupCategoryIconRender className="h-3.5 w-3.5 mr-1" />{group.category?.charAt(0).toUpperCase() + group.category?.slice(1).toLowerCase() || 'Other'}</span>
+                        <span className="flex items-center"><GroupCategoryIconRender className="h-3.5 w-3.5 mr-1" />{group.category ? group.category.charAt(0).toUpperCase() + group.category.slice(1).toLowerCase() : 'Other'}</span>
                         <span>&bull;</span>
                         <span>Created: {format(parseISO(group.createdAt), "MMM d, yyyy")}</span>
                         <span>&bull;</span>
@@ -1139,9 +1140,16 @@ export default function GroupDetailPage() {
             <div className="flex-1 min-w-0"> 
               <TabsContent value="notes">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Group Notes</CardTitle>
-                    <CardDescription>Shared notes and information for this group.</CardDescription>
+                  <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+                    <div>
+                      <CardTitle>Group Notes</CardTitle>
+                      <CardDescription>Shared notes and information for this group.</CardDescription>
+                    </div>
+                    {isMember && (
+                      <Button onClick={() => handleOpenNoteDialog()} size="sm" variant="outline" className="shrink-0">
+                        <PlusCircle className="mr-2 h-4 w-4" /> Add Note
+                      </Button>
+                    )}
                   </CardHeader>
                   <CardContent>
                     {firestoreGroupNotes.length > 0 ? (
@@ -1173,7 +1181,14 @@ export default function GroupDetailPage() {
                         })}
                       </ul>
                     ) : (
-                      <p className="text-muted-foreground text-center py-6">No notes added yet for this group.</p>
+                      <div className="text-center py-6 space-y-3">
+                        <p className="text-muted-foreground">No notes added yet for this group.</p>
+                        {isMember && (
+                          <Button onClick={() => handleOpenNoteDialog()} size="sm" variant="outline">
+                            <PlusCircle className="mr-2 h-4 w-4" /> Add Note
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -1194,11 +1209,21 @@ export default function GroupDetailPage() {
                               <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar>
                               <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5"> <p className="font-medium truncate" title={expense.description}>{expense.description}</p>
-                                    {expense.receiptFileName && ( <Tooltip> <TooltipTrigger asChild> {expense.receiptUrl ? ( <Link href={expense.receiptUrl} target="_blank" rel="noopener noreferrer" aria-label={`View receipt for ${expense.description}`}> <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0"> <Paperclip className="h-4 w-4" /> </Button> </Link> ) : ( <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/50 hover:text-primary shrink-0 cursor-not-allowed" disabled> <Paperclip className="h-4 w-4" /> </Button> )} </TooltipTrigger> <TooltipContent> <p> {expense.receiptUrl ? "View Receipt: " : "Receipt: "} {expense.receiptFileName} </p> {!expense.receiptUrl && <p className="text-xs">(Offline, not uploaded)</p>} </TooltipContent> </Tooltip> )}
+                                    {expense.receiptFileName && ( <Tooltip> <TooltipTrigger asChild>{expense.receiptUrl ? ( <Link href={expense.receiptUrl} target="_blank" rel="noopener noreferrer" aria-label={`View receipt for ${expense.description}`} className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-6 w-6 text-muted-foreground hover:text-primary shrink-0")}><Paperclip className="h-4 w-4" /></Link> ) : ( <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/50 hover:text-primary shrink-0 cursor-not-allowed" disabled><Paperclip className="h-4 w-4" /></Button> )}</TooltipTrigger> <TooltipContent> <p> {expense.receiptUrl ? "View Receipt: " : "Receipt: "} {expense.receiptFileName} </p> {!expense.receiptUrl && <p className="text-xs">(Offline, not uploaded)</p>} </TooltipContent> </Tooltip> )}
                                   </div> <p className="text-sm text-muted-foreground"> Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")} </p>
                               </div>
                             </div>
-                            <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{currencySymbol}{expense.amount.toFixed(2)}</p> {isMember && currentUserShare && ( <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {currencySymbol}{currentUserShare.amountOwed.toFixed(2)}</p> )} </div>
+                            <div className="text-left sm:text-right sm:ml-2 shrink-0 flex flex-col items-end gap-1.5">
+                              <p className="text-md font-semibold">{currencySymbol}{expense.amount.toFixed(2)}</p>
+                              {isMember && currentUserShare && (
+                                <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {currencySymbol}{currentUserShare.amountOwed.toFixed(2)}</p>
+                              )}
+                              {isMember && (
+                                <Link href={`/groups/${groupId}/edit-expense/${expense.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 px-2 text-xs inline-flex items-center")}>
+                                  <Edit className="mr-1 h-3 w-3" />Edit
+                                </Link>
+                              )}
+                            </div>
                           </li> )})}
                       </ul>
                     ) : ( <p className="text-muted-foreground text-center py-6">No expenses recorded yet in Firestore for this group.</p> )}
@@ -1209,21 +1234,21 @@ export default function GroupDetailPage() {
               <TabsContent value="contributions">
                 <Card>
                   <CardHeader> <CardTitle>Fund Contributions</CardTitle> <CardDescription>All funds contributed by members to this group's pool.</CardDescription> </CardHeader>
-                  <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-3"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && <span className="italic">- "{contribution.description}"</span>} </p> </div> </div> <div className="text-right ml-2 shrink-0"> <p className="text-md font-semibold text-green-600 dark:text-green-400"> +{currencySymbol}{contribution.amount.toFixed(2)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No contributions recorded yet for this group.</p> )} </CardContent>
+                  <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-3"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name ?? undefined} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && <span className="italic">- "{contribution.description}"</span>} </p> </div> </div> <div className="text-right ml-2 shrink-0"> <p className="text-md font-semibold text-green-600 dark:text-green-400"> +{currencySymbol}{contribution.amount.toFixed(2)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No contributions recorded yet for this group.</p> )} </CardContent>
                 </Card>
               </TabsContent>
 
               <TabsContent value="payments">
                 <Card>
                   <CardHeader> <CardTitle>Payment History</CardTitle> <CardDescription>All settlement payments recorded in this group from Firestore.</CardDescription> </CardHeader>
-                  <CardContent> {firestorePayments.length > 0 ? ( <ul className="space-y-3"> {firestorePayments.map(payment => { const payer = memberDetailsMap.get(payment.paidByUserId); const payee = memberDetailsMap.get(payment.paidToUserId); return ( <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3 mb-1.5 sm:mb-0 flex-1 min-w-0"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name}/> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar> <div className="flex-1 min-w-0"> <p className="font-medium truncate"> {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)} </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method.replace("_", " ")} </p> {payment.notes && <p className="text-xs text-muted-foreground italic mt-0.5">Note: {payment.notes}</p>} </div> </div> <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{currencySymbol}{payment.amount.toFixed(2)}</p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No payments recorded yet in Firestore for this group.</p> )} </CardContent>
+                  <CardContent> {firestorePayments.length > 0 ? ( <ul className="space-y-3"> {firestorePayments.map(payment => { const payer = memberDetailsMap.get(payment.paidByUserId); const payee = memberDetailsMap.get(payment.paidToUserId); return ( <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3 mb-1.5 sm:mb-0 flex-1 min-w-0"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name ?? undefined}/> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar> <div className="flex-1 min-w-0"> <p className="font-medium truncate"> {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)} </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method.replace("_", " ")} </p> {payment.notes && <p className="text-xs text-muted-foreground italic mt-0.5">Note: {payment.notes}</p>} </div> </div> <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{currencySymbol}{payment.amount.toFixed(2)}</p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No payments recorded yet in Firestore for this group.</p> )} </CardContent>
                 </Card>
               </TabsContent>
 
               <TabsContent value="balances">
                 <Card>
                   <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription> </CardHeader>
-                  <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3.5 border rounded-lg"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-9 w-9"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-3 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-1.5 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Button asChild size="xs" variant="outline" className="px-2 py-0.5 h-auto text-xs"> <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}> <span><DollarSignIcon className="mr-1 h-2.5 w-2.5" /> Settle</span> </Link> </Button> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-3 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
+                  <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3.5 border rounded-lg"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-9 w-9"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-3 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-1.5 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "px-2 py-0.5 h-auto text-xs inline-flex items-center")}><DollarSignIcon className="mr-1 h-2.5 w-2.5" />Settle</Link> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-3 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
                 </Card>
               </TabsContent>
 

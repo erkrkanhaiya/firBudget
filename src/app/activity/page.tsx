@@ -79,7 +79,7 @@ const ClientFormattedDate: React.FC<ClientFormattedDateProps> = ({ timestamp, fo
 
 interface EnrichedActivityLog extends ActivityLog {
   groupName?: string;
-  actorName?: string;
+  actorName?: string | null;
   actorAvatarUrl?: string | null;
 }
 
@@ -134,7 +134,7 @@ export default function ActivityFeedPage() {
 
         const groupActivityLogSnapshots = await Promise.all(activityLogQueries);
         
-        let fetchedLogs: EnrichedActivityLog[] = [];
+        const fetchedLogs: EnrichedActivityLog[] = [];
         groupActivityLogSnapshots.forEach((snapshot, index) => {
           const groupId = userGroupIds[index];
           const group = groupsDataMap.get(groupId);
@@ -163,6 +163,7 @@ export default function ActivityFeedPage() {
             fetchedLogs.push({
               id: docSnap.id,
               ...logData,
+              groupId,
               timestamp: safeParseDateActivity(logData.timestamp, `activityLog[${docSnap.id}].timestamp`),
               groupName: group?.name,
               actorName: resolvedActorName || 'Unknown User', 
@@ -253,7 +254,7 @@ export default function ActivityFeedPage() {
                 return (
                   <li key={log.id} className="flex items-start gap-4 p-4 hover:bg-muted/50">
                     <Avatar className="h-10 w-10 mt-1 border">
-                      <AvatarImage src={log.actorAvatarUrl || undefined} alt={log.actorName} />
+                      <AvatarImage src={log.actorAvatarUrl || undefined} alt={log.actorName ?? undefined} />
                       <AvatarFallback>{getInitials(log.actorName)}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
