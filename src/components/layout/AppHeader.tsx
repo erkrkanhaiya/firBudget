@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import React from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useNotification } from '@/contexts/NotificationContext'; 
+import { PwaInstallButton } from '@/components/pwa/PwaInstallButton';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import type { NotificationType as CustomNotificationType } from '@/types'; 
 
@@ -74,6 +75,7 @@ export function AppHeader() {
          <AppLogo iconSize={24} textSize="text-xl" />
       </div>
       <div className="flex w-full items-center justify-end gap-1 sm:gap-2">
+        <PwaInstallButton variant="ghost" size="sm" className="hidden sm:inline-flex" label="Download" />
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

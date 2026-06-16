@@ -1,8 +1,9 @@
-
 {
   "name": "HisabKaro - Smart Expense Sharing",
   "short_name": "HisabKaro",
   "description": "Effortlessly manage shared expenses with friends and groups.",
+  "id": "/",
+  "scope": "/",
   "icons": [
     {
       "src": "/icons/icon-192x192.png",

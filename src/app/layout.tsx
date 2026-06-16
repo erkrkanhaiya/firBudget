@@ -8,6 +8,7 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { CurrencyProvider } from '@/contexts/CurrencyContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { PageWrapper } from '@/components/layout/PageWrapper';
+import { PwaServiceWorkerRegistrar } from '@/components/pwa/PwaServiceWorkerRegistrar';
 import { buildPageMetadata, siteConfig } from '@/lib/seo';
 
 export const metadata: Metadata = {
@@ -54,6 +55,7 @@ export default function RootLayout({
         <link rel="icon" href="/icons/favicon.ico" /> 
         </head>
       <body className={`${GeistSans.variable} font-sans antialiased`}>
+        <PwaServiceWorkerRegistrar />
         <ThemeProvider>
           <UserProvider>
             <LanguageProvider>

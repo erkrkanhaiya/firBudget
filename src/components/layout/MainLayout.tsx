@@ -8,15 +8,7 @@ import { AppSidebar } from './AppSidebar';
 import { Toaster } from "@/components/ui/toaster";
 import React, { useState, useEffect, useCallback } from 'react';
 import { InstallAppBanner } from './InstallAppBanner';
-
-interface BeforeInstallPromptEvent extends Event {
-  readonly platforms: Array<string>;
-  readonly userChoice: Promise<{
-    outcome: 'accepted' | 'dismissed';
-    platform: string;
-  }>;
-  prompt(): Promise<void>;
-}
+import { usePwaInstall } from '@/hooks/use-pwa-install';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -25,48 +17,27 @@ interface MainLayoutProps {
 const INSTALL_BANNER_SESSION_KEY = 'HisabKaro-install-banner-interacted';
 
 export function MainLayout({ children }: MainLayoutProps) {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const { canInstall, hasNativePrompt, install } = usePwaInstall();
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const event = e as BeforeInstallPromptEvent;
-      // Prevent the mini-infobar from appearing on mobile
-      event.preventDefault();
-      // Stash the event so it can be triggered later.
-      setDeferredPrompt(event);
+    if (!canInstall || !hasNativePrompt) return;
 
-      // Check if banner was already interacted with this session
-      const alreadyInteracted = sessionStorage.getItem(INSTALL_BANNER_SESSION_KEY);
-      if (!alreadyInteracted) {
-        // Show the banner after a delay
-        const timer = setTimeout(() => {
-          setShowInstallBanner(true);
-        }, 10000); // 10 seconds delay
-        return () => clearTimeout(timer);
-      }
-    };
+    const alreadyInteracted = sessionStorage.getItem(INSTALL_BANNER_SESSION_KEY);
+    if (alreadyInteracted) return;
 
-    window.addEventListener('beforeinstallprompt', handler);
+    const timer = setTimeout(() => {
+      setShowInstallBanner(true);
+    }, 10000);
 
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handler);
-    };
-  }, []);
+    return () => clearTimeout(timer);
+  }, [canInstall, hasNativePrompt]);
 
   const handleInstallClick = useCallback(async () => {
-    if (!deferredPrompt) {
-      return;
-    }
-    // Show the install prompt
-    deferredPrompt.prompt();
-    // Wait for the user to respond to the prompt
-    await deferredPrompt.userChoice;
-    // We've used the prompt, and can't use it again, discard it
-    setDeferredPrompt(null);
+    await install();
     setShowInstallBanner(false);
     sessionStorage.setItem(INSTALL_BANNER_SESSION_KEY, 'true');
-  }, [deferredPrompt]);
+  }, [install]);
 
   const handleDismissInstallBanner = useCallback(() => {
     setShowInstallBanner(false);
@@ -82,7 +53,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           {children}
         </main>
         <Toaster />
-        {showInstallBanner && deferredPrompt && (
+        {showInstallBanner && hasNativePrompt && (
           <InstallAppBanner
             onInstall={handleInstallClick}
             onDismiss={handleDismissInstallBanner}

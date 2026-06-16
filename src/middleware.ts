@@ -33,6 +33,6 @@ export const config = {
      * - manifest.json (PWA manifest)
      * - icons/ (PWA icons)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|icons/).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons/).*)',
   ],
 };

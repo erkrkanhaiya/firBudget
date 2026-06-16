@@ -15,9 +15,11 @@ import {
   Users,
   Wallet,
   Zap,
+  Download,
 } from "lucide-react";
 import { AppLogo } from "@/components/AppLogo";
 import { RevealOnScroll } from "@/components/landing/RevealOnScroll";
+import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
 import { faqItems } from "@/lib/seo";
 
 const features = [
@@ -129,6 +131,7 @@ export function LandingHome() {
             </Link>
           </nav>
           <div className="flex items-center gap-2 sm:gap-3">
+            <PwaInstallButton variant="outline" size="sm" className="hidden md:inline-flex" />
             <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
               <Link href="/login">Log in</Link>
             </Button>
@@ -192,6 +195,12 @@ export function LandingHome() {
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
+              <PwaInstallButton
+                variant="outline"
+                size="lg"
+                className="h-12 px-8 text-base transition-transform hover:scale-[1.02]"
+                label="Download app"
+              />
               <Button asChild variant="outline" size="lg" className="h-12 px-8 text-base transition-transform hover:scale-[1.02]">
                 <Link href="/login">Sign in</Link>
               </Button>
@@ -390,6 +399,29 @@ export function LandingHome() {
                 </div>
               </RevealOnScroll>
             </div>
+          </div>
+        </section>
+
+        {/* Download app */}
+        <section className="border-y bg-muted/30 py-16 md:py-20" aria-labelledby="download-heading">
+          <div className="container mx-auto max-w-6xl px-4 md:px-6">
+            <RevealOnScroll>
+              <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+                  <Download className="h-7 w-7 text-primary" aria-hidden="true" />
+                </div>
+                <h2 id="download-heading" className="text-3xl font-bold tracking-tight sm:text-4xl">
+                  Install HisabKaro on your phone
+                </h2>
+                <p className="mt-4 text-muted-foreground">
+                  Download the PWA and open HisabKaro from your home screen anytime — no app store needed.
+                  Works on Android, iPhone, and desktop.
+                </p>
+                <div className="mt-8">
+                  <PwaInstallButton variant="default" size="lg" className="h-12 px-8" label="Download app" />
+                </div>
+              </div>
+            </RevealOnScroll>
           </div>
         </section>
 
