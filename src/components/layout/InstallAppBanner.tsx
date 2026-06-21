@@ -11,20 +11,20 @@ interface InstallAppBannerProps {
 
 export function InstallAppBanner({ onInstall, onDismiss }: InstallAppBannerProps) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-background border-t border-border shadow-lg print:hidden">
-      <div className="container mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div className="fixed inset-x-0 bottom-[4.25rem] z-40 border-t border-border/60 bg-background/95 p-4 shadow-soft-lg backdrop-blur-xl md:bottom-0 print:hidden pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
         <div className="text-center sm:text-left">
-          <p className="font-semibold text-lg">Install BillBuddy</p>
+          <p className="text-lg font-semibold">Install BillBuddy</p>
           <p className="text-sm text-muted-foreground">
-            Add our app to your home screen for a quick and easy access!
+            Add to your home screen for quick access anytime.
           </p>
         </div>
-        <div className="flex gap-2 shrink-0">
-          <Button onClick={onInstall} size="sm">
+        <div className="flex shrink-0 gap-2">
+          <Button onClick={onInstall} size="sm" className="rounded-xl">
             <DownloadCloud className="mr-2 h-4 w-4" />
             Install
           </Button>
-          <Button variant="outline" onClick={onDismiss} size="sm">
+          <Button variant="outline" onClick={onDismiss} size="sm" className="rounded-xl">
             <X className="mr-2 h-4 w-4" />
             Not now
           </Button>

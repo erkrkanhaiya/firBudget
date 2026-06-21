@@ -42,7 +42,7 @@ interface OverallBalancesData {
 
 export default function BalancesPage() {
   const { currentUser } = useUser();
-  const { getCurrencySymbol } = useCurrency();
+  const { formatCurrency } = useCurrency();
   const [isLoading, setIsLoading] = useState(true);
   const [balancesData, setBalancesData] = useState<OverallBalancesData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -213,8 +213,6 @@ export default function BalancesPage() {
     );
   }
   
-  const currencySymbol = getCurrencySymbol();
-
   return (
     <div className="space-y-8">
       <div>
@@ -261,7 +259,7 @@ export default function BalancesPage() {
                 <CardHeader className="pb-2">
                   <CardDescription className="text-green-700 dark:text-green-400">Total You Are Owed</CardDescription>
                   <CardTitle className="text-3xl text-green-600 dark:text-green-300">
-                    {currencySymbol}{balancesData.totalOwedToUser.toFixed(2)}
+                    {formatCurrency(balancesData.totalOwedToUser)}
                   </CardTitle>
                 </CardHeader>
               </Card>
@@ -269,7 +267,7 @@ export default function BalancesPage() {
                 <CardHeader className="pb-2">
                   <CardDescription className="text-red-700 dark:text-red-400">Total You Owe</CardDescription>
                   <CardTitle className="text-3xl text-red-600 dark:text-red-300">
-                    {currencySymbol}{balancesData.totalUserOwes.toFixed(2)}
+                    {formatCurrency(balancesData.totalUserOwes)}
                   </CardTitle>
                 </CardHeader>
               </Card>
@@ -277,7 +275,7 @@ export default function BalancesPage() {
                 <CardHeader className="pb-2">
                   <CardDescription className={`${balancesData.netOverallBalance >=0 ? 'text-blue-700 dark:text-blue-400' : 'text-orange-700 dark:text-orange-400'}`}>Net Overall Balance</CardDescription>
                   <CardTitle className={`text-3xl ${balancesData.netOverallBalance >=0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}>
-                    {currencySymbol}{balancesData.netOverallBalance.toFixed(2)}
+                    {formatCurrency(balancesData.netOverallBalance)}
                     <span className="text-sm ml-1">{balancesData.netOverallBalance >= 0 ? "(You are owed)" : "(You owe)"}</span>
                   </CardTitle>
                 </CardHeader>
@@ -306,7 +304,7 @@ export default function BalancesPage() {
                         <span className="font-medium">{debtor.userName}</span>
                       </div>
                       <span className="font-semibold text-green-600 dark:text-green-400">
-                        Owes you: {currencySymbol}{debtor.amount.toFixed(2)}
+                        Owes you: {formatCurrency(debtor.amount)}
                       </span>
                     </li>
                   ))}
@@ -336,7 +334,7 @@ export default function BalancesPage() {
                         <span className="font-medium">{creditor.userName}</span>
                       </div>
                       <span className="font-semibold text-red-600 dark:text-red-400">
-                        You owe: {currencySymbol}{Math.abs(creditor.amount).toFixed(2)}
+                        You owe: {formatCurrency(Math.abs(creditor.amount))}
                       </span>
                     </li>
                   ))}

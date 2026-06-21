@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AppHeader } from './AppHeader';
 import { AppSidebar } from './AppSidebar';
+import { MobileBottomNav } from './MobileBottomNav';
 import { Toaster } from "@/components/ui/toaster";
 import React, { useState, useEffect, useCallback } from 'react';
 import { InstallAppBanner } from './InstallAppBanner';
@@ -47,11 +48,12 @@ export function MainLayout({ children }: MainLayoutProps) {
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="min-h-svh bg-background">
         <AppHeader />
-        <main className="flex-1 p-4 md:p-6 lg:p-8">
+        <main className="page-container flex-1 px-4 py-5 md:px-6 md:py-8 lg:px-8 safe-bottom">
           {children}
         </main>
+        <MobileBottomNav />
         <Toaster />
         {showInstallBanner && hasNativePrompt && (
           <InstallAppBanner

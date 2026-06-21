@@ -134,7 +134,7 @@ export default function SettleUpPage() {
   const { toast } = useToast();
   const { addNotification } = useNotification();
   const groupId = params.groupId as string;
-  const { getCurrencySymbol } = useCurrency();
+  const { getCurrencySymbol, formatCurrency } = useCurrency();
 
   const [group, setGroup] = useState<Group | null>(null);
   const [balances, setBalances] = useState<Balance[]>([]);
@@ -341,7 +341,7 @@ export default function SettleUpPage() {
       groupId,
       userId: payerId, 
       actionType: 'payment_recorded',
-      description: `${payerUser.name || 'User'} paid ${getCurrencySymbol()}${numericAmount.toFixed(2)} to ${payeeUser.name || 'User'} via ${paymentMethod}. ${notes.trim() ? `Notes: ${notes.trim()}` : ''}`,
+      description: `${payerUser.name || 'User'} paid ${formatCurrency(numericAmount)} to ${payeeUser.name || 'User'} via ${paymentMethod}. ${notes.trim() ? `Notes: ${notes.trim()}` : ''}`,
       relatedPaymentId: '', 
       actorName: payerUser.name,
     };
@@ -362,7 +362,7 @@ export default function SettleUpPage() {
 
       toast({
         title: "Payment Recorded!",
-        description: `Payment of ${getCurrencySymbol()}${numericAmount.toFixed(2)} from ${payerUser.name} to ${payeeUser.name} has been saved to Firestore.`,
+        description: `Payment of ${formatCurrency(numericAmount)} from ${payerUser.name} to ${payeeUser.name} has been saved to Firestore.`,
       });
       addNotification({
           title: "Payment Recorded",
@@ -514,7 +514,7 @@ export default function SettleUpPage() {
             </div>
             {payeeId && parseFloat(amount) > 0 && group.members.find(m => m.id === payerId) && group.members.find(m => m.id === payeeId) && (
               <p className="text-sm text-muted-foreground">
-                You are about to record a payment of <span className="font-semibold">{getCurrencySymbol()}{(parseFloat(amount) || 0).toFixed(2)}</span> from <span className="font-semibold">{group.members.find(m => m.id === payerId)?.name || 'Payer'}</span> to <span className="font-semibold">{group.members.find(m => m.id === payeeId)?.name || 'Payee'}</span>.
+                You are about to record a payment of <span className="font-semibold">{formatCurrency(parseFloat(amount) || 0)}</span> from <span className="font-semibold">{group.members.find(m => m.id === payerId)?.name || 'Payer'}</span> to <span className="font-semibold">{group.members.find(m => m.id === payeeId)?.name || 'Payee'}</span>.
               </p>
             )}
           </CardContent>

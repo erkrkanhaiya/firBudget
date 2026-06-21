@@ -36,7 +36,7 @@ interface EnrichedExpense extends Expense {
 
 export default function MyExpensesPage() {
   const { currentUser } = useUser();
-  const { getCurrencySymbol } = useCurrency();
+  const { formatCurrency } = useCurrency();
   const [isLoading, setIsLoading] = useState(true);
   const [userInvolvedExpenses, setUserInvolvedExpenses] = useState<EnrichedExpense[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -232,11 +232,10 @@ export default function MyExpensesPage() {
                     </div>
                     <div className="text-right">
                        <div className="text-xl font-bold flex items-center">
-                          <span className="mr-1 text-muted-foreground">{getCurrencySymbol()}</span>
-                          {expense.amount.toFixed(2)}
+                          {formatCurrency(expense.amount)}
                       </div>
                       {currentUserParticipantInfo && expense.paidByUserId !== currentUser!.id && (
-                          <Badge variant="outline" className="mt-1 text-xs">Your share: {getCurrencySymbol()}{currentUserParticipantInfo.amountOwed.toFixed(2)}</Badge>
+                          <Badge variant="outline" className="mt-1 text-xs">Your share: {formatCurrency(currentUserParticipantInfo.amountOwed)}</Badge>
                       )}
                       {expense.paidByUserId === currentUser!.id && expense.participants.length > 1 && (
                            <Badge variant="secondary" className="mt-1 text-xs">You paid</Badge>

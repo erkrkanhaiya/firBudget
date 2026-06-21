@@ -24,19 +24,13 @@ const applyThemeClass = (theme: Theme) => {
 };
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const [theme, setTheme] = useState<Theme>("light"); // Default, will be updated by useEffect
+  const [theme, setTheme] = useState<Theme>("dark");
   const [isThemeInitialized, setIsThemeInitialized] = useState(false);
 
   useEffect(() => {
     // This effect runs only on the client
     const storedTheme = localStorage.getItem("HisabKaro-theme") as Theme | null;
-    let initialTheme: Theme;
-
-    if (storedTheme) {
-      initialTheme = storedTheme;
-    } else {
-      initialTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    }
+    const initialTheme: Theme = storedTheme ?? "dark";
     
     setTheme(initialTheme);
     applyThemeClass(initialTheme);

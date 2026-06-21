@@ -1,6 +1,5 @@
-import { Coins } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image"; // Keep Image import if other parts of app use it, but AppLogo won't
+import Image from "next/image";
 
 interface AppLogoProps {
   className?: string;
@@ -14,16 +13,23 @@ export function AppLogo({
   textSize = "text-2xl",
 }: AppLogoProps) {
   return (
-    <Link href="/" className={`flex items-center gap-2 ${className}`}>
-      {/* Reverted to Coins icon */}
-      <Image
-        src="/icon-512x512.png"
-        width={45}
-        height={45}
-        alt="Picture of the author"
-      />
-      {/* <Coins className="text-primary" size={iconSize} /> */}
-      <h1 className={`font-bold ${textSize} text-primary`}>BillBuddy</h1>
+    <Link
+      href="/"
+      className={`group flex items-center gap-2.5 transition-opacity hover:opacity-90 ${className ?? ""}`}
+    >
+      <span className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm ring-1 ring-border/60 transition-transform duration-200 group-hover:scale-[1.02]">
+        <Image
+          src="/icon-512x512.png"
+          width={iconSize + 14}
+          height={iconSize + 14}
+          alt="BillBuddy"
+          className="rounded-xl"
+        />
+      </span>
+      <span className={`font-bold tracking-tight ${textSize}`}>
+        <span className="text-foreground">Bill</span>
+        <span className="text-primary">Buddy</span>
+      </span>
     </Link>
   );
 }

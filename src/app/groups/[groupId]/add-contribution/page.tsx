@@ -30,7 +30,7 @@ export default function AddContributionPage() {
   const { toast } = useToast();
   const { addNotification } = useNotification();
   const groupId = params.groupId as string;
-  const { getCurrencySymbol } = useCurrency();
+  const { getCurrencySymbol, formatCurrency } = useCurrency();
 
   const [group, setGroup] = useState<Group | null>(null);
   const [contributorId, setContributorId] = useState<string>('');
@@ -144,7 +144,7 @@ export default function AddContributionPage() {
       groupId,
       userId: contributorId,
       actionType: 'contribution_added',
-      description: `${contributorUser.name || 'User'} contributed ${getCurrencySymbol()}${numericAmount.toFixed(2)} to the group. ${description.trim() ? `(${description.trim()})` : ''}`,
+      description: `${contributorUser.name || 'User'} contributed ${formatCurrency(numericAmount)} to the group. ${description.trim() ? `(${description.trim()})` : ''}`,
       relatedContributionId: '',
       actorName: contributorUser.name, // Use contributor's name for the log
     };
@@ -166,7 +166,7 @@ export default function AddContributionPage() {
 
       addNotification({
           title: "Funds Contributed",
-          message: `${contributorUser.name} contributed ${getCurrencySymbol()}${numericAmount.toFixed(2)} to "${group.name}".`,
+          message: `${contributorUser.name} contributed ${formatCurrency(numericAmount)} to "${group.name}".`,
           type: "success",
           href: `/groups/${groupId}?tab=contributions`
       });

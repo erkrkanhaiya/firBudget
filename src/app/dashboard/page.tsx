@@ -78,7 +78,7 @@ const MAX_RECENT_ACTIVITIES = 3;
 export default function DashboardPage() {
   const { currentUser } = useUser();
   const { translate } = useLanguage();
-  const { getCurrencySymbol } = useCurrency();
+  const { getCurrencySymbol, formatCurrency } = useCurrency();
   const { toast } = useToast();
   const { addNotification } = useNotification();
 
@@ -340,27 +340,30 @@ export default function DashboardPage() {
   const currencySymbol = getCurrencySymbol();
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {isLoadingGroupsCount || !currentUser ? <Skeleton className="h-9 w-64" /> : translate({
-              en: `Welcome back, ${currentUser.name}!`,
-              hi: `वापस स्वागत है, ${currentUser.name}!`,
+    <div className="flex flex-col gap-6 md:gap-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+            {translate({ en: "Overview", hi: "अवलोकन" })}
+          </p>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            {isLoadingGroupsCount || !currentUser ? <Skeleton className="h-9 w-64 rounded-lg" /> : translate({
+              en: `Welcome back, ${currentUser.name?.split(' ')[0] || 'there'}!`,
+              hi: `वापस स्वागत है, ${currentUser.name?.split(' ')[0] || 'there'}!`,
             })}
           </h1>
-          <p className="text-muted-foreground">
+          <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
             {translate({
-              en: "Here's what's happening with your shared expenses.",
-              hi: "आपके साझा खर्चों के साथ क्या हो रहा है, यहाँ देखें।",
+              en: "Track shared expenses, balances, and recent activity at a glance.",
+              hi: "साझा खर्च, शेष राशि और हाल की गतिविधि एक नज़र में देखें।",
             })}
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           {currentUser && lastActiveGroup && (
             <Dialog open={isQuickAddDialogOpen} onOpenChange={setIsQuickAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="lg" className="w-full sm:w-auto" disabled={!lastActiveGroup}>
+                <Button variant="outline" size="lg" className="w-full rounded-xl sm:w-auto" disabled={!lastActiveGroup}>
                   <Zap className="mr-2 h-5 w-5 text-primary" /> 
                   Quick Add Expense
                 </Button>
@@ -421,7 +424,7 @@ export default function DashboardPage() {
               </DialogContent>
             </Dialog>
           )}
-          <Button asChild size="lg" disabled={!currentUser} className="w-full sm:w-auto">
+          <Button asChild size="lg" disabled={!currentUser} className="w-full rounded-xl shadow-glow sm:w-auto">
             <Link href="/groups/create">
               <PlusCircle className="mr-2 h-5 w-5" /> 
               {translate({ en: "Create New Group", hi: "नया समूह बनाएं" })}
@@ -430,13 +433,15 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
+      <div className="grid gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+        <Card className="card-premium overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               {translate({ en: "Your Groups", hi: "आपके समूह" })}
             </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+              <Users className="h-4 w-4 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
             {isLoadingGroupsCount ? <Skeleton className="h-8 w-12 mb-1" /> : <div className="text-2xl font-bold">{userGroupsCount ?? 0}</div>}
@@ -445,7 +450,7 @@ export default function DashboardPage() {
             </p>
           </CardContent>
           <CardFooter>
-            <Button asChild variant="outline" size="sm" className="w-full" disabled={!currentUser}>
+            <Button asChild variant="outline" size="sm" className="w-full rounded-xl" disabled={!currentUser}>
               <Link href="/groups">
                 {translate({ en: "View All Groups", hi: "सभी समूह देखें" })} <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -453,20 +458,21 @@ export default function DashboardPage() {
           </CardFooter>
         </Card>
         
-        <Card>
+        <Card className="card-premium overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
                  {translate({ en: "Overall Owed (Summary)", hi: "कुल बकाया (सारांश)" })}
             </CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10">
+              <BarChart3 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
           </CardHeader>
           <CardContent>
             {isLoadingOverallBalances ? (
               <Skeleton className="h-8 w-20 mb-1" />
             ) : (
               <div className={`text-2xl font-bold ${netOverallBalance !== null && netOverallBalance > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
-                {currencySymbol}
-                {netOverallBalance !== null && netOverallBalance > 0 ? netOverallBalance.toFixed(2) : '0.00'}
+                {formatCurrency(netOverallBalance !== null && netOverallBalance > 0 ? netOverallBalance : 0)}
               </div>
             )}
             <p className="text-xs text-muted-foreground">
@@ -474,7 +480,7 @@ export default function DashboardPage() {
             </p>
           </CardContent>
            <CardFooter>
-            <Button asChild variant="outline" size="sm" className="w-full" disabled={!currentUser}>
+            <Button asChild variant="outline" size="sm" className="w-full rounded-xl" disabled={!currentUser}>
               <Link href="/balances"> 
                 {translate({ en: "View Balances", hi: "शेष राशि देखें" })} <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -482,20 +488,21 @@ export default function DashboardPage() {
           </CardFooter>
         </Card>
 
-        <Card>
+        <Card className="card-premium overflow-hidden sm:col-span-2 lg:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               {translate({ en: "Pending Debts (Summary)", hi: "लंबित ऋण (सारांश)" })}
             </CardTitle>
-            <ListChecks className="h-4 w-4 text-muted-foreground" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10">
+              <ListChecks className="h-4 w-4 text-red-600 dark:text-red-400" />
+            </div>
           </CardHeader>
           <CardContent>
             {isLoadingOverallBalances ? (
                 <Skeleton className="h-8 w-20 mb-1" />
             ) : (
                 <div className={`text-2xl font-bold ${netOverallBalance !== null && netOverallBalance < 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
-                    {currencySymbol}
-                    {netOverallBalance !== null && netOverallBalance < 0 ? Math.abs(netOverallBalance).toFixed(2) : '0.00'}
+                    {formatCurrency(netOverallBalance !== null && netOverallBalance < 0 ? Math.abs(netOverallBalance) : 0)}
                 </div>
             )}
             <p className="text-xs text-muted-foreground">
@@ -503,7 +510,7 @@ export default function DashboardPage() {
             </p>
           </CardContent>
           <CardFooter>
-            <Button asChild variant="destructive" size="sm" className="w-full" disabled={!currentUser || (netOverallBalance !== null && netOverallBalance >=0) }>
+            <Button asChild variant="destructive" size="sm" className="w-full rounded-xl" disabled={!currentUser || (netOverallBalance !== null && netOverallBalance >=0) }>
               <Link href="/settle-up"> 
                  {translate({ en: "Settle All", hi: "सभी का निपटान करें" })} <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -513,10 +520,18 @@ export default function DashboardPage() {
       </div>
 
       <div>
-        <h2 className="text-2xl font-semibold mb-4">
-          {translate({ en: "Recent Activity Highlights", hi: "हाल की गतिविधि की मुख्य बातें" })}
-        </h2>
-        <div className="grid gap-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            {translate({ en: "Recent Activity", hi: "हाल की गतिविधि" })}
+          </h2>
+          <Button asChild variant="ghost" size="sm" className="rounded-xl text-primary">
+            <Link href="/activity">
+              {translate({ en: "View all", hi: "सभी देखें" })}
+              <ArrowRight className="ml-1 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+        <div className="grid gap-3 sm:gap-4">
           {isLoadingActivities ? (
             [1,2,3].map(i => (
               <Card key={i}>
@@ -532,8 +547,8 @@ export default function DashboardPage() {
             ))
           ) : recentActivities.length > 0 ? (
             recentActivities.map(log => (
-              <Card key={log.id}>
-                <CardContent className="p-4 flex items-start space-x-4">
+              <Card key={log.id} className="card-premium">
+                <CardContent className="flex items-start gap-4 p-4 sm:p-5">
                   <Avatar className="h-10 w-10 border mt-1">
                     <AvatarImage src={log.actorAvatarUrl || undefined} alt={log.actorName ?? undefined} />
                     <AvatarFallback>{getInitials(log.actorName)}</AvatarFallback>

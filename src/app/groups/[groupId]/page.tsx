@@ -150,7 +150,7 @@ export default function GroupDetailPage() {
   const { currentUser, isLoadingAuth } = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
-  const { getCurrencySymbol } = useCurrency();
+  const { getCurrencySymbol, formatCurrency } = useCurrency();
   const { addNotification } = useNotification();
 
   const [group, setGroup] = useState<Group | null>(null);
@@ -518,7 +518,7 @@ export default function GroupDetailPage() {
 
                 const { dismiss: dismissToast } = toast({
                     title: `${itemDetails.itemType.charAt(0).toUpperCase() + itemDetails.itemType.slice(1)} Added!`,
-                    description: `"${itemDetails.description}" ${itemDetails.amount ? `(${getCurrencySymbol()}${itemDetails.amount.toFixed(2)})` : ''} was recorded.`,
+                    description: `"${itemDetails.description}" ${itemDetails.amount ? `(${formatCurrency(itemDetails.amount)})` : ''} was recorded.`,
                     duration: 7000,
                     action: (
                         <ToastAction
@@ -557,7 +557,7 @@ export default function GroupDetailPage() {
             clearTimeout(undoTimeoutId);
         }
     };
-  }, [searchParams, group, isLoadingPageData, accessDenied, groupNotFound, pathname, router, toast, getCurrencySymbol, addNotification, groupId, isUndoing, undoTimeoutId, fetchGroupData]);
+  }, [searchParams, group, isLoadingPageData, accessDenied, groupNotFound, pathname, router, toast, formatCurrency, addNotification, groupId, isUndoing, undoTimeoutId, fetchGroupData]);
 
 
   useEffect(() => {
@@ -600,13 +600,13 @@ export default function GroupDetailPage() {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     const summaryData = [
-        ["Total Contributions:", `${currencySymbol}${totalContributions.toFixed(2)}`],
-        ["Total Expenses:", `${currencySymbol}${totalExpenses.toFixed(2)}`],
-        ["Remaining Group Funds:", `${currencySymbol}${(totalContributions - totalExpenses).toFixed(2)}`],
+        ["Total Contributions:", formatCurrency(totalContributions)],
+        ["Total Expenses:", formatCurrency(totalExpenses)],
+        ["Remaining Group Funds:", formatCurrency(totalContributions - totalExpenses)],
     ];
     if (group.budgetAmount && group.budgetAmount > 0) {
-        summaryData.push(["Group Budget:", `${currencySymbol}${group.budgetAmount.toFixed(2)}`]);
-        summaryData.push(["Remaining Budget:", `${currencySymbol}${(group.budgetAmount - totalExpenses).toFixed(2)}`]);
+        summaryData.push(["Group Budget:", formatCurrency(group.budgetAmount)]);
+        summaryData.push(["Remaining Budget:", formatCurrency(group.budgetAmount - totalExpenses)]);
     }
     doc.autoTable({
         body: summaryData,
@@ -641,7 +641,7 @@ export default function GroupDetailPage() {
           format(parseISO(c.date), "MMM d, yyyy"),
           contributor?.name || c.contributorId.substring(0,6),
           c.description || "-",
-          `${currencySymbol}${c.amount.toFixed(2)}`
+          formatCurrency(c.amount)
         ];
       });
       doc.autoTable({
@@ -667,7 +667,7 @@ export default function GroupDetailPage() {
           format(parseISO(exp.date), "MMM d, yyyy"),
           exp.description + (exp.receiptFileName ? ` (Receipt: ${exp.receiptFileName.substring(0,15)}...)` : ""),
           payer?.name || exp.paidByUserId.substring(0,6),
-          `${currencySymbol}${exp.amount.toFixed(2)}`
+          formatCurrency(exp.amount)
         ];
       });
       doc.autoTable({
@@ -697,7 +697,7 @@ export default function GroupDetailPage() {
         return [
           format(parseISO(p.date), "MMM d, yyyy"),
           `${payer?.name || p.paidByUserId.substring(0,6)} paid ${payee?.name || p.paidToUserId.substring(0,6)}`,
-          `${currencySymbol}${p.amount.toFixed(2)}`,
+          formatCurrency(p.amount),
           p.method,
           p.notes || ""
         ];
@@ -725,9 +725,9 @@ export default function GroupDetailPage() {
         if (!user) return;
         let balanceText = "";
         if (balance.netBalance > 0.005) {
-          balanceText = `Is Owed by Group Fund: ${currencySymbol}${balance.netBalance.toFixed(2)}`;
+          balanceText = `Is Owed by Group Fund: ${formatCurrency(balance.netBalance)}`;
         } else if (balance.netBalance < -0.005) {
-          balanceText = `Owes to Group Fund: ${currencySymbol}${Math.abs(balance.netBalance).toFixed(2)}`;
+          balanceText = `Owes to Group Fund: ${formatCurrency(Math.abs(balance.netBalance))}`;
         } else {
           balanceText = "Settled with Group Fund";
         }
@@ -759,7 +759,7 @@ export default function GroupDetailPage() {
         if (owedToList.length > 0) {
             detailedOwesText += `${user.name || balance.userId.substring(0,6)} should pay:\n`;
             owedToList.forEach(item => {
-                 detailedOwesText += `  - ${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}\n`;
+                 detailedOwesText += `  - ${formatCurrency(item.amount)} to ${item.user!.name || item.user!.id.substring(0,6)}\n`;
             });
             detailedOwesText += "\n";
         }
@@ -1199,10 +1199,10 @@ export default function GroupDetailPage() {
       </Card>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-6 mt-5">
-        <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-green-700 dark:text-green-400/90">Total Contributions</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-green-600 dark:text-green-300">{currencySymbol}{totalContributions.toFixed(2)}</p> </CardContent> </Card>
-        <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-red-700 dark:text-red-400/90">Total Expenses</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-red-600 dark:text-red-300">{currencySymbol}{totalExpenses.toFixed(2)}</p> </CardContent> </Card>
-        <Card className={`p-3 ${remainingFunds >= 0 ? 'bg-blue-50 dark:bg-blue-900/40' : 'bg-orange-50 dark:bg-orange-900/40'}`}> <CardHeader className="p-0 pb-1"> <CardDescription className={`${remainingFunds >= 0 ? 'text-blue-700 dark:text-blue-400/90' : 'text-orange-700 dark:text-orange-400/90'}`}>Remaining Funds</CardDescription> </CardHeader> <CardContent className="p-0"> <p className={`text-xl font-semibold ${remainingFunds >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}> {currencySymbol}{remainingFunds.toFixed(2)} </p> </CardContent> </Card>
-          {group.budgetAmount && group.budgetAmount > 0 && ( <Card className="p-3"> <CardHeader className="p-0 pb-1"> <div className="flex justify-between items-baseline"> <CardDescription className="text-purple-700 dark:text-purple-400/90">Budget vs Spent</CardDescription> <span className="text-xs text-purple-600 dark:text-purple-300/80">{currencySymbol}{budgetAmount.toFixed(2)} total</span></div> </CardHeader> <CardContent className="p-0"> <Progress value={budgetProgress} className="h-2 my-1" /> <p className={`text-xs text-right ${remainingBudget >= 0 ? 'text-purple-600 dark:text-purple-400/90' : 'text-orange-600 dark:text-orange-400 font-medium'}`}> {remainingBudget >= 0 ? `${currencySymbol}${remainingBudget.toFixed(2)} remaining` : `${currencySymbol}${Math.abs(remainingBudget).toFixed(2)} over`} </p> </CardContent> </Card> )}
+        <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-green-700 dark:text-green-400/90">Total Contributions</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-green-600 dark:text-green-300">{formatCurrency(totalContributions)}</p> </CardContent> </Card>
+        <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-red-700 dark:text-red-400/90">Total Expenses</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-red-600 dark:text-red-300">{formatCurrency(totalExpenses)}</p> </CardContent> </Card>
+        <Card className={`p-3 ${remainingFunds >= 0 ? 'bg-blue-50 dark:bg-blue-900/40' : 'bg-orange-50 dark:bg-orange-900/40'}`}> <CardHeader className="p-0 pb-1"> <CardDescription className={`${remainingFunds >= 0 ? 'text-blue-700 dark:text-blue-400/90' : 'text-orange-700 dark:text-orange-400/90'}`}>Remaining Funds</CardDescription> </CardHeader> <CardContent className="p-0"> <p className={`text-xl font-semibold ${remainingFunds >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}> {formatCurrency(remainingFunds)} </p> </CardContent> </Card>
+          {group.budgetAmount && group.budgetAmount > 0 && ( <Card className="p-3"> <CardHeader className="p-0 pb-1"> <div className="flex justify-between items-baseline"> <CardDescription className="text-purple-700 dark:text-purple-400/90">Budget vs Spent</CardDescription> <span className="text-xs text-purple-600 dark:text-purple-300/80">{formatCurrency(budgetAmount)} total</span></div> </CardHeader> <CardContent className="p-0"> <Progress value={budgetProgress} className="h-2 my-1" /> <p className={`text-xs text-right ${remainingBudget >= 0 ? 'text-purple-600 dark:text-purple-400/90' : 'text-orange-600 dark:text-orange-400 font-medium'}`}> {remainingBudget >= 0 ? `${formatCurrency(remainingBudget)} remaining` : `${formatCurrency(Math.abs(remainingBudget))} over`} </p> </CardContent> </Card> )}
       </div>
 
       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 my-6">
@@ -1326,9 +1326,9 @@ export default function GroupDetailPage() {
                               </div>
                             </div>
                             <div className="text-left sm:text-right sm:ml-2 shrink-0 flex flex-col items-end gap-1.5">
-                              <p className="text-md font-semibold">{currencySymbol}{expense.amount.toFixed(2)}</p>
+                              <p className="text-md font-semibold">{formatCurrency(expense.amount)}</p>
                               {isMember && currentUserShare && (
-                                <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {currencySymbol}{currentUserShare.amountOwed.toFixed(2)}</p>
+                                <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {formatCurrency(currentUserShare.amountOwed)}</p>
                               )}
                               {isMember && (
                                 <Link href={`/groups/${groupId}/edit-expense/${expense.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 px-2 text-xs inline-flex items-center")}>
@@ -1346,21 +1346,21 @@ export default function GroupDetailPage() {
               <TabsContent value="contributions">
                 <Card>
                   <CardHeader> <CardTitle>Fund Contributions</CardTitle> <CardDescription>All funds contributed by members to this group's pool.</CardDescription> </CardHeader>
-                  <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-3"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name ?? undefined} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && <span className="italic">- "{contribution.description}"</span>} </p> </div> </div> <div className="text-right ml-2 shrink-0"> <p className="text-md font-semibold text-green-600 dark:text-green-400"> +{currencySymbol}{contribution.amount.toFixed(2)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No contributions recorded yet for this group.</p> )} </CardContent>
+                  <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-3"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name ?? undefined} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && <span className="italic">- "{contribution.description}"</span>} </p> </div> </div> <div className="text-right ml-2 shrink-0"> <p className="text-md font-semibold text-green-600 dark:text-green-400"> +{formatCurrency(contribution.amount)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No contributions recorded yet for this group.</p> )} </CardContent>
                 </Card>
               </TabsContent>
 
               <TabsContent value="payments">
                 <Card>
                   <CardHeader> <CardTitle>Payment History</CardTitle> <CardDescription>All settlement payments recorded in this group from Firestore.</CardDescription> </CardHeader>
-                  <CardContent> {firestorePayments.length > 0 ? ( <ul className="space-y-3"> {firestorePayments.map(payment => { const payer = memberDetailsMap.get(payment.paidByUserId); const payee = memberDetailsMap.get(payment.paidToUserId); return ( <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3 mb-1.5 sm:mb-0 flex-1 min-w-0"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name ?? undefined}/> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar> <div className="flex-1 min-w-0"> <p className="font-medium truncate"> {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)} </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method.replace("_", " ")} </p> {payment.notes && <p className="text-xs text-muted-foreground italic mt-0.5">Note: {payment.notes}</p>} </div> </div> <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{currencySymbol}{payment.amount.toFixed(2)}</p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No payments recorded yet in Firestore for this group.</p> )} </CardContent>
+                  <CardContent> {firestorePayments.length > 0 ? ( <ul className="space-y-3"> {firestorePayments.map(payment => { const payer = memberDetailsMap.get(payment.paidByUserId); const payee = memberDetailsMap.get(payment.paidToUserId); return ( <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3 mb-1.5 sm:mb-0 flex-1 min-w-0"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name ?? undefined}/> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar> <div className="flex-1 min-w-0"> <p className="font-medium truncate"> {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)} </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method.replace("_", " ")} </p> {payment.notes && <p className="text-xs text-muted-foreground italic mt-0.5">Note: {payment.notes}</p>} </div> </div> <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{formatCurrency(payment.amount)}</p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No payments recorded yet in Firestore for this group.</p> )} </CardContent>
                 </Card>
               </TabsContent>
 
               <TabsContent value="balances">
                 <Card>
                   <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription> </CardHeader>
-                  <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3.5 border rounded-lg"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-9 w-9"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {currencySymbol}{Math.abs(balance.netBalance).toFixed(2)} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-3 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-1.5 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${currencySymbol}${item.amount.toFixed(2)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "px-2 py-0.5 h-auto text-xs inline-flex items-center")}><DollarSignIcon className="mr-1 h-2.5 w-2.5" />Settle</Link> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-3 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
+                  <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3.5 border rounded-lg"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-9 w-9"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {formatCurrency(Math.abs(balance.netBalance))} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-3 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-1.5 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${formatCurrency(item.amount)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "px-2 py-0.5 h-auto text-xs inline-flex items-center")}><DollarSignIcon className="mr-1 h-2.5 w-2.5" />Settle</Link> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-3 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
                 </Card>
               </TabsContent>
 
@@ -1372,7 +1372,7 @@ export default function GroupDetailPage() {
                   </CardHeader>
                   <CardContent> {spendingByPayerChartData.length > 0 ? ( <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full"> 
                     <BarChart accessibilityLayer data={spendingByPayerChartData} layout="vertical" margin={{left: 10, right: 10}}>
-                      <CartesianGrid vertical={false} /> <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => `${currencySymbol}${value}`} /> 
+                      <CartesianGrid vertical={false} /> <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => formatCurrency(value)} /> 
                         <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/> 
                           <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} /> 
                           <ChartLegend content={<ChartLegendContent />} />

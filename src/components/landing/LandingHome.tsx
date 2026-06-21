@@ -20,6 +20,7 @@ import {
 import { AppLogo } from "@/components/AppLogo";
 import { RevealOnScroll } from "@/components/landing/RevealOnScroll";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
+import { LandingMobileNav } from "@/components/landing/LandingMobileNav";
 import { faqItems } from "@/lib/seo";
 
 const features = [
@@ -107,8 +108,8 @@ const stats = [
 export function LandingHome() {
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden">
-      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-lg">
-        <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between px-4 md:px-6">
+      <header className="sticky top-0 z-50 glass border-b">
+        <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
           <AppLogo />
           <nav className="hidden items-center gap-6 md:flex" aria-label="Main navigation">
             <Link href="#features" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
@@ -131,11 +132,12 @@ export function LandingHome() {
             </Link>
           </nav>
           <div className="flex items-center gap-2 sm:gap-3">
-            <PwaInstallButton variant="outline" size="sm" />
-            <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+            <LandingMobileNav />
+            <PwaInstallButton variant="outline" size="sm" className="hidden sm:inline-flex rounded-xl" />
+            <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex rounded-xl">
               <Link href="/login">Log in</Link>
             </Button>
-            <Button asChild size="sm" className="shadow-md shadow-primary/20">
+            <Button asChild size="sm" className="rounded-xl shadow-glow">
               <Link href="/signup">Get started</Link>
             </Button>
           </div>
@@ -145,7 +147,7 @@ export function LandingHome() {
       <main id="main-content">
         {/* Centered animated hero */}
         <section
-          className="relative flex min-h-[92vh] flex-col items-center justify-center overflow-hidden px-4 py-20 text-center"
+          className="relative flex min-h-[85vh] flex-col items-center justify-center overflow-hidden px-4 py-16 text-center sm:min-h-[88vh] sm:py-20"
           aria-labelledby="hero-heading"
         >
           {/* Animated background */}

@@ -67,124 +67,129 @@ export function AppHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background/80 px-4 backdrop-blur-md md:px-6">
-      <div className="flex items-center gap-2 md:hidden">
-        <SidebarTrigger />
-      </div>
-      <div className="hidden md:block">
-         <AppLogo iconSize={24} textSize="text-xl" />
-      </div>
-      <div className="flex w-full items-center justify-end gap-1 sm:gap-2">
-        <PwaInstallButton variant="ghost" size="sm" label="Download" />
-        
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="rounded-full relative">
-              <Bell className="h-5 w-5" />
-              {unreadCount > 0 && ( 
-                <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 w-4 p-0 justify-center text-xs">
-                  {unreadCount}
-                </Badge>
-              )}
-              <span className="sr-only">Toggle notifications</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-80 sm:w-96" align="end">
-            <DropdownMenuLabel className="flex justify-between items-center">
-              <span>Notifications</span>
-              {notifications.length > 0 && (
-                <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={handleClearAll}>
-                   <Trash2 className="mr-1 h-3 w-3" /> Clear All
-                </Button>
-              )}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {notifications.length > 0 ? (
-              <DropdownMenuGroup className="max-h-[400px] overflow-y-auto">
-                {notifications.map((notification) => (
-                  <DropdownMenuItem 
-                    key={notification.id} 
-                    className={`cursor-pointer flex items-start gap-3 p-3 ${!notification.read ? 'bg-accent hover:bg-accent/90' : 'hover:bg-muted/50'}`}
-                    onClick={() => handleNotificationClick(notification.id, notification.href)}
-                  >
-                    <NotificationIcon type={notification.type} />
-                    <div className="flex-1">
-                      <p className={`text-sm font-medium ${!notification.read ? 'text-accent-foreground' : 'text-foreground'}`}>{notification.title}</p>
-                      <p className={`text-xs ${!notification.read ? 'text-accent-foreground/90' : 'text-foreground/80'}`}>{notification.message}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {formatDistanceToNow(parseISO(notification.time), { addSuffix: true })}
-                      </p>
-                    </div>
-                    {!notification.read && (
-                        <div className="h-2.5 w-2.5 bg-primary rounded-full self-center ml-2 shrink-0"></div>
-                    )}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            ) : (
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                No new notifications.
-              </div>
-            )}
-            {notifications.length > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuItem className="justify-center" asChild>
-              <Link href="/activity" className="text-sm text-primary hover:underline">
-                View all activity
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <header className="sticky top-0 z-40 glass border-b px-4 md:px-6">
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-3">
+        <div className="hidden md:flex md:items-center md:gap-2">
+          <SidebarTrigger className="rounded-xl" />
+          <AppLogo iconSize={24} textSize="text-xl" />
+        </div>
 
-        {currentUser ? (
+        <div className="flex flex-1 items-center justify-center md:hidden">
+          <AppLogo iconSize={22} textSize="text-lg" />
+        </div>
+
+        <div className="flex items-center justify-end gap-1 sm:gap-2">
+          <PwaInstallButton variant="ghost" size="sm" label="Install" className="hidden sm:inline-flex rounded-xl" />
+        
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                <Avatar className="h-9 w-9">
-                  <AvatarImage src={currentUser.avatarUrl || undefined} alt={currentUser.name || ''} />
-                  <AvatarFallback>{getInitials(currentUser.name)}</AvatarFallback>
-                </Avatar>
+              <Button variant="ghost" size="icon" className="relative rounded-xl">
+                <Bell className="h-5 w-5" />
+                {unreadCount > 0 && ( 
+                  <Badge variant="destructive" className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px]">
+                    {unreadCount}
+                  </Badge>
+                )}
+                <span className="sr-only">Toggle notifications</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="end" forceMount>
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{currentUser.name}</p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {currentUser.email}
-                  </p>
-                </div>
+            <DropdownMenuContent className="w-80 rounded-2xl sm:w-96" align="end">
+              <DropdownMenuLabel className="flex justify-between items-center">
+                <span>Notifications</span>
+                {notifications.length > 0 && (
+                  <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={handleClearAll}>
+                     <Trash2 className="mr-1 h-3 w-3" /> Clear All
+                  </Button>
+                )}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard">
-                  <LayoutDashboard className="mr-2 h-4 w-4" />
-                  <span>{translate({en: "Dashboard", hi: "डैशबोर्ड"})}</span>
+              {notifications.length > 0 ? (
+                <DropdownMenuGroup className="max-h-[400px] overflow-y-auto">
+                  {notifications.map((notification) => (
+                    <DropdownMenuItem 
+                      key={notification.id} 
+                      className={`cursor-pointer flex items-start gap-3 rounded-lg p-3 ${!notification.read ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/50'}`}
+                      onClick={() => handleNotificationClick(notification.id, notification.href)}
+                    >
+                      <NotificationIcon type={notification.type} />
+                      <div className="flex-1">
+                        <p className={`text-sm font-medium ${!notification.read ? 'text-foreground' : 'text-foreground'}`}>{notification.title}</p>
+                        <p className="text-xs text-muted-foreground">{notification.message}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {formatDistanceToNow(parseISO(notification.time), { addSuffix: true })}
+                        </p>
+                      </div>
+                      {!notification.read && (
+                          <div className="h-2 w-2 bg-primary rounded-full self-center ml-2 shrink-0"></div>
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              ) : (
+                <div className="p-4 text-center text-sm text-muted-foreground">
+                  No new notifications.
+                </div>
+              )}
+              {notifications.length > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuItem className="justify-center rounded-lg" asChild>
+                <Link href="/activity" className="text-sm text-primary hover:underline">
+                  View all activity
                 </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/profile">
-                  <UserCircle className="mr-2 h-4 w-4" />
-                  <span>{translate({en: "Profile", hi: "प्रोफ़ाइल"})}</span>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings">
-                    <Settings className="mr-2 h-4 w-4" />
-                    <span>{translate({en: "Settings", hi: "सेटिंग्स"})}</span>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout}>
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>{translate({en: "Log out", hi: "लॉग आउट करें"})}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : (
-           <Button asChild>
-            <Link href="/login">{translate({en: "Login", hi: "लॉग इन करें"})}</Link>
-          </Button>
-        )}
+
+          {currentUser ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-10 w-10 rounded-xl p-0">
+                  <Avatar className="h-10 w-10 ring-2 ring-border/60">
+                    <AvatarImage src={currentUser.avatarUrl || undefined} alt={currentUser.name || ''} />
+                    <AvatarFallback className="bg-primary/10 text-primary font-semibold">{getInitials(currentUser.name)}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56 rounded-2xl" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-semibold leading-none">{currentUser.name}</p>
+                    <p className="text-xs leading-none text-muted-foreground truncate">
+                      {currentUser.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild className="rounded-lg">
+                  <Link href="/dashboard">
+                    <LayoutDashboard className="mr-2 h-4 w-4" />
+                    <span>{translate({en: "Dashboard", hi: "डैशबोर्ड"})}</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="rounded-lg">
+                  <Link href="/profile">
+                    <UserCircle className="mr-2 h-4 w-4" />
+                    <span>{translate({en: "Profile", hi: "प्रोफ़ाइल"})}</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="rounded-lg">
+                  <Link href="/settings">
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>{translate({en: "Settings", hi: "सेटिंग्स"})}</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="rounded-lg text-destructive focus:text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>{translate({en: "Log out", hi: "लॉग आउट करें"})}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+             <Button asChild className="rounded-xl">
+              <Link href="/login">{translate({en: "Login", hi: "लॉग इन करें"})}</Link>
+            </Button>
+          )}
+        </div>
       </div>
     </header>
   );

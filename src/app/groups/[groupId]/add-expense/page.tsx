@@ -49,7 +49,7 @@ export default function AddExpensePage() {
   const { currentUser } = useUser();
   const { toast } = useToast();
   const groupId = params.groupId as string;
-  const { getCurrencySymbol } = useCurrency();
+  const { getCurrencySymbol, formatCurrency } = useCurrency();
   const { addNotification } = useNotification();
 
   const [group, setGroup] = useState<Group | null>(null);
@@ -420,7 +420,7 @@ export default function AddExpensePage() {
             title: splitEqually ? "Split Error" : "Custom Split Mismatch",
             description: splitEqually
               ? participantResult.error
-              : `${participantResult.error} Remaining: ${getCurrencySymbol()}${remainingToAllocate.toFixed(2)}`,
+              : `${participantResult.error} Remaining: ${formatCurrency(remainingToAllocate)}`,
             variant: "destructive",
           });
           setIsSubmitting(false);
@@ -755,10 +755,10 @@ export default function AddExpensePage() {
                         {Math.abs(remainingToAllocate) < 0.005 && sumOfCustomShares === (parseFloat(amount) || 0) ? "Amounts Match Total" : "Amounts Review"}
                     </AlertTitle>
                     <AlertDescription className="text-xs space-y-0.5">
-                        <p>Total Expense: {getCurrencySymbol()}{ (parseFloat(amount) || 0).toFixed(2) }</p>
-                        <p>Sum of Shares: {getCurrencySymbol()}{sumOfCustomShares.toFixed(2)}</p>
+                        <p>Total Expense: {formatCurrency(parseFloat(amount) || 0)}</p>
+                        <p>Sum of Shares: {formatCurrency(sumOfCustomShares)}</p>
                         <p className={Math.abs(remainingToAllocate) >= 0.005 ? 'text-destructive font-semibold' : ''}>
-                           Remaining to Allocate: {getCurrencySymbol()}{remainingToAllocate.toFixed(2)}
+                           Remaining to Allocate: {formatCurrency(remainingToAllocate)}
                         </p>
                     </AlertDescription>
                 </Alert>

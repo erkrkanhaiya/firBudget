@@ -16,6 +16,7 @@ import {
 import { AppLogo } from '@/components/AppLogo';
 import { Separator } from '@/components/ui/separator';
 import { useLanguage, type Language } from '@/contexts/LanguageContext'; 
+import { useIsMobile } from '@/hooks/use-mobile';
 
 type NavItem = {
   href: string;
@@ -41,9 +42,14 @@ const bottomNavItems: NavItem[] = [
 export function AppSidebar() {
   const pathname = usePathname();
   const { translate } = useLanguage();
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return null;
+  }
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar" side="left">
+    <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r border-border/60">
       <SidebarHeader className="items-center justify-center p-4">
         <AppLogo className="group-data-[collapsible=icon]:hidden" />
         <AppLogo iconSize={28} className="hidden group-data-[collapsible=icon]:flex" />

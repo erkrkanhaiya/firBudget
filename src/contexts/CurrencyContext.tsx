@@ -3,11 +3,14 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import type { Currency } from '@/types';
+import { formatCurrencyAmount, formatCurrencyDisplay } from '@/lib/currency-utils';
 
 interface CurrencyContextType {
   currency: Currency;
   setCurrency: (currency: Currency) => void;
   getCurrencySymbol: () => string;
+  formatAmount: (amount: number) => string;
+  formatCurrency: (amount: number) => string;
   isCurrencyInitialized: boolean;
 }
 
@@ -48,8 +51,18 @@ export const CurrencyProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [currency]);
 
+  const formatAmount = useCallback(
+    (amount: number) => formatCurrencyAmount(amount, currency),
+    [currency]
+  );
+
+  const formatCurrency = useCallback(
+    (amount: number) => formatCurrencyDisplay(amount, getCurrencySymbol(), currency),
+    [currency, getCurrencySymbol]
+  );
+
   return (
-    <CurrencyContext.Provider value={{ currency, setCurrency, getCurrencySymbol, isCurrencyInitialized }}>
+    <CurrencyContext.Provider value={{ currency, setCurrency, getCurrencySymbol, formatAmount, formatCurrency, isCurrencyInitialized }}>
       {children}
     </CurrencyContext.Provider>
   );

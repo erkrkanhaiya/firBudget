@@ -83,11 +83,11 @@ export default function GroupsPage() {
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Groups</h1>
-          <p className="text-muted-foreground">Manage and discover shared expense groups.</p>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Groups</h1>
+          <p className="text-sm text-muted-foreground sm:text-base">Manage and discover shared expense groups.</p>
         </div>
-        <Button asChild size="lg" disabled={!currentUser}>
+        <Button asChild size="lg" disabled={!currentUser} className="w-full rounded-xl shadow-glow sm:w-auto">
           <Link href="/groups/create">
             <PlusCircle className="mr-2 h-5 w-5" /> Create New Group
           </Link>
@@ -125,12 +125,12 @@ export default function GroupsPage() {
           ))}
         </div>
       ) : !error && visibleGroups.length > 0 ? (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
           {visibleGroups.map((group) => {
             const isMember = currentUser && group.memberIds.includes(currentUser.id);
             return (
               <Link key={group.id} href={`/groups/${group.id}`}>
-                <Card key={group.id} className="flex flex-col">
+                <Card key={group.id} className="card-premium flex flex-col overflow-hidden">
                   <CardHeader>
                     {group.photoUrl ? (
                       <div className="relative aspect-video w-full mb-4 rounded-md overflow-hidden">
