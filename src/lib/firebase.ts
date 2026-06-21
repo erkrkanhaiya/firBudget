@@ -1,9 +1,14 @@
 
 // Import the functions you need from the SDKs you need
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import { getStorage } from "firebase/storage"; // Added
+import {
+  getAuth,
+  initializeAuth,
+  browserLocalPersistence,
+  type Auth,
+} from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 // TODO: Add your own Firebase SDK Configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -25,8 +30,22 @@ if (!getApps().length) {
   app = getApp();
 }
 
-const db = getFirestore(app);
-const auth = getAuth(app);
-const storage = getStorage(app); // Added
+function getFirebaseAuth(firebaseApp: FirebaseApp): Auth {
+  if (typeof window === "undefined") {
+    return getAuth(firebaseApp);
+  }
 
-export { db, auth, app, storage }; // Added storage
+  try {
+    return initializeAuth(firebaseApp, {
+      persistence: browserLocalPersistence,
+    });
+  } catch {
+    return getAuth(firebaseApp);
+  }
+}
+
+const db = getFirestore(app);
+const auth = getFirebaseAuth(app);
+const storage = getStorage(app);
+
+export { db, auth, app, storage };

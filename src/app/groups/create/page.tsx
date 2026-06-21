@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { User, GroupVisibility, Group, AppMemberContact, GroupCategory } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import NextImage from 'next/image';
-import { isValidEmail, normalizeEmail } from '@/lib/group-access';
+import { isValidEmail, memberNeedsAppInvite, normalizeEmail } from '@/lib/group-access';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where, orderBy } from 'firebase/firestore'; 
 import { useNotification } from '@/contexts/NotificationContext';
@@ -312,8 +312,8 @@ export default function CreateGroupPage() {
     const invitedEmails = Array.from(
       new Set(
         selectedMembers
-          .map((m) => (m.email?.trim() && isValidEmail(normalizeEmail(m.email)) ? normalizeEmail(m.email) : null))
-          .filter(Boolean) as string[]
+          .filter((member) => memberNeedsAppInvite({ ownerId: currentUser.id }, member))
+          .map((member) => normalizeEmail(member.email!))
       )
     );
 

@@ -10,9 +10,9 @@ interface PublicPageShellProps {
 
 export function PublicPageShell({ children }: PublicPageShellProps) {
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-50 glass border-b">
-        <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
+    <div className="flex min-h-screen flex-col app-shell">
+      <header className="sticky top-0 z-50 glass">
+        <div className="container mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 md:h-16">
           <AppLogo />
           <nav className="hidden items-center gap-4 md:flex" aria-label="Site navigation">
             <Link href="/" className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary">
@@ -31,7 +31,7 @@ export function PublicPageShell({ children }: PublicPageShellProps) {
             <Button asChild variant="ghost" size="sm" className="rounded-xl">
               <Link href="/login">Log in</Link>
             </Button>
-            <Button asChild size="sm" className="rounded-xl shadow-glow">
+            <Button asChild size="sm" className="rounded-lg">
               <Link href="/signup">Get started</Link>
             </Button>
           </nav>
@@ -44,7 +44,7 @@ export function PublicPageShell({ children }: PublicPageShellProps) {
         </div>
       </header>
       {children}
-      <footer className="mt-auto border-t bg-muted/30 py-10">
+      <footer className="mt-auto border-t border-border/50 bg-muted/20 py-10">
         <div className="container mx-auto max-w-6xl px-4 text-center text-sm text-muted-foreground">
           <nav className="mb-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2" aria-label="Footer navigation">
             <Link href="/" className="transition-colors hover:text-primary">Home</Link>

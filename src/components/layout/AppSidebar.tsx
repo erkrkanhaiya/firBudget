@@ -49,13 +49,13 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r border-border/60">
-      <SidebarHeader className="items-center justify-center p-4">
+    <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r border-border/40 bg-sidebar">
+      <SidebarHeader className="items-center justify-center border-b border-border/40 p-4">
         <AppLogo className="group-data-[collapsible=icon]:hidden" />
         <AppLogo iconSize={28} className="hidden group-data-[collapsible=icon]:flex" />
       </SidebarHeader>
       <Separator />
-      <SidebarContent className="p-2">
+      <SidebarContent className="p-3">
         <SidebarMenu>
           {navItems.map((item) => (
             <SidebarMenuItem key={item.href}>
@@ -74,7 +74,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
       <Separator />
-      <SidebarFooter className="p-2">
+      <SidebarFooter className="border-t border-border/40 p-3">
          <SidebarMenu>
           {bottomNavItems.map((item) => (
             <SidebarMenuItem key={item.href}>

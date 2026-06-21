@@ -48,9 +48,9 @@ export function MainLayout({ children }: MainLayoutProps) {
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
-      <SidebarInset className="min-h-svh bg-background">
+      <SidebarInset className="relative min-h-svh bg-background app-shell">
         <AppHeader />
-        <main className="page-container flex-1 px-4 py-5 md:px-6 md:py-8 lg:px-8 safe-bottom">
+        <main className="page-container flex-1 px-4 py-6 md:px-6 md:py-8 lg:px-8 safe-bottom">
           {children}
         </main>
         <MobileBottomNav />

@@ -29,48 +29,36 @@ const features = [
     title: "Smart expense tracking",
     description:
       "Add bills in seconds, split equally or custom, and attach receipts with AI autofill.",
-    color: "from-blue-500/15 to-cyan-500/10",
-    iconColor: "text-blue-600 dark:text-blue-400",
   },
   {
     icon: Users,
     title: "Groups for every occasion",
     description:
       "Trips, roommates, dinners, or events — public or private groups for anyone.",
-    color: "from-violet-500/15 to-purple-500/10",
-    iconColor: "text-violet-600 dark:text-violet-400",
   },
   {
     icon: TrendingUp,
     title: "Crystal-clear balances",
     description:
       "See who owes whom instantly. Balances update as expenses and payments change.",
-    color: "from-emerald-500/15 to-teal-500/10",
-    iconColor: "text-emerald-600 dark:text-emerald-400",
   },
   {
     icon: HandCoins,
     title: "One-tap settle up",
     description:
       "Record cash, UPI, or bank transfers with full payment history per group.",
-    color: "from-amber-500/15 to-orange-500/10",
-    iconColor: "text-amber-600 dark:text-amber-400",
   },
   {
     icon: Shield,
     title: "Private & secure",
     description:
       "Your data stays in your groups. Private groups are visible only to members.",
-    color: "from-rose-500/15 to-pink-500/10",
-    iconColor: "text-rose-600 dark:text-rose-400",
   },
   {
     icon: Sparkles,
     title: "AI receipt scanning",
     description:
       "Snap a receipt — AI fills amount, date, and description automatically.",
-    color: "from-sky-500/15 to-indigo-500/10",
-    iconColor: "text-sky-600 dark:text-sky-400",
   },
 ];
 
@@ -107,8 +95,8 @@ const stats = [
 
 export function LandingHome() {
   return (
-    <div className="flex min-h-screen flex-col overflow-x-hidden">
-      <header className="sticky top-0 z-50 glass border-b">
+    <div className="flex min-h-screen flex-col overflow-x-hidden app-shell">
+      <header className="sticky top-0 z-50 glass">
         <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
           <AppLogo />
           <nav className="hidden items-center gap-6 md:flex" aria-label="Main navigation">
@@ -137,7 +125,7 @@ export function LandingHome() {
             <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex rounded-xl">
               <Link href="/login">Log in</Link>
             </Button>
-            <Button asChild size="sm" className="rounded-xl shadow-glow">
+            <Button asChild size="sm" className="rounded-lg">
               <Link href="/signup">Get started</Link>
             </Button>
           </div>
@@ -151,15 +139,13 @@ export function LandingHome() {
           aria-labelledby="hero-heading"
         >
           {/* Animated background */}
-          <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-            <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/15 blur-[100px] animate-pulse-glow" />
-            <div className="absolute left-1/4 top-1/4 h-64 w-64 rounded-full bg-accent/20 blur-3xl animate-float" />
-            <div className="absolute bottom-1/4 right-1/4 h-72 w-72 rounded-full bg-primary/10 blur-3xl animate-float-slow" />
+          <div className="pointer-events-none absolute inset-0 -z-10 app-shell" aria-hidden="true">
+            <div className="absolute left-1/2 top-1/3 h-[480px] w-[480px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#3c83dc]/20 blur-[100px] animate-pulse-glow" />
             <div
-              className="absolute inset-0 opacity-[0.03]"
+              className="absolute inset-0 opacity-[0.025]"
               style={{
                 backgroundImage: `radial-gradient(circle at 1px 1px, hsl(var(--foreground)) 1px, transparent 0)`,
-                backgroundSize: "40px 40px",
+                backgroundSize: "32px 32px",
               }}
             />
           </div>
@@ -167,7 +153,7 @@ export function LandingHome() {
           <div className="mx-auto flex w-full max-w-4xl flex-col items-center">
             <Badge
               variant="secondary"
-              className="animate-fade-up mb-6 border border-primary/20 bg-primary/5 px-4 py-1.5 text-primary opacity-0"
+              className="animate-fade-up mb-6 border border-primary/25 bg-primary/10 px-4 py-1.5 text-primary opacity-0"
             >
               <Zap className="mr-1.5 h-3.5 w-3.5" />
               #1 free group expense splitter
@@ -191,7 +177,7 @@ export function LandingHome() {
             </p>
 
             <div className="animate-fade-up animation-delay-300 opacity-0 mt-10 flex w-full max-w-md flex-col gap-3 sm:max-w-none sm:flex-row sm:justify-center">
-              <Button asChild size="lg" className="h-12 px-8 text-base shadow-xl shadow-primary/30 transition-transform hover:scale-[1.02]">
+              <Button asChild size="lg" className="h-11 px-8 text-base">
                 <Link href="/signup">
                   Start for free
                   <ArrowRight className="ml-2 h-4 w-4" />
@@ -220,9 +206,9 @@ export function LandingHome() {
 
           {/* Center showcase — floating app mockup */}
           <div className="animate-scale-in animation-delay-500 opacity-0 relative mx-auto mt-16 w-full max-w-md md:max-w-lg">
-            <div className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-primary/30 via-accent/20 to-primary/30 blur-2xl animate-gradient-shift" aria-hidden="true" />
+            <div className="absolute -inset-4 rounded-2xl bg-primary/10 blur-2xl" aria-hidden="true" />
 
-            <div className="animate-float-slow relative overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-2xl shadow-primary/20 backdrop-blur-sm">
+            <div className="animate-float-slow relative overflow-hidden rounded-xl border border-border/60 bg-card shadow-soft-lg backdrop-blur-sm">
               <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3">
                 <div className="flex gap-1.5" aria-hidden="true">
                   <span className="h-2.5 w-2.5 rounded-full bg-red-400/80" />
@@ -301,7 +287,7 @@ export function LandingHome() {
         </section>
 
         {/* Features */}
-        <section id="features" className="border-y bg-muted/30 py-20 md:py-28" aria-labelledby="features-heading">
+        <section id="features" className="border-y border-border/50 bg-muted/20 py-20 md:py-28" aria-labelledby="features-heading">
           <div className="container mx-auto max-w-6xl px-4 md:px-6">
             <RevealOnScroll className="mx-auto mb-14 max-w-2xl text-center">
               <Badge variant="outline" className="mb-4">Features</Badge>
@@ -316,9 +302,9 @@ export function LandingHome() {
             <div className="mx-auto grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {features.map((feature, i) => (
                 <RevealOnScroll key={feature.title} delay={i * 80} className="h-full">
-                  <article className="group h-full overflow-hidden rounded-2xl border bg-card p-6 text-center shadow-sm transition-all duration-500 hover:-translate-y-2 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/10 sm:text-left">
-                    <div className={`mx-auto mb-4 inline-flex rounded-xl bg-gradient-to-br p-3 transition-transform duration-300 group-hover:scale-110 sm:mx-0 ${feature.color}`}>
-                      <feature.icon className={`h-6 w-6 ${feature.iconColor}`} aria-hidden="true" />
+                  <article className="group h-full overflow-hidden rounded-xl border border-border/60 bg-card p-6 text-center transition-all duration-300 hover:border-primary/25 hover:shadow-soft sm:text-left">
+                    <div className="mx-auto mb-4 inline-flex rounded-lg bg-primary/10 p-3 transition-colors duration-300 group-hover:bg-primary/15 sm:mx-0">
+                      <feature.icon className="h-6 w-6 text-primary" aria-hidden="true" />
                     </div>
                     <h3 className="mb-2 text-lg font-semibold">{feature.title}</h3>
                     <p className="text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
@@ -346,7 +332,7 @@ export function LandingHome() {
               {steps.map((item, i) => (
                 <RevealOnScroll key={item.step} delay={i * 120}>
                   <div className="flex flex-col items-center text-center">
-                    <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-xl font-bold text-primary-foreground shadow-lg shadow-primary/30 transition-transform duration-300 hover:scale-110">
+                    <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground shadow-glow">
                       {item.step}
                     </div>
                     <h3 className="mb-2 text-xl font-semibold">{item.title}</h3>
@@ -359,7 +345,7 @@ export function LandingHome() {
         </section>
 
         {/* Use cases */}
-        <section className="border-y bg-muted/30 py-20 md:py-24" aria-labelledby="usecases-heading">
+        <section className="border-y border-border/50 bg-muted/20 py-20 md:py-24" aria-labelledby="usecases-heading">
           <div className="container mx-auto max-w-6xl px-4 md:px-6">
             <div className="mx-auto grid max-w-5xl items-center gap-12 lg:grid-cols-2">
               <RevealOnScroll className="flex flex-col items-center text-center lg:items-start lg:text-left">
@@ -428,7 +414,7 @@ export function LandingHome() {
         </section>
 
         {/* FAQ — SEO rich content */}
-        <section id="faq" className="border-y bg-muted/30 py-20 md:py-24" aria-labelledby="faq-heading">
+        <section id="faq" className="border-y border-border/50 bg-muted/20 py-20 md:py-24" aria-labelledby="faq-heading">
           <div className="container mx-auto max-w-6xl px-4 md:px-6">
             <RevealOnScroll className="mx-auto mb-14 max-w-2xl text-center">
               <Badge variant="outline" className="mb-4">FAQ</Badge>
@@ -443,7 +429,7 @@ export function LandingHome() {
             <div className="mx-auto grid max-w-3xl gap-4">
               {faqItems.map((item, i) => (
                 <RevealOnScroll key={item.question} delay={i * 60}>
-                  <article className="rounded-2xl border bg-card p-6 shadow-sm">
+                  <article className="rounded-xl border border-border/60 bg-card p-6">
                     <h3 className="mb-2 text-lg font-semibold">{item.question}</h3>
                     <p className="text-sm leading-relaxed text-muted-foreground">{item.answer}</p>
                   </article>
@@ -457,23 +443,23 @@ export function LandingHome() {
         <section className="py-20 md:py-28" aria-labelledby="cta-heading">
           <div className="container mx-auto max-w-6xl px-4 md:px-6">
             <RevealOnScroll>
-              <div className="relative mx-auto max-w-3xl overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary to-accent px-6 py-16 text-center text-primary-foreground shadow-2xl shadow-primary/30 sm:px-12 animate-gradient-shift">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.2),transparent_60%)]" aria-hidden="true" />
+              <div className="relative mx-auto max-w-3xl overflow-hidden rounded-2xl border border-primary/20 bg-card px-6 py-16 text-center shadow-soft-lg sm:px-12">
+                <div className="pointer-events-none absolute inset-0 app-shell opacity-80" aria-hidden="true" />
                 <div className="relative">
                   <h2 id="cta-heading" className="text-3xl font-bold tracking-tight sm:text-4xl">
                     Start splitting smarter today
                   </h2>
-                  <p className="mx-auto mt-4 max-w-lg text-primary-foreground/90">
+                  <p className="mx-auto mt-4 max-w-lg text-muted-foreground">
                     Free forever for personal use. Create your account and add your first group in under 60 seconds.
                   </p>
                   <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                    <Button asChild size="lg" variant="secondary" className="h-12 w-full bg-white text-primary hover:bg-white/90 sm:w-auto">
+                    <Button asChild size="lg" className="h-11 w-full sm:w-auto">
                       <Link href="/signup">
                         Create free account
                         <ArrowRight className="ml-2 h-4 w-4" />
                       </Link>
                     </Button>
-                    <Button asChild size="lg" variant="outline" className="h-12 w-full border-white/30 bg-transparent text-white hover:bg-white/10 sm:w-auto">
+                    <Button asChild size="lg" variant="outline" className="h-11 w-full sm:w-auto">
                       <Link href="/about">Learn more</Link>
                     </Button>
                   </div>
@@ -484,7 +470,7 @@ export function LandingHome() {
         </section>
       </main>
 
-      <footer className="border-t bg-muted/40 py-10" role="contentinfo">
+      <footer className="border-t border-border/50 bg-muted/20 py-10" role="contentinfo">
         <div className="container mx-auto max-w-6xl px-4 md:px-6">
           <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
             <AppLogo textSize="text-xl" />

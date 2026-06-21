@@ -67,10 +67,10 @@ export function AppHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-40 glass border-b px-4 md:px-6">
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-3">
+    <header className="sticky top-0 z-40 glass">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 md:h-16 md:px-6">
         <div className="hidden md:flex md:items-center md:gap-2">
-          <SidebarTrigger className="rounded-xl" />
+          <SidebarTrigger className="rounded-lg text-muted-foreground hover:text-foreground" />
           <AppLogo iconSize={24} textSize="text-xl" />
         </div>
 
@@ -83,7 +83,7 @@ export function AppHeader() {
         
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative rounded-xl">
+              <Button variant="ghost" size="icon" className="relative rounded-lg">
                 <Bell className="h-5 w-5" />
                 {unreadCount > 0 && ( 
                   <Badge variant="destructive" className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px]">
@@ -93,7 +93,7 @@ export function AppHeader() {
                 <span className="sr-only">Toggle notifications</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-80 rounded-2xl sm:w-96" align="end">
+            <DropdownMenuContent className="w-80 rounded-xl sm:w-96" align="end">
               <DropdownMenuLabel className="flex justify-between items-center">
                 <span>Notifications</span>
                 {notifications.length > 0 && (
@@ -142,14 +142,14 @@ export function AppHeader() {
           {currentUser ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-10 w-10 rounded-xl p-0">
-                  <Avatar className="h-10 w-10 ring-2 ring-border/60">
+                <Button variant="ghost" className="relative h-9 w-9 rounded-lg p-0">
+                  <Avatar className="h-9 w-9 ring-1 ring-border/80">
                     <AvatarImage src={currentUser.avatarUrl || undefined} alt={currentUser.name || ''} />
                     <AvatarFallback className="bg-primary/10 text-primary font-semibold">{getInitials(currentUser.name)}</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56 rounded-2xl" align="end" forceMount>
+              <DropdownMenuContent className="w-56 rounded-xl" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-semibold leading-none">{currentUser.name}</p>
@@ -185,7 +185,7 @@ export function AppHeader() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-             <Button asChild className="rounded-xl">
+             <Button asChild className="rounded-lg">
               <Link href="/login">{translate({en: "Login", hi: "लॉग इन करें"})}</Link>
             </Button>
           )}

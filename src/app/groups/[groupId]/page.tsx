@@ -61,24 +61,22 @@ import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
-  type ChartConfig
-} from "@/components/ui/chart";
-import { BarChart, CartesianGrid, XAxis, YAxis, Bar } from "recharts";
+import { GroupReportsTab } from '@/components/groups/GroupReportsTab';
 import { cn } from '@/lib/utils';
 import {
   acceptGroupInviteIfNeeded,
   addGroupMembersToGroup,
   canViewGroup,
+  computeMemberRemovalImpact,
   isMemberInvitePending,
+  isMemberSplitsOnly,
+  canReinviteMemberToApp,
   isValidEmail,
   mapFirestoreGroup,
   normalizeEmail,
+  removeGroupMemberFromGroup,
+  repairGroupInvitedEmailsIfNeeded,
+  resendGroupInvite,
   revokeGroupInvite,
 } from '@/lib/group-access';
 
@@ -111,12 +109,6 @@ const CategoryIconDisplay = ({ category }: { category?: GroupCategory }) => {
   return <IconComponent className="h-24 w-24 text-muted-foreground/50" />;
 };
 
-
-interface SpendingByPayerChartData {
-  name: string;
-  totalPaid: number;
-  fill?: string;
-}
 
 const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
   if (dateVal instanceof Timestamp) return dateVal.toDate().toISOString();
@@ -179,8 +171,9 @@ export default function GroupDetailPage() {
   const [newQuickMemberEmail, setNewQuickMemberEmail] = useState('');
   const [isAddingQuickMember, setIsAddingQuickMember] = useState(false);
   const [revokingInviteEmail, setRevokingInviteEmail] = useState<string | null>(null);
-
-  const [spendingByPayerChartData, setSpendingByPayerChartData] = useState<SpendingByPayerChartData[]>([]);
+  const [invitingEmail, setInvitingEmail] = useState<string | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<UserType | null>(null);
+  const [isRemovingMember, setIsRemovingMember] = useState(false);
 
   const [undoTimeoutId, setUndoTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
@@ -200,6 +193,16 @@ export default function GroupDetailPage() {
     group.members.forEach(member => map.set(member.id, member));
     return map;
   }, [group]);
+
+  const memberRemovalImpact = useMemo(() => {
+    if (!memberToRemove) return null;
+    return computeMemberRemovalImpact(
+      memberToRemove.id,
+      firestoreExpenses,
+      firestorePayments,
+      firestoreContributions
+    );
+  }, [memberToRemove, firestoreExpenses, firestorePayments, firestoreContributions]);
 
   const calculateGroupBalances = useCallback((
     currentGroupMembers: UserType[],
@@ -309,6 +312,10 @@ export default function GroupDetailPage() {
           fetchedGroup = groupAfterAccept;
         }
 
+        if (fetchedGroup.ownerId === currentUser.id) {
+          fetchedGroup = await repairGroupInvitedEmailsIfNeeded(fetchedGroup);
+        }
+
         if (!canViewGroup(fetchedGroup, currentUser)) {
           toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
           setAccessDenied(true);
@@ -395,19 +402,6 @@ export default function GroupDetailPage() {
 
         const calculatedBalances = calculateGroupBalances(fetchedGroup.members, fetchedExpenses, fetchedPayments, fetchedContributions);
         setBalances(calculatedBalances);
-
-        const payerTotals: Record<string, number> = {};
-        fetchedExpenses.forEach(expense => {
-            payerTotals[expense.paidByUserId] = (payerTotals[expense.paidByUserId] || 0) + expense.amount;
-        });
-
-        const chartData = fetchedGroup.members.map((member, index) => ({
-            name: member.name || `User ${member.id.substring(0, 4)}`,
-            totalPaid: payerTotals[member.id] || 0,
-            fill: `var(--chart-${(index % 5) + 1})`
-        })).filter(data => data.totalPaid > 0)
-           .sort((a,b) => b.totalPaid - a.totalPaid);
-        setSpendingByPayerChartData(chartData);
 
       } else {
         toast({ title: "Group not found", description: "The group you are looking for does not exist.", variant: "destructive" });
@@ -982,13 +976,74 @@ export default function GroupDetailPage() {
     setRevokingInviteEmail(email);
     try {
       await revokeGroupInvite(group, currentUser, email);
-      toast({ title: "Invite removed", description: `${email} can no longer access this group.` });
+      toast({
+        title: "Invite removed",
+        description: `${email} stays in the group for splits only. Use Invite again to restore app access.`,
+      });
       fetchGroupData(false);
     } catch (error) {
       console.error("Error revoking invite:", error);
       toast({ title: "Error", description: "Could not remove the invite.", variant: "destructive" });
     } finally {
       setRevokingInviteEmail(null);
+    }
+  };
+
+  const handleInviteAgain = async (email: string) => {
+    if (!currentUser || !group || group.ownerId !== currentUser.id) return;
+
+    setInvitingEmail(email);
+    try {
+      await resendGroupInvite(group, currentUser, email);
+      toast({
+        title: "Invite sent",
+        description: `${email} can sign in to access this group in the app.`,
+      });
+      fetchGroupData(false);
+    } catch (error) {
+      console.error("Error inviting member:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Could not send the invite.",
+        variant: "destructive",
+      });
+    } finally {
+      setInvitingEmail(null);
+    }
+  };
+
+  const handleRemoveMember = async () => {
+    if (!currentUser || !group || !memberToRemove) return;
+    if (group.ownerId !== currentUser.id) {
+      toast({ title: "Permission denied", description: "Only the group admin can remove members.", variant: "destructive" });
+      return;
+    }
+
+    setIsRemovingMember(true);
+    const removedName = memberToRemove.name || "Member";
+    try {
+      const impact = await removeGroupMemberFromGroup(group, currentUser, memberToRemove.id);
+      setMemberToRemove(null);
+      toast({
+        title: "Member removed",
+        description: `${removedName} was removed. ${impact.expensesRevised} expense(s) revised, ${impact.paymentsRemoved} payment(s) and ${impact.contributionsRemoved} contribution(s) cleared.`,
+      });
+      addNotification({
+        title: "Member Removed",
+        message: `${removedName} was removed from "${group.name}". Balances were recalculated.`,
+        type: "alert",
+        href: `/groups/${groupId}?tab=balances`,
+      });
+      fetchGroupData(false);
+    } catch (error) {
+      console.error("Error removing member:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Could not remove member from the group.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRemovingMember(false);
     }
   };
 
@@ -1130,8 +1185,6 @@ export default function GroupDetailPage() {
   const budgetProgress = budgetAmount > 0 ? Math.min((totalExpenses / budgetAmount) * 100, 100) : 0;
   const remainingBudget = budgetAmount > 0 ? budgetAmount - totalExpenses : 0;
 
-  const chartConfigSpendingByPayer = { totalPaid: { label: `Total Paid (${currencySymbol})`, }, ...spendingByPayerChartData.reduce((acc, member) => { acc[member.name] = { label: member.name, color: member.fill }; return acc; }, {} as ChartConfig) } satisfies ChartConfig;
-
   return (
     <div className="space-y-6 pb-8">
       <div className="flex items-center justify-between">
@@ -1199,10 +1252,10 @@ export default function GroupDetailPage() {
       </Card>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-6 mt-5">
-        <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-green-700 dark:text-green-400/90">Total Contributions</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-green-600 dark:text-green-300">{formatCurrency(totalContributions)}</p> </CardContent> </Card>
-        <Card className="p-3"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-red-700 dark:text-red-400/90">Total Expenses</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold text-red-600 dark:text-red-300">{formatCurrency(totalExpenses)}</p> </CardContent> </Card>
-        <Card className={`p-3 ${remainingFunds >= 0 ? 'bg-blue-50 dark:bg-blue-900/40' : 'bg-orange-50 dark:bg-orange-900/40'}`}> <CardHeader className="p-0 pb-1"> <CardDescription className={`${remainingFunds >= 0 ? 'text-blue-700 dark:text-blue-400/90' : 'text-orange-700 dark:text-orange-400/90'}`}>Remaining Funds</CardDescription> </CardHeader> <CardContent className="p-0"> <p className={`text-xl font-semibold ${remainingFunds >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}> {formatCurrency(remainingFunds)} </p> </CardContent> </Card>
-          {group.budgetAmount && group.budgetAmount > 0 && ( <Card className="p-3"> <CardHeader className="p-0 pb-1"> <div className="flex justify-between items-baseline"> <CardDescription className="text-purple-700 dark:text-purple-400/90">Budget vs Spent</CardDescription> <span className="text-xs text-purple-600 dark:text-purple-300/80">{formatCurrency(budgetAmount)} total</span></div> </CardHeader> <CardContent className="p-0"> <Progress value={budgetProgress} className="h-2 my-1" /> <p className={`text-xs text-right ${remainingBudget >= 0 ? 'text-purple-600 dark:text-purple-400/90' : 'text-orange-600 dark:text-orange-400 font-medium'}`}> {remainingBudget >= 0 ? `${formatCurrency(remainingBudget)} remaining` : `${formatCurrency(Math.abs(remainingBudget))} over`} </p> </CardContent> </Card> )}
+        <Card className="p-3 surface-positive"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-success/90">Total Contributions</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold stat-positive">{formatCurrency(totalContributions)}</p> </CardContent> </Card>
+        <Card className="p-3 surface-negative"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-destructive/90">Total Expenses</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold stat-negative">{formatCurrency(totalExpenses)}</p> </CardContent> </Card>
+        <Card className={`p-3 ${remainingFunds >= 0 ? 'surface-info' : 'surface-warning border-warning/20 bg-warning/10'}`}> <CardHeader className="p-0 pb-1"> <CardDescription className={remainingFunds >= 0 ? 'text-info/90' : 'text-warning/90'}>Remaining Funds</CardDescription> </CardHeader> <CardContent className="p-0"> <p className={`text-xl font-semibold ${remainingFunds >= 0 ? 'stat-info' : 'stat-warning'}`}> {formatCurrency(remainingFunds)} </p> </CardContent> </Card>
+          {group.budgetAmount && group.budgetAmount > 0 && ( <Card className="p-3 border-primary/20 bg-primary/5"> <CardHeader className="p-0 pb-1"> <div className="flex justify-between items-baseline"> <CardDescription className="text-primary/90">Budget vs Spent</CardDescription> <span className="text-xs text-primary/80">{formatCurrency(budgetAmount)} total</span></div> </CardHeader> <CardContent className="p-0"> <Progress value={budgetProgress} className="h-2 my-1" /> <p className={`text-xs text-right ${remainingBudget >= 0 ? 'text-primary/90' : 'stat-warning font-medium'}`}> {remainingBudget >= 0 ? `${formatCurrency(remainingBudget)} remaining` : `${formatCurrency(Math.abs(remainingBudget))} over`} </p> </CardContent> </Card> )}
       </div>
 
       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 my-6">
@@ -1236,20 +1289,27 @@ export default function GroupDetailPage() {
             <DropdownMenuContent align="end" className="w-56 "> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
       </div>
       
-      <Tabs defaultValue="notes" className="w-full" value={searchParams.get('tab') || 'notes'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`, { scroll: false })}>
+      <Tabs defaultValue="balances" className="w-full" value={searchParams.get('tab') || 'balances'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`, { scroll: false })}>
           <div className="mt-6 flex flex-col md:flex-row gap-x-6 gap-y-4">
             <TabsList className="flex-col md:w-48 shrink-0 h-auto md:h-fit p-1.5 md:p-2 self-start md:sticky md:top-20 overflow-x-auto md:overflow-x-visible">
-              <TabsTrigger value="notes" className="w-full justify-start px-3 py-2 md:mb-1"><FileText className="mr-2 h-4 w-4" />Notes</TabsTrigger>
+              <TabsTrigger value="balances" className="w-full justify-start px-3 py-2 md:mb-1"><ListChecks className="mr-2 h-4 w-4" />Balances</TabsTrigger>
               <TabsTrigger value="expenses" className="w-full justify-start px-3 py-2 md:mb-1"><CreditCard className="mr-2 h-4 w-4" />Expenses</TabsTrigger>
               <TabsTrigger value="contributions" className="w-full justify-start px-3 py-2 md:mb-1"><CoinsIcon className="mr-2 h-4 w-4" />Contributions</TabsTrigger>
               <TabsTrigger value="payments" className="w-full justify-start px-3 py-2 md:mb-1"><HandCoins className="mr-2 h-4 w-4" />Payments</TabsTrigger>
-              <TabsTrigger value="balances" className="w-full justify-start px-3 py-2 md:mb-1"><ListChecks className="mr-2 h-4 w-4" />Balances</TabsTrigger>
-              <TabsTrigger value="reports" className="w-full justify-start px-3 py-2 md:mb-1"><BarChartHorizontal className="mr-2 h-4 w-4" />Reports</TabsTrigger>
               <TabsTrigger value="members" className="w-full justify-start px-3 py-2 md:mb-1"><Users className="mr-2 h-4 w-4" />Members</TabsTrigger>
+              <TabsTrigger value="reports" className="w-full justify-start px-3 py-2 md:mb-1"><BarChartHorizontal className="mr-2 h-4 w-4" />Reports</TabsTrigger>
+              <TabsTrigger value="notes" className="w-full justify-start px-3 py-2 md:mb-1"><FileText className="mr-2 h-4 w-4" />Notes</TabsTrigger>
               <TabsTrigger value="activity" className="w-full justify-start px-3 py-2"><ActivityIcon className="mr-2 h-4 w-4" />Activity</TabsTrigger>
             </TabsList>
 
             <div className="flex-1 min-w-0"> 
+              <TabsContent value="balances">
+                <Card>
+                  <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription> </CardHeader>
+                  <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3.5 border rounded-lg"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-9 w-9"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {formatCurrency(Math.abs(balance.netBalance))} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-3 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-1.5 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${formatCurrency(item.amount)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "px-2 py-0.5 h-auto text-xs inline-flex items-center")}><DollarSignIcon className="mr-1 h-2.5 w-2.5" />Settle</Link> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-3 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
+                </Card>
+              </TabsContent>
+
               <TabsContent value="notes">
                 <Card>
                   <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
@@ -1357,35 +1417,12 @@ export default function GroupDetailPage() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="balances">
-                <Card>
-                  <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription> </CardHeader>
-                  <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3.5 border rounded-lg"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-9 w-9"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {formatCurrency(Math.abs(balance.netBalance))} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-3 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-1.5 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${formatCurrency(item.amount)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "px-2 py-0.5 h-auto text-xs inline-flex items-center")}><DollarSignIcon className="mr-1 h-2.5 w-2.5" />Settle</Link> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-3 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
-                </Card>
-              </TabsContent>
-
               <TabsContent value="reports">
-                <Card>
-                  <CardHeader> <CardTitle>Reports</CardTitle> <CardDescription>Visual insights into group spending.</CardDescription> </CardHeader>
-                  <CardContent className="space-y-6"> <Card> <CardHeader> <CardTitle>Total Spending by Payer</CardTitle> 
-                  <CardDescription>Which member has paid the most for group expenses.</CardDescription> 
-                  </CardHeader>
-                  <CardContent> {spendingByPayerChartData.length > 0 ? ( <ChartContainer config={chartConfigSpendingByPayer} className="h-[300px] w-full"> 
-                    <BarChart accessibilityLayer data={spendingByPayerChartData} layout="vertical" margin={{left: 10, right: 10}}>
-                      <CartesianGrid vertical={false} /> <XAxis type="number" dataKey="totalPaid" tickFormatter={(value) => formatCurrency(value)} /> 
-                        <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} hide={spendingByPayerChartData.length > 10}/> 
-                          <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} /> 
-                          <ChartLegend content={<ChartLegendContent />} />
-                           <Bar dataKey="totalPaid" radius={4}> </Bar>
-                      </BarChart>
-                      </ChartContainer> ) :
-                       ( 
-                       <p className="text-muted-foreground text-center py-6">No spending data to display for the chart.</p> 
-                       )} 
-                      </CardContent>
-                      </Card>
-                   </CardContent>
-                </Card>
+                <GroupReportsTab
+                  expenses={firestoreExpenses}
+                  members={group.members}
+                  formatCurrency={formatCurrency}
+                />
               </TabsContent>
 
               <TabsContent value="members">
@@ -1500,6 +1537,8 @@ export default function GroupDetailPage() {
                     <ul className="space-y-3">
                       {group.members.map((member) => {
                         const invitePending = isMemberInvitePending(group, member);
+                        const splitsOnly = isMemberSplitsOnly(group, member);
+                        const canReinvite = canReinviteMemberToApp(group, member);
                         return (
                           <li key={member.id} className="flex items-center justify-between p-3.5 border rounded-lg">
                             <div className="flex items-center gap-3 min-w-0">
@@ -1521,7 +1560,7 @@ export default function GroupDetailPage() {
                               {invitePending && (
                                 <Badge variant="outline" className="text-xs">Invited</Badge>
                               )}
-                              {!member.email && member.id !== group.ownerId && (
+                              {splitsOnly && (
                                 <Badge variant="secondary" className="text-xs">Splits only</Badge>
                               )}
                               {isOwner && invitePending && member.email && (
@@ -1536,6 +1575,32 @@ export default function GroupDetailPage() {
                                   ) : (
                                     "Revoke"
                                   )}
+                                </Button>
+                              )}
+                              {isOwner && canReinvite && member.email && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleInviteAgain(member.email!)}
+                                  disabled={invitingEmail === member.email}
+                                >
+                                  {invitingEmail === member.email ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    "Invite again"
+                                  )}
+                                </Button>
+                              )}
+                              {isOwner && member.id !== group.ownerId && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive"
+                                  onClick={() => setMemberToRemove(member)}
+                                  disabled={isRemovingMember}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  <span className="sr-only">Remove {member.name}</span>
                                 </Button>
                               )}
                             </div>
@@ -1584,6 +1649,55 @@ export default function GroupDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!memberToRemove} onOpenChange={(open) => !open && !isRemovingMember && setMemberToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {memberToRemove?.name || "member"}?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  They will be removed from this group. Their expense shares will be redistributed among remaining members,
+                  expenses they paid will be reassigned to you (admin), and their payments and contributions will be cleared.
+                </p>
+                {memberRemovalImpact && (
+                  <ul className="list-disc space-y-1 pl-5 text-foreground">
+                    {memberRemovalImpact.expensesRevised > 0 && (
+                      <li>{memberRemovalImpact.expensesRevised} expense(s) will be revised</li>
+                    )}
+                    {memberRemovalImpact.paymentsRemoved > 0 && (
+                      <li>{memberRemovalImpact.paymentsRemoved} settlement payment(s) will be removed</li>
+                    )}
+                    {memberRemovalImpact.contributionsRemoved > 0 && (
+                      <li>{memberRemovalImpact.contributionsRemoved} contribution(s) will be removed</li>
+                    )}
+                    {memberRemovalImpact.expensesRevised === 0 &&
+                      memberRemovalImpact.paymentsRemoved === 0 &&
+                      memberRemovalImpact.contributionsRemoved === 0 && (
+                        <li>No financial records to revise — member will simply be removed.</li>
+                      )}
+                  </ul>
+                )}
+                <p className="font-medium text-destructive">This action cannot be undone.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemovingMember}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleRemoveMember();
+              }}
+              disabled={isRemovingMember}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isRemovingMember ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {isRemovingMember ? "Removing..." : "Remove member"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!noteToDelete} onOpenChange={(open) => !open && setNoteToDelete(null)}>
         <AlertDialogContent>

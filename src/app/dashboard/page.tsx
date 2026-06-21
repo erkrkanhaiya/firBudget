@@ -439,7 +439,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               {translate({ en: "Your Groups", hi: "आपके समूह" })}
             </CardTitle>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
               <Users className="h-4 w-4 text-primary" />
             </div>
           </CardHeader>
@@ -463,15 +463,15 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
                  {translate({ en: "Overall Owed (Summary)", hi: "कुल बकाया (सारांश)" })}
             </CardTitle>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10">
-              <BarChart3 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+              <BarChart3 className="h-4 w-4 text-primary" />
             </div>
           </CardHeader>
           <CardContent>
             {isLoadingOverallBalances ? (
               <Skeleton className="h-8 w-20 mb-1" />
             ) : (
-              <div className={`text-2xl font-bold ${netOverallBalance !== null && netOverallBalance > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+              <div className={`text-2xl font-bold ${netOverallBalance !== null && netOverallBalance > 0 ? 'stat-positive' : 'text-muted-foreground'}`}>
                 {formatCurrency(netOverallBalance !== null && netOverallBalance > 0 ? netOverallBalance : 0)}
               </div>
             )}
@@ -493,15 +493,15 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               {translate({ en: "Pending Debts (Summary)", hi: "लंबित ऋण (सारांश)" })}
             </CardTitle>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10">
-              <ListChecks className="h-4 w-4 text-red-600 dark:text-red-400" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-destructive/10">
+              <ListChecks className="h-4 w-4 text-destructive" />
             </div>
           </CardHeader>
           <CardContent>
             {isLoadingOverallBalances ? (
                 <Skeleton className="h-8 w-20 mb-1" />
             ) : (
-                <div className={`text-2xl font-bold ${netOverallBalance !== null && netOverallBalance < 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                <div className={`text-2xl font-bold ${netOverallBalance !== null && netOverallBalance < 0 ? 'stat-negative' : 'text-muted-foreground'}`}>
                     {formatCurrency(netOverallBalance !== null && netOverallBalance < 0 ? Math.abs(netOverallBalance) : 0)}
                 </div>
             )}

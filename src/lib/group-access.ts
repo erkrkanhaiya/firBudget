@@ -1,5 +1,5 @@
 import { db } from "@/lib/firebase";
-import type { Group, User } from "@/types";
+import type { Contribution, Expense, Group, Payment, User } from "@/types";
 import {
   Timestamp,
   addDoc,
@@ -14,6 +14,7 @@ import {
   serverTimestamp,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -77,9 +78,83 @@ export function isInvitedToGroup(
   return (group.invitedEmails || []).includes(normalizeEmail(email));
 }
 
-export function isMemberInvitePending(group: Group, member: User): boolean {
+function getOwnerEmail(group: Pick<Group, "ownerId" | "members">): string | null {
+  const owner = group.members.find((member) => member.id === group.ownerId);
+  return owner?.email ? normalizeEmail(owner.email) : null;
+}
+
+function isLikelyFirebaseAuthUid(id: string): boolean {
+  return id.length >= 28 && /^[a-zA-Z0-9]+$/.test(id);
+}
+
+/** True when a member should be tracked in invitedEmails (never the group owner/admin). */
+export function memberNeedsAppInvite(
+  group: Pick<Group, "ownerId">,
+  member: { id: string; email?: string | null }
+): boolean {
+  if (member.id === group.ownerId) return false;
+  const email = member.email?.trim();
+  if (!email || !isValidEmail(normalizeEmail(email))) return false;
+  return true;
+}
+
+function hasJoinedWithAppAccount(group: Group, member: User): boolean {
+  if (member.id === group.ownerId) return true;
   if (!member.email) return false;
+  if (isInvitedToGroup(group, member.email)) return false;
+  return isLikelyFirebaseAuthUid(member.id);
+}
+
+/** Normalizes invitedEmails: removes the group owner/admin email only (does not re-add revoked invites). */
+export function computeInvitedEmails(group: Group): string[] {
+  const ownerEmail = getOwnerEmail(group);
+  const emails = new Set<string>();
+
+  for (const email of group.invitedEmails || []) {
+    const normalized = normalizeEmail(email);
+    if (ownerEmail && normalized === ownerEmail) continue;
+    emails.add(normalized);
+  }
+
+  return Array.from(emails);
+}
+
+export function isMemberInvitePending(group: Group, member: User): boolean {
+  if (!memberNeedsAppInvite(group, member)) return false;
   return isInvitedToGroup(group, member.email);
+}
+
+/** Member is in the group for expense splits but does not have active app access. */
+export function isMemberSplitsOnly(group: Group, member: User): boolean {
+  if (member.id === group.ownerId) return false;
+  if (isMemberInvitePending(group, member)) return false;
+  if (hasJoinedWithAppAccount(group, member)) return false;
+  return true;
+}
+
+/** Member has email on file but invite was revoked or never sent — admin can invite again. */
+export function canReinviteMemberToApp(group: Group, member: User): boolean {
+  if (!memberNeedsAppInvite(group, member)) return false;
+  if (isMemberInvitePending(group, member)) return false;
+  return !hasJoinedWithAppAccount(group, member);
+}
+
+export async function repairGroupInvitedEmailsIfNeeded(
+  group: Group
+): Promise<Group> {
+  const fixed = computeInvitedEmails(group);
+  const current = (group.invitedEmails || []).map(normalizeEmail).sort();
+  const next = [...fixed].sort();
+
+  if (
+    current.length === next.length &&
+    current.every((email, index) => email === next[index])
+  ) {
+    return group;
+  }
+
+  await updateDoc(doc(db, "groups", group.id), { invitedEmails: fixed });
+  return { ...group, invitedEmails: fixed };
 }
 
 export function canViewGroup(group: Group, user: User): boolean {
@@ -322,6 +397,11 @@ export async function revokeGroupInvite(
   email: string
 ): Promise<void> {
   const normalizedEmail = normalizeEmail(email);
+  const ownerEmail = getOwnerEmail(group);
+  if (ownerEmail && normalizedEmail === ownerEmail) {
+    throw new Error("Cannot revoke the group admin's access.");
+  }
+
   const groupDocRef = doc(db, "groups", group.id);
 
   await updateDoc(groupDocRef, {
@@ -333,7 +413,45 @@ export async function revokeGroupInvite(
     userId: adminUser.id,
     actorName: adminUser.name,
     actionType: "member_invited",
-    description: `${adminUser.name || "Admin"} removed the app invitation for ${normalizedEmail}.`,
+    description: `${adminUser.name || "Admin"} removed the app invitation for ${normalizedEmail}. They remain in the group for expense splits only.`,
+    timestamp: serverTimestamp(),
+  });
+}
+
+export async function resendGroupInvite(
+  group: Group,
+  adminUser: User,
+  email: string
+): Promise<void> {
+  const normalizedEmail = normalizeEmail(email);
+  const ownerEmail = getOwnerEmail(group);
+  if (ownerEmail && normalizedEmail === ownerEmail) {
+    throw new Error("Cannot invite the group admin.");
+  }
+
+  const member = group.members.find(
+    (m) => m.email && normalizeEmail(m.email) === normalizedEmail
+  );
+  if (!member) {
+    throw new Error("No member found with that email.");
+  }
+  if (!canReinviteMemberToApp(group, member)) {
+    throw new Error("This member cannot be invited right now.");
+  }
+
+  const groupDocRef = doc(db, "groups", group.id);
+
+  await updateDoc(groupDocRef, {
+    invitedEmails: arrayUnion(normalizedEmail),
+  });
+
+  await addDoc(collection(db, "groups", group.id, "activityLog"), {
+    groupId: group.id,
+    userId: adminUser.id,
+    actorName: adminUser.name,
+    actionType: "member_invited",
+    description: `${adminUser.name || "Admin"} invited ${member.name || normalizedEmail} to access the group in the app (${normalizedEmail}).`,
+    relatedUserId: member.id,
     timestamp: serverTimestamp(),
   });
 }
@@ -377,6 +495,7 @@ export async function addGroupMembersToGroup(
     newMemberIds.push(member.id);
 
     if (
+      memberNeedsAppInvite(group, member) &&
       validEmail &&
       !invitedEmails.includes(validEmail) &&
       !memberEmails.has(validEmail)
@@ -418,4 +537,234 @@ export async function addGroupMembersToGroup(
   }
 
   return { addedCount: newMemberIds.length, invitedCount: emailsToInvite.length };
+}
+
+export type MemberRemovalImpact = {
+  expensesRevised: number;
+  paymentsRemoved: number;
+  contributionsRemoved: number;
+};
+
+type ExpenseParticipantRow = { userId: string; amountOwed: number };
+
+function distributeAmountEqually(
+  total: number,
+  userIds: string[]
+): ExpenseParticipantRow[] {
+  if (userIds.length === 0) return [];
+  const share = parseFloat((total / userIds.length).toFixed(2));
+  return userIds.map((userId, index) => ({
+    userId,
+    amountOwed:
+      index === userIds.length - 1
+        ? parseFloat((total - share * (userIds.length - 1)).toFixed(2))
+        : share,
+  }));
+}
+
+function redistributeRemovedShare(
+  participants: ExpenseParticipantRow[],
+  removedShare: number,
+  totalAmount: number
+): ExpenseParticipantRow[] {
+  const sumRemaining = participants.reduce((sum, p) => sum + p.amountOwed, 0);
+
+  if (sumRemaining <= 0) {
+    return distributeAmountEqually(
+      totalAmount,
+      participants.map((p) => p.userId)
+    );
+  }
+
+  const updated = participants.map((p) => ({
+    userId: p.userId,
+    amountOwed: parseFloat(
+      (p.amountOwed + (removedShare * p.amountOwed) / sumRemaining).toFixed(2)
+    ),
+  }));
+
+  const newSum = updated.reduce((sum, p) => sum + p.amountOwed, 0);
+  const drift = parseFloat((totalAmount - newSum).toFixed(2));
+  if (Math.abs(drift) > 0.001 && updated.length > 0) {
+    updated[updated.length - 1].amountOwed = parseFloat(
+      (updated[updated.length - 1].amountOwed + drift).toFixed(2)
+    );
+  }
+
+  return updated;
+}
+
+function reviseExpenseForRemovedMember(
+  expense: Pick<Expense, "amount" | "paidByUserId" | "participants">,
+  removedUserId: string,
+  remainingMemberIds: string[],
+  reassignPayerTo: string
+): { paidByUserId: string; participants: ExpenseParticipantRow[] } | null {
+  const involvesRemoved =
+    expense.paidByUserId === removedUserId ||
+    expense.participants.some((p) => p.userId === removedUserId);
+
+  if (!involvesRemoved) return null;
+
+  const paidByUserId =
+    expense.paidByUserId === removedUserId ? reassignPayerTo : expense.paidByUserId;
+
+  const removedShare =
+    expense.participants.find((p) => p.userId === removedUserId)?.amountOwed ?? 0;
+
+  let participants = expense.participants.filter((p) => p.userId !== removedUserId);
+  participants = participants.filter((p) => remainingMemberIds.includes(p.userId));
+
+  if (participants.length === 0 && remainingMemberIds.length > 0) {
+    participants = distributeAmountEqually(expense.amount, remainingMemberIds);
+  } else if (removedShare > 0 && participants.length > 0) {
+    participants = redistributeRemovedShare(participants, removedShare, expense.amount);
+  }
+
+  return { paidByUserId, participants };
+}
+
+export function computeMemberRemovalImpact(
+  memberId: string,
+  expenses: Expense[],
+  payments: Payment[],
+  contributions: Contribution[]
+): MemberRemovalImpact {
+  let expensesRevised = 0;
+  for (const expense of expenses) {
+    if (
+      expense.paidByUserId === memberId ||
+      expense.participants.some((p) => p.userId === memberId)
+    ) {
+      expensesRevised++;
+    }
+  }
+
+  const paymentsRemoved = payments.filter(
+    (p) => p.paidByUserId === memberId || p.paidToUserId === memberId
+  ).length;
+
+  const contributionsRemoved = contributions.filter(
+    (c) => c.contributorId === memberId
+  ).length;
+
+  return { expensesRevised, paymentsRemoved, contributionsRemoved };
+}
+
+export async function removeGroupMemberFromGroup(
+  group: Group,
+  adminUser: User,
+  memberIdToRemove: string
+): Promise<MemberRemovalImpact> {
+  if (group.ownerId !== adminUser.id) {
+    throw new Error("Only the group admin can remove members.");
+  }
+  if (memberIdToRemove === group.ownerId) {
+    throw new Error("Cannot remove the group admin.");
+  }
+  if (!group.memberIds.includes(memberIdToRemove)) {
+    throw new Error("Member is not in this group.");
+  }
+
+  const remainingMemberIds = group.memberIds.filter((id) => id !== memberIdToRemove);
+  const memberToRemove = group.members.find((m) => m.id === memberIdToRemove);
+  const memberName = memberToRemove?.name || "Member";
+
+  const [expensesSnap, paymentsSnap, contributionsSnap] = await Promise.all([
+    getDocs(collection(db, "groups", group.id, "expenses")),
+    getDocs(collection(db, "groups", group.id, "payments")),
+    getDocs(collection(db, "groups", group.id, "contributions")),
+  ]);
+
+  const impact: MemberRemovalImpact = {
+    expensesRevised: 0,
+    paymentsRemoved: 0,
+    contributionsRemoved: 0,
+  };
+
+  let batch = writeBatch(db);
+  let batchOps = 0;
+
+  const commitIfNeeded = async (force = false) => {
+    if (batchOps > 0 && (force || batchOps >= 450)) {
+      await batch.commit();
+      batch = writeBatch(db);
+      batchOps = 0;
+    }
+  };
+
+  for (const expDoc of expensesSnap.docs) {
+    const data = expDoc.data();
+    const expense = {
+      amount: data.amount as number,
+      paidByUserId: data.paidByUserId as string,
+      participants: (data.participants as ExpenseParticipantRow[]) || [],
+    };
+
+    const revised = reviseExpenseForRemovedMember(
+      expense,
+      memberIdToRemove,
+      remainingMemberIds,
+      group.ownerId
+    );
+
+    if (revised) {
+      batch.update(expDoc.ref, {
+        paidByUserId: revised.paidByUserId,
+        participants: revised.participants,
+      });
+      batchOps++;
+      impact.expensesRevised++;
+      await commitIfNeeded();
+    }
+  }
+
+  for (const payDoc of paymentsSnap.docs) {
+    const data = payDoc.data();
+    if (
+      data.paidByUserId === memberIdToRemove ||
+      data.paidToUserId === memberIdToRemove
+    ) {
+      batch.delete(payDoc.ref);
+      batchOps++;
+      impact.paymentsRemoved++;
+      await commitIfNeeded();
+    }
+  }
+
+  for (const contribDoc of contributionsSnap.docs) {
+    if (contribDoc.data().contributorId === memberIdToRemove) {
+      batch.delete(contribDoc.ref);
+      batchOps++;
+      impact.contributionsRemoved++;
+      await commitIfNeeded();
+    }
+  }
+
+  await commitIfNeeded(true);
+
+  const updatedMembers = group.members.filter((m) => m.id !== memberIdToRemove);
+  const updatedMemberIds = remainingMemberIds;
+  const updatedInvitedEmails = (group.invitedEmails || []).filter((email) => {
+    if (!memberToRemove?.email) return true;
+    return email !== normalizeEmail(memberToRemove.email);
+  });
+
+  await updateDoc(doc(db, "groups", group.id), {
+    members: updatedMembers,
+    memberIds: updatedMemberIds,
+    invitedEmails: updatedInvitedEmails,
+  });
+
+  await addDoc(collection(db, "groups", group.id, "activityLog"), {
+    groupId: group.id,
+    userId: adminUser.id,
+    actorName: adminUser.name,
+    actionType: "member_removed",
+    description: `${adminUser.name || "Admin"} removed ${memberName} from the group. Balances and expense splits were recalculated.`,
+    relatedUserId: memberIdToRemove,
+    timestamp: serverTimestamp(),
+  });
+
+  return impact;
 }

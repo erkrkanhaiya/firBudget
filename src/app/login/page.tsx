@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link'; // Import Link
 import { Button } from '@/components/ui/button';
@@ -16,12 +16,26 @@ import { FirebaseError } from 'firebase/app';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useUser(); 
+  const { login, currentUser } = useUser();
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (currentUser) {
+      router.replace('/dashboard');
+    }
+  }, [currentUser, router]);
+
+  if (currentUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-background to-secondary/30">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();

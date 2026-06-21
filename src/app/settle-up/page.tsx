@@ -250,26 +250,26 @@ export default function GlobalSettleUpPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-6 md:grid-cols-3">
-              <Card className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700">
+              <Card className="surface-positive">
                 <CardHeader className="pb-2">
-                  <CardDescription className="text-green-700 dark:text-green-400">Total Owed To You</CardDescription>
-                  <CardTitle className="text-3xl text-green-600 dark:text-green-300">
+                  <CardDescription className="text-success/90">Total Owed To You</CardDescription>
+                  <CardTitle className="text-3xl stat-positive">
                     {formatCurrency(balancesData.totalOwedToUser)}
                   </CardTitle>
                 </CardHeader>
               </Card>
-              <Card className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700">
+              <Card className="surface-negative">
                 <CardHeader className="pb-2">
-                  <CardDescription className="text-red-700 dark:text-red-400">Total You Owe Others</CardDescription>
-                  <CardTitle className="text-3xl text-red-600 dark:text-red-300">
+                  <CardDescription className="text-destructive/90">Total You Owe Others</CardDescription>
+                  <CardTitle className="text-3xl stat-negative">
                     {formatCurrency(balancesData.totalUserOwes)}
                   </CardTitle>
                 </CardHeader>
               </Card>
-              <Card className={`${balancesData.netOverallBalance >= 0 ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700' : 'bg-orange-50 dark:bg-orange-900/30 border-orange-200 dark:border-orange-700'}`}>
+              <Card className={balancesData.netOverallBalance >= 0 ? 'surface-info' : 'surface-warning border-warning/20 bg-warning/10'}>
                 <CardHeader className="pb-2">
-                  <CardDescription className={`${balancesData.netOverallBalance >=0 ? 'text-blue-700 dark:text-blue-400' : 'text-orange-700 dark:text-orange-400'}`}>Your Net Position</CardDescription>
-                  <CardTitle className={`text-3xl ${balancesData.netOverallBalance >=0 ? 'text-blue-600 dark:text-blue-300' : 'text-orange-600 dark:text-orange-300'}`}>
+                  <CardDescription className={balancesData.netOverallBalance >= 0 ? 'text-info/90' : 'text-warning/90'}>Your Net Position</CardDescription>
+                  <CardTitle className={`text-3xl ${balancesData.netOverallBalance >= 0 ? 'stat-info' : 'stat-warning'}`}>
                     {formatCurrency(balancesData.netOverallBalance)}
                     <span className="text-sm ml-1">{balancesData.netOverallBalance >= 0 ? "(You are net owed)" : "(You net owe)"}</span>
                   </CardTitle>
@@ -289,7 +289,7 @@ export default function GlobalSettleUpPage() {
           {balancesData.creditors.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center text-red-600 dark:text-red-400">
+                <CardTitle className="flex items-center stat-negative">
                   <ArrowUpCircle className="mr-2 h-6 w-6" />
                   Who You Owe (Overall)
                 </CardTitle>
@@ -307,7 +307,7 @@ export default function GlobalSettleUpPage() {
                         <span className="font-medium">{creditor.userName}</span>
                       </div>
                       <div className="w-full sm:w-auto text-left sm:text-right">
-                        <span className="font-semibold text-red-600 dark:text-red-400">
+                        <span className="font-semibold stat-negative">
                           You owe: {formatCurrency(Math.abs(creditor.amount))}
                         </span>
                         <p className="text-xs text-muted-foreground mt-0.5">To settle, record payment in a shared group.</p>
@@ -322,7 +322,7 @@ export default function GlobalSettleUpPage() {
           {balancesData.debtors.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center text-green-600 dark:text-green-400">
+                <CardTitle className="flex items-center stat-positive">
                   <ArrowDownCircle className="mr-2 h-6 w-6" />
                   Who Owes You (Overall)
                 </CardTitle>
@@ -340,7 +340,7 @@ export default function GlobalSettleUpPage() {
                         <span className="font-medium">{debtor.userName}</span>
                       </div>
                        <div className="w-full sm:w-auto text-left sm:text-right">
-                        <span className="font-semibold text-green-600 dark:text-green-400">
+                        <span className="font-semibold stat-positive">
                           Owes you: {formatCurrency(debtor.amount)}
                         </span>
                          <p className="text-xs text-muted-foreground mt-0.5">They can record payment in a shared group.</p>

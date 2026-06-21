@@ -52,10 +52,10 @@ export function MobileBottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-50 md:hidden border-t border-border/60 bg-background/90 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80"
+      className="fixed inset-x-0 bottom-0 z-50 md:hidden border-t border-border/40 bg-background/85 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/75"
       aria-label="Main navigation"
     >
-      <div className="mx-auto flex h-[4.25rem] max-w-lg items-stretch justify-around px-1 pb-[env(safe-area-inset-bottom)]">
+      <div className="mx-auto flex h-[4rem] max-w-lg items-stretch justify-around px-2 pb-[env(safe-area-inset-bottom)]">
         {primaryTabs.map((tab) => {
           const active = isActive(pathname, tab.href);
           const Icon = tab.icon;
@@ -64,7 +64,7 @@ export function MobileBottomNav() {
               key={tab.href}
               href={tab.href}
               className={cn(
-                "flex flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[10px] font-medium transition-all duration-200 active:scale-95",
+                "flex flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-[10px] font-medium transition-all duration-200 active:scale-95",
                 active
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
@@ -72,8 +72,8 @@ export function MobileBottomNav() {
             >
               <span
                 className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-200",
-                  active && "bg-primary/10 shadow-sm"
+                  "flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200",
+                  active && "bg-primary/15"
                 )}
               >
                 <Icon className={cn("h-5 w-5", active && "stroke-[2.5]")} />
