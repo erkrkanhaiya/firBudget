@@ -4,8 +4,7 @@ import { useState } from "react";
 import { Download, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePwaInstall } from "@/hooks/use-pwa-install";
-import { PwaIosInstallDialog } from "@/components/pwa/PwaIosInstallDialog";
-import { useToast } from "@/hooks/use-toast";
+import { PwaInstallInstructionsDialog } from "@/components/pwa/PwaInstallInstructionsDialog";
 import { cn } from "@/lib/utils";
 
 type PwaInstallButtonProps = {
@@ -16,6 +15,14 @@ type PwaInstallButtonProps = {
   label?: string;
 };
 
+function getInstructionMode(isIos: boolean): "ios" | "android" | "desktop" {
+  if (isIos) return "ios";
+  if (typeof window !== "undefined" && /android/i.test(window.navigator.userAgent)) {
+    return "android";
+  }
+  return "desktop";
+}
+
 export function PwaInstallButton({
   variant = "outline",
   size = "sm",
@@ -23,9 +30,9 @@ export function PwaInstallButton({
   showIcon = true,
   label = "Download app",
 }: PwaInstallButtonProps) {
-  const { canInstall, isInstalled, isIos, hasNativePrompt, install } = usePwaInstall();
-  const [iosDialogOpen, setIosDialogOpen] = useState(false);
-  const { toast } = useToast();
+  const { isInstalled, isIos, hasNativePrompt, install } = usePwaInstall();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"ios" | "android" | "desktop">("desktop");
 
   if (isInstalled) {
     return (
@@ -36,23 +43,14 @@ export function PwaInstallButton({
     );
   }
 
-  if (!canInstall) return null;
-
   const handleClick = async () => {
     if (hasNativePrompt) {
       await install();
       return;
     }
 
-    if (isIos) {
-      setIosDialogOpen(true);
-      return;
-    }
-
-    toast({
-      title: "Install HisabKaro",
-      description: "Open your browser menu and choose “Install app” or “Add to Home screen”.",
-    });
+    setDialogMode(getInstructionMode(isIos));
+    setDialogOpen(true);
   };
 
   return (
@@ -61,7 +59,7 @@ export function PwaInstallButton({
         {showIcon && <Download className="mr-2 h-4 w-4" />}
         {label}
       </Button>
-      <PwaIosInstallDialog open={iosDialogOpen} onOpenChange={setIosDialogOpen} />
+      <PwaInstallInstructionsDialog open={dialogOpen} onOpenChange={setDialogOpen} mode={dialogMode} />
     </>
   );
 }

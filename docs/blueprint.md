@@ -1,4 +1,4 @@
-# **App Name**: HisabKaro
+# **App Name**: BillBuddy
 
 ## Core Features:
 

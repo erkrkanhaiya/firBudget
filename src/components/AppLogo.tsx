@@ -23,7 +23,7 @@ export function AppLogo({
         alt="Picture of the author"
       />
       {/* <Coins className="text-primary" size={iconSize} /> */}
-      <h1 className={`font-bold ${textSize} text-primary`}>HisabKaro</h1>
+      <h1 className={`font-bold ${textSize} text-primary`}>BillBuddy</h1>
     </Link>
   );
 }

@@ -53,18 +53,16 @@ export function AppSidebar() {
         <SidebarMenu>
           {navItems.map((item) => (
             <SidebarMenuItem key={item.href}>
-              <Link href={item.href} legacyBehavior passHref>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}
-                  tooltip={{ children: translate(item.label), className: "ml-1" }}
-                >
-                  <a>
-                    <item.icon />
-                    <span>{translate(item.label)}</span>
-                  </a>
-                </SidebarMenuButton>
-              </Link>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}
+                tooltip={{ children: translate(item.label), className: "ml-1" }}
+              >
+                <Link href={item.href}>
+                  <item.icon />
+                  <span>{translate(item.label)}</span>
+                </Link>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
@@ -74,18 +72,16 @@ export function AppSidebar() {
          <SidebarMenu>
           {bottomNavItems.map((item) => (
             <SidebarMenuItem key={item.href}>
-              <Link href={item.href} legacyBehavior passHref>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname.startsWith(item.href)}
-                  tooltip={{ children: translate(item.label), className: "ml-1" }}
-                >
-                  <a>
-                    <item.icon />
-                    <span>{translate(item.label)}</span>
-                  </a>
-                </SidebarMenuButton>
-              </Link>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname.startsWith(item.href)}
+                tooltip={{ children: translate(item.label), className: "ml-1" }}
+              >
+                <Link href={item.href}>
+                  <item.icon />
+                  <span>{translate(item.label)}</span>
+                </Link>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>

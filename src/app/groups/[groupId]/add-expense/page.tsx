@@ -23,6 +23,7 @@ import { format, parseISO } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db, storage } from '@/lib/firebase';
+import { loadGroupAsMember } from '@/lib/group-access';
 import { doc, getDoc, collection, addDoc, serverTimestamp, Timestamp, writeBatch, type DocumentData, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useNotification } from '@/contexts/NotificationContext';
@@ -119,34 +120,21 @@ export default function AddExpensePage() {
       }
       setIsLoadingGroup(true);
       try {
-        const groupDocRef = doc(db, 'groups', groupId);
-        const groupDocSnap = await getDoc(groupDocRef);
-        if (groupDocSnap.exists()) {
-          const groupData = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp };
-          const fetchedGroup: Group = {
-            id: groupDocSnap.id,
-            ...groupData,
-            members: groupData.members || [],
-            memberIds: groupData.memberIds || [],
-            createdAt: groupData.createdAt.toDate().toISOString(),
-          };
+        const { group: fetchedGroup, denied } = await loadGroupAsMember(groupId, currentUser);
 
-          if (!fetchedGroup.memberIds.includes(currentUser.id)) {
-            toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
-            router.push('/groups');
-            return;
-          }
-          setGroup(fetchedGroup);
+        if (denied || !fetchedGroup) {
+          toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
+          router.push('/groups');
+          return;
+        }
+
+        setGroup(fetchedGroup);
           const memberIds = fetchedGroup.members.map(m => m.id);
           setSelectedParticipantIds(memberIds);
           setPaidByUserId(currentUser.id);
           const initialCustomAmounts: Record<string, string> = {};
           memberIds.forEach(id => { initialCustomAmounts[id] = ''; });
           setCustomSplitAmounts(initialCustomAmounts);
-        } else {
-          toast({ title: "Group not found", variant: "destructive" });
-          router.push('/groups');
-        }
       } catch (error) {
         console.error("Error fetching group:", error);
         toast({ title: "Error", description: "Could not load group details.", variant: "destructive" });

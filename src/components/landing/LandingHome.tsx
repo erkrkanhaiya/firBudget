@@ -131,7 +131,7 @@ export function LandingHome() {
             </Link>
           </nav>
           <div className="flex items-center gap-2 sm:gap-3">
-            <PwaInstallButton variant="outline" size="sm" className="hidden md:inline-flex" />
+            <PwaInstallButton variant="outline" size="sm" />
             <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
               <Link href="/login">Log in</Link>
             </Button>
@@ -184,7 +184,7 @@ export function LandingHome() {
             </h1>
 
             <p className="animate-fade-up animation-delay-200 opacity-0 mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
-              HisabKaro is the smart way to track shared expenses, split costs with friends,
+              BillBuddy is the smart way to track shared expenses, split costs with friends,
               and settle up — perfect for trips, roommates, and group events.
             </p>
 
@@ -227,7 +227,7 @@ export function LandingHome() {
                   <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
                 </div>
-                <span className="mx-auto text-xs font-medium text-muted-foreground">HisabKaro Dashboard</span>
+                <span className="mx-auto text-xs font-medium text-muted-foreground">BillBuddy Dashboard</span>
               </div>
 
               <div className="space-y-4 p-5 sm:p-6">
@@ -366,7 +366,7 @@ export function LandingHome() {
                   Built for real shared spending
                 </h2>
                 <p className="mt-4 text-muted-foreground">
-                  Roommates, travelers, teams, and families — HisabKaro fits every group.
+                  Roommates, travelers, teams, and families — BillBuddy fits every group.
                 </p>
                 <ul className="mt-8 space-y-4 text-left">
                   {[
@@ -392,7 +392,7 @@ export function LandingHome() {
                     src="/icon-512x512.png"
                     width={260}
                     height={260}
-                    alt="HisabKaro — group expense sharing app logo"
+                    alt="BillBuddy — group expense sharing app logo"
                     className="relative animate-float drop-shadow-2xl"
                     priority={false}
                   />
@@ -411,10 +411,10 @@ export function LandingHome() {
                   <Download className="h-7 w-7 text-primary" aria-hidden="true" />
                 </div>
                 <h2 id="download-heading" className="text-3xl font-bold tracking-tight sm:text-4xl">
-                  Install HisabKaro on your phone
+                  Install BillBuddy on your phone
                 </h2>
                 <p className="mt-4 text-muted-foreground">
-                  Download the PWA and open HisabKaro from your home screen anytime — no app store needed.
+                  Download the PWA and open BillBuddy from your home screen anytime — no app store needed.
                   Works on Android, iPhone, and desktop.
                 </p>
                 <div className="mt-8">
@@ -434,7 +434,7 @@ export function LandingHome() {
                 Frequently asked questions about expense splitting
               </h2>
               <p className="mt-4 text-muted-foreground">
-                Everything you need to know about using HisabKaro as your free bill splitting app.
+                Everything you need to know about using BillBuddy as your free bill splitting app.
               </p>
             </RevealOnScroll>
 
@@ -496,7 +496,7 @@ export function LandingHome() {
             </nav>
           </div>
           <div className="mt-8 border-t pt-6 text-center text-sm text-muted-foreground">
-            <p>&copy; {new Date().getFullYear()} HisabKaro. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} BillBuddy. All rights reserved.</p>
             <p className="mt-1 text-xs">
               Free group expense splitter · Bill sharing app · USD & INR
             </p>

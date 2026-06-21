@@ -71,6 +71,16 @@ import {
 } from "@/components/ui/chart";
 import { BarChart, CartesianGrid, XAxis, YAxis, Bar } from "recharts";
 import { cn } from '@/lib/utils';
+import {
+  acceptGroupInviteIfNeeded,
+  addGroupMembersToGroup,
+  canViewGroup,
+  isMemberInvitePending,
+  isValidEmail,
+  mapFirestoreGroup,
+  normalizeEmail,
+  revokeGroupInvite,
+} from '@/lib/group-access';
 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -165,6 +175,10 @@ export default function GroupDetailPage() {
   const [isLoadingPotentialMembers, setIsLoadingPotentialMembers] = useState(false);
   const [selectedContactsToAdd, setSelectedContactsToAdd] = useState<string[]>([]);
   const [isAddingMembers, setIsAddingMembers] = useState(false);
+  const [newQuickMemberName, setNewQuickMemberName] = useState('');
+  const [newQuickMemberEmail, setNewQuickMemberEmail] = useState('');
+  const [isAddingQuickMember, setIsAddingQuickMember] = useState(false);
+  const [revokingInviteEmail, setRevokingInviteEmail] = useState<string | null>(null);
 
   const [spendingByPayerChartData, setSpendingByPayerChartData] = useState<SpendingByPayerChartData[]>([]);
 
@@ -285,18 +299,17 @@ export default function GroupDetailPage() {
 
       if (groupDocSnap.exists()) {
         const groupData = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp };
-        const fetchedGroup: Group = {
-          id: groupDocSnap.id,
+        let fetchedGroup: Group = mapFirestoreGroup(groupDocSnap.id, {
           ...groupData,
-          members: groupData.members || [],
-          memberIds: groupData.memberIds || [],
-          createdAt: safeParseDate(groupData.createdAt, 'group.createdAt'),
-          category: groupData.category || 'OTHER',
-          budgetAmount: groupData.budgetAmount,
-        };
+          createdAt: groupData.createdAt,
+        });
 
-        const isMember = fetchedGroup.memberIds.includes(currentUser.id);
-        if (fetchedGroup.visibility === 'private' && !isMember) {
+        const { group: groupAfterAccept } = await acceptGroupInviteIfNeeded(groupId, currentUser);
+        if (groupAfterAccept) {
+          fetchedGroup = groupAfterAccept;
+        }
+
+        if (!canViewGroup(fetchedGroup, currentUser)) {
           toast({ title: "Access Denied", description: "This is a private group and you are not a member.", variant: "destructive" });
           setAccessDenied(true);
           setGroup(null);
@@ -561,7 +574,7 @@ export default function GroupDetailPage() {
 
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text(`HisabKaro - Group Report: ${group.name}`, 14, yPos);
+    doc.text(`BillBuddy - Group Report: ${group.name}`, 14, yPos);
     yPos += 8;
 
     doc.setFontSize(10);
@@ -766,13 +779,13 @@ export default function GroupDetailPage() {
       doc.text("No balances to display or balances are being calculated.", 14, yPos);
       yPos += 8;
     }
-    doc.save(`HisabKaro_Group_${group.name.replace(/\s+/g, '_')}_Summary.pdf`);
+    doc.save(`BillBuddy_Group_${group.name.replace(/\s+/g, '_')}_Summary.pdf`);
     toast({ title: "PDF Generated", description: "Your group summary PDF has been downloaded." });
   };
 
   const groupUrl = typeof window !== 'undefined' ? `${window.location.origin}/groups/${groupId}` : '';
-  const shareMessageDefault = `Check out this group on HisabKaro: "${group?.name || 'a group'}"`;
-  const shareTitle = group?.name || 'HisabKaro Group';
+  const shareMessageDefault = `Check out this group on BillBuddy: "${group?.name || 'a group'}"`;
+  const shareTitle = group?.name || 'BillBuddy Group';
 
   const handleNativeShare = async () => {
     if (!group) return;
@@ -799,7 +812,7 @@ export default function GroupDetailPage() {
   const handleShareWhatsApp = () => { if (!group) return; const message = `${shareMessageDefault}\n${groupUrl}`; const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`; window.open(whatsappUrl, '_blank', 'noopener,noreferrer'); };
   const handleShareFacebook = () => { if (!group) return; const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(groupUrl)}`; window.open(facebookUrl, '_blank', 'noopener,noreferrer'); };
   const handleShareTwitter = () => { if (!group) return; const text = `${shareMessageDefault}`; const twitterUrl = `https://twitter.com/intent/tweet?url=${encodeURIComponent(groupUrl)}&text=${encodeURIComponent(text)}`; window.open(twitterUrl, '_blank', 'noopener,noreferrer'); };
-  const handleShareEmail = () => { if (!group) return; const subject = `Check out this HisabKaro group: ${group.name}`; const body = `${shareMessageDefault}\n${groupUrl}`; const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; window.location.href = mailtoUrl; };
+  const handleShareEmail = () => { if (!group) return; const subject = `Check out this BillBuddy group: ${group.name}`; const body = `${shareMessageDefault}\n${groupUrl}`; const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; window.location.href = mailtoUrl; };
 
   const handleDeleteGroup = async () => {
     if (!group || !currentUser || group.ownerId !== currentUser.id) {
@@ -837,7 +850,15 @@ export default function GroupDetailPage() {
       const q = query( contactsCollectionRef, where("addedByUid", "==", currentUser.id), orderBy("name", "asc") );
       const contactsSnapshot = await getDocs(q);
       const contactsList = contactsSnapshot.docs
-        .map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as UserType))
+        .map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            name: data.name as string,
+            email: (data.email as string | null | undefined) ?? null,
+            avatarUrl: undefined,
+          } as UserType;
+        })
         .filter(contact => !group.memberIds.includes(contact.id));
       setPotentialNewMembers(contactsList);
     } catch (error) {
@@ -848,8 +869,70 @@ export default function GroupDetailPage() {
     }
   };
 
-  const handleAddMemberDialogOpenChange = (open: boolean) => { setIsAddMemberDialogOpen(open); if (open) { fetchPotentialNewMembers(); setSelectedContactsToAdd([]); } };
+  const handleAddMemberDialogOpenChange = (open: boolean) => {
+    setIsAddMemberDialogOpen(open);
+    if (open) {
+      fetchPotentialNewMembers();
+      setSelectedContactsToAdd([]);
+    } else {
+      setNewQuickMemberName('');
+      setNewQuickMemberEmail('');
+    }
+  };
   const handleToggleContactSelection = (contactId: string) => { setSelectedContactsToAdd(prev => prev.includes(contactId) ? prev.filter(id => id !== contactId) : [...prev, contactId]); };
+
+  const handleQuickAddMember = async () => {
+    if (!newQuickMemberName.trim() || !currentUser) {
+      toast({ title: "Name required", description: "Please enter a name.", variant: "destructive" });
+      return;
+    }
+    const trimmedEmail = newQuickMemberEmail.trim();
+    if (trimmedEmail && !isValidEmail(normalizeEmail(trimmedEmail))) {
+      toast({ title: "Invalid email", description: "Enter a valid email or leave it blank.", variant: "destructive" });
+      return;
+    }
+
+    setIsAddingQuickMember(true);
+    const memberName = newQuickMemberName.trim();
+    const memberEmail = trimmedEmail ? normalizeEmail(trimmedEmail) : null;
+
+    try {
+      const docRef = await addDoc(collection(db, 'appMemberContacts'), {
+        name: memberName,
+        ...(memberEmail ? { email: memberEmail } : {}),
+        addedByUid: currentUser.id,
+        createdAt: serverTimestamp(),
+      });
+
+      const newContact: UserType = {
+        id: docRef.id,
+        name: memberName,
+        email: memberEmail,
+        avatarUrl: undefined,
+      };
+
+      setPotentialNewMembers((prev) =>
+        [newContact, ...prev].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      );
+      setSelectedContactsToAdd((prev) =>
+        prev.includes(newContact.id) ? prev : [...prev, newContact.id]
+      );
+
+      toast({
+        title: "Member added to list",
+        description: memberEmail
+          ? `"${memberName}" will be invited to the app when you add them to the group.`
+          : `"${memberName}" will be added for expense splits only.`,
+      });
+      setNewQuickMemberName('');
+      setNewQuickMemberEmail('');
+    } catch (error) {
+      console.error("Error quick adding member:", error);
+      toast({ title: "Error", description: "Could not save the member.", variant: "destructive" });
+    } finally {
+      setIsAddingQuickMember(false);
+    }
+  };
 
   const handleAddSelectedMembers = async () => {
     if (!currentUser || !group || selectedContactsToAdd.length === 0) {
@@ -857,27 +940,56 @@ export default function GroupDetailPage() {
     }
     setIsAddingMembers(true);
     try {
-      const groupDocRef = doc(db, 'groups', groupId);
-      const batch = writeBatch(db);
-      const newMemberObjects: UserType[] = [];
-      selectedContactsToAdd.forEach(contactId => {
-        const contact = potentialNewMembers.find(p => p.id === contactId);
-        if (contact) { newMemberObjects.push({ id: contact.id, name: contact.name, email: null, avatarUrl: contact.avatarUrl || '' }); }
+      const membersToAdd = selectedContactsToAdd
+        .map((contactId) => potentialNewMembers.find((p) => p.id === contactId))
+        .filter(Boolean)
+        .map((contact) => ({
+          id: contact!.id,
+          name: contact!.name,
+          email: contact!.email,
+          avatarUrl: contact!.avatarUrl || '',
+        }));
+
+      const { addedCount, invitedCount } = await addGroupMembersToGroup(
+        group,
+        currentUser,
+        membersToAdd
+      );
+
+      if (addedCount === 0) {
+        toast({ title: "Nothing to add", description: "Selected members are already in the group.", variant: "destructive" });
+        return;
+      }
+
+      toast({
+        title: "Members added!",
+        description:
+          invitedCount > 0
+            ? `${addedCount} member(s) added. ${invitedCount} can sign in with their email to access the group.`
+            : `${addedCount} member(s) added for expense splits.`,
       });
-      batch.update(groupDocRef, { memberIds: arrayUnion(...selectedContactsToAdd), members: arrayUnion(...newMemberObjects) });
-      const activityLogColRef = collection(db, 'groups', groupId, 'activityLog');
-      newMemberObjects.forEach(member => {
-        const logEntry: Omit<ActivityLog, 'id' | 'timestamp'> = { groupId: groupId, userId: currentUser.id, actorName: currentUser.name, actionType: 'member_added', description: `${currentUser.name || 'Admin'} added ${member.name || 'a new member'} to the group.`, relatedUserId: member.id, };
-        batch.set(doc(activityLogColRef), { ...logEntry, timestamp: serverTimestamp() });
-        if (group) { addNotification({ title: "Member Added to Group", message: `You added ${member.name || 'a new member'} to "${group.name}".`, type: "success", href: `/groups/${groupId}`, }); }
-      });
-      await batch.commit();
-      toast({ title: "Members Added!", description: `${newMemberObjects.length} member(s) added to the group.` });
-      setIsAddMemberDialogOpen(false); fetchGroupData(false);
+      setIsAddMemberDialogOpen(false);
+      fetchGroupData(false);
     } catch (error) {
       console.error("Error adding members to group:", error);
       if (group) { toast({ title: "Error", description: "Could not add members to the group.", variant: "destructive" }); addNotification({ title: "Failed to Add Members", message: `Could not add members to "${group.name}".`, type: "destructive", }); }
     } finally { setIsAddingMembers(false); }
+  };
+
+  const handleRevokeInvite = async (email: string) => {
+    if (!currentUser || !group || group.ownerId !== currentUser.id) return;
+
+    setRevokingInviteEmail(email);
+    try {
+      await revokeGroupInvite(group, currentUser, email);
+      toast({ title: "Invite removed", description: `${email} can no longer access this group.` });
+      fetchGroupData(false);
+    } catch (error) {
+      console.error("Error revoking invite:", error);
+      toast({ title: "Error", description: "Could not remove the invite.", variant: "destructive" });
+    } finally {
+      setRevokingInviteEmail(null);
+    }
   };
 
 
@@ -1278,12 +1390,160 @@ export default function GroupDetailPage() {
 
               <TabsContent value="members">
                 <Card>
-                  <CardHeader className="flex flex-row justify-between items-center"> <div> <CardTitle>Members ({group.members.length})</CardTitle> <CardDescription>People participating in this group (from Firestore).</CardDescription> </div> {isOwner && ( <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}> <DialogTrigger asChild> 
-                    <button className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
-                      <span><UserPlus className="mr-2 h-4 w-4"/>Add Member</span>
-                    </button>
-                  </DialogTrigger> <DialogContent className="sm:max-w-[480px]"> <DialogHeader> <DialogTitle>Add Members to "{group.name}"</DialogTitle> <DialogDescription> Select contacts to add to this group. Only contacts not already in the group are shown. </DialogDescription> </DialogHeader> <div className="py-4"> {isLoadingPotentialMembers ? ( <div className="space-y-2"> {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full rounded-md" />)} </div> ) : potentialNewMembers.length > 0 ? ( <ScrollArea className="h-[250px] pr-3"> <div className="space-y-2"> {potentialNewMembers.map(contact => ( <label key={contact.id} htmlFor={`contact-${contact.id}`} className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer" > <Checkbox id={`contact-${contact.id}`} checked={selectedContactsToAdd.includes(contact.id)} onCheckedChange={() => handleToggleContactSelection(contact.id)} /> <Avatar className="h-8 w-8"> <AvatarImage src={contact.avatarUrl || undefined} alt={contact.name || 'Contact'} /> <AvatarFallback>{getInitials(contact.name)}</AvatarFallback> </Avatar> <span className="text-sm font-medium">{contact.name || 'Unknown Contact'}</span> </label> ))} </div> </ScrollArea> ) : ( <p className="text-sm text-muted-foreground text-center py-4"> No new contacts available to add, or all your contacts are already in this group. </p> )} </div> <DialogFooter> <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}> Cancel </Button> <Button onClick={handleAddSelectedMembers} disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers} > {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />} {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`} </Button> </DialogFooter> </DialogContent> </Dialog> )} </CardHeader>
-                  <CardContent> <ul className="space-y-3"> {group.members.map(member => ( <li key={member.id} className="flex items-center justify-between p-3.5 border rounded-lg"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10"> <AvatarImage src={member.avatarUrl || undefined} /> <AvatarFallback>{getInitials(member.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium">{member.name || member.id.substring(0,10)}</p> <p className="text-xs text-muted-foreground">{member.email || 'No email'}</p> </div> </div> <div> {member.id === group.ownerId && <Badge variant="default" className="text-xs">Admin</Badge>} </div> </li> ))} </ul> </CardContent>
+                  <CardHeader className="flex flex-row justify-between items-start gap-4">
+                    <div>
+                      <CardTitle>Members ({group.members.length})</CardTitle>
+                      <CardDescription>
+                        Name only = expense splits. Name + email = splits and app access when they sign in.
+                      </CardDescription>
+                    </div>
+                    {isOwner && (
+                      <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}>
+                        <DialogTrigger asChild>
+                          <button className={cn(buttonVariants({ variant: 'default', size: 'sm' }))}>
+                            <UserPlus className="mr-2 h-4 w-4" />
+                            Add Member
+                          </button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[520px]">
+                          <DialogHeader>
+                            <DialogTitle>Add members to &quot;{group.name}&quot;</DialogTitle>
+                            <DialogDescription>
+                              Add a name to split expenses. Add an email too and they can sign in to see the group — no email is sent automatically.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4 py-2">
+                            <Card className="border-dashed">
+                              <CardContent className="p-3 space-y-2">
+                                <Label className="text-sm font-medium">Add new person</Label>
+                                <Input
+                                  value={newQuickMemberName}
+                                  onChange={(e) => setNewQuickMemberName(e.target.value)}
+                                  placeholder="Name (e.g. Rahul)"
+                                  disabled={isAddingQuickMember || isAddingMembers}
+                                />
+                                <Input
+                                  type="email"
+                                  value={newQuickMemberEmail}
+                                  onChange={(e) => setNewQuickMemberEmail(e.target.value)}
+                                  placeholder="Email (optional — for app access)"
+                                  disabled={isAddingQuickMember || isAddingMembers}
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={handleQuickAddMember}
+                                  disabled={isAddingQuickMember || isAddingMembers || !newQuickMemberName.trim()}
+                                >
+                                  {isAddingQuickMember ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                                  Add to list
+                                </Button>
+                              </CardContent>
+                            </Card>
+                            {isLoadingPotentialMembers ? (
+                              <div className="space-y-2">
+                                {[1, 2, 3].map((i) => (
+                                  <Skeleton key={i} className="h-10 w-full rounded-md" />
+                                ))}
+                              </div>
+                            ) : potentialNewMembers.length > 0 ? (
+                              <ScrollArea className="h-[220px] pr-3">
+                                <div className="space-y-2">
+                                  {potentialNewMembers.map((contact) => (
+                                    <label
+                                      key={contact.id}
+                                      htmlFor={`contact-${contact.id}`}
+                                      className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer"
+                                    >
+                                      <Checkbox
+                                        id={`contact-${contact.id}`}
+                                        checked={selectedContactsToAdd.includes(contact.id)}
+                                        onCheckedChange={() => handleToggleContactSelection(contact.id)}
+                                      />
+                                      <Avatar className="h-8 w-8">
+                                        <AvatarFallback>{getInitials(contact.name)}</AvatarFallback>
+                                      </Avatar>
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium truncate">{contact.name || 'Unknown'}</p>
+                                        <p className="text-xs text-muted-foreground truncate">
+                                          {contact.email ? contact.email : 'Splits only — no app access'}
+                                        </p>
+                                      </div>
+                                    </label>
+                                  ))}
+                                </div>
+                              </ScrollArea>
+                            ) : (
+                              <p className="text-sm text-muted-foreground text-center py-4">
+                                No saved contacts yet. Add someone above.
+                              </p>
+                            )}
+                          </div>
+                          <DialogFooter>
+                            <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}>
+                              Cancel
+                            </Button>
+                            <Button
+                              onClick={handleAddSelectedMembers}
+                              disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers}
+                            >
+                              {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                              {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`}
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-3">
+                      {group.members.map((member) => {
+                        const invitePending = isMemberInvitePending(group, member);
+                        return (
+                          <li key={member.id} className="flex items-center justify-between p-3.5 border rounded-lg">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Avatar className="h-10 w-10 shrink-0">
+                                <AvatarImage src={member.avatarUrl || undefined} />
+                                <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="font-medium truncate">{member.name || member.id.substring(0, 10)}</p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {member.email || 'No email — splits only'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {member.id === group.ownerId && (
+                                <Badge variant="default" className="text-xs">Admin</Badge>
+                              )}
+                              {invitePending && (
+                                <Badge variant="outline" className="text-xs">Invited</Badge>
+                              )}
+                              {!member.email && member.id !== group.ownerId && (
+                                <Badge variant="secondary" className="text-xs">Splits only</Badge>
+                              )}
+                              {isOwner && invitePending && member.email && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRevokeInvite(member.email!)}
+                                  disabled={revokingInviteEmail === member.email}
+                                >
+                                  {revokingInviteEmail === member.email ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    "Revoke"
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </CardContent>
                 </Card>
               </TabsContent>
 

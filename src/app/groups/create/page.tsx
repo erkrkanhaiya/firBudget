@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { User, GroupVisibility, Group, AppMemberContact, GroupCategory } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import NextImage from 'next/image';
+import { isValidEmail, normalizeEmail } from '@/lib/group-access';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, Timestamp, getDocs, query, where, orderBy } from 'firebase/firestore'; 
 import { useNotification } from '@/contexts/NotificationContext';
@@ -62,6 +63,7 @@ export default function CreateGroupPage() {
   const [isLoadingPotentialMembers, setIsLoadingPotentialMembers] = useState(true);
 
   const [newQuickMemberName, setNewQuickMemberName] = useState('');
+  const [newQuickMemberEmail, setNewQuickMemberEmail] = useState('');
   const [isAddingQuickMember, setIsAddingQuickMember] = useState(false);
 
 
@@ -98,7 +100,7 @@ export default function CreateGroupPage() {
             return {
               id: doc.id, 
               name: data.name,
-              email: null, 
+              email: data.email ?? null,
               avatarUrl: undefined, 
             } as User; 
           })
@@ -210,11 +212,19 @@ export default function CreateGroupPage() {
       toast({ title: "Name required", description: "Please enter a name for the new member.", variant: "destructive" });
       return;
     }
+    const trimmedEmail = newQuickMemberEmail.trim();
+    if (trimmedEmail && !isValidEmail(normalizeEmail(trimmedEmail))) {
+      toast({ title: "Invalid email", description: "Enter a valid email or leave it blank.", variant: "destructive" });
+      return;
+    }
+
     setIsAddingQuickMember(true);
     const memberName = newQuickMemberName.trim();
+    const memberEmail = trimmedEmail ? normalizeEmail(trimmedEmail) : null;
     try {
       const docRef = await addDoc(collection(db, 'appMemberContacts'), {
         name: memberName,
+        ...(memberEmail ? { email: memberEmail } : {}),
         addedByUid: currentUser.id,
         createdAt: serverTimestamp(),
       });
@@ -222,7 +232,7 @@ export default function CreateGroupPage() {
       const newContact: User = {
         id: docRef.id, 
         name: memberName,
-        email: null,
+        email: memberEmail,
         avatarUrl: undefined,
       };
 
@@ -234,13 +244,19 @@ export default function CreateGroupPage() {
         return prev;
       });
 
-      toast({ title: "Contact Added & Selected", description: `"${memberName}" added to your contacts and selected for this group.` });
+      toast({
+        title: "Member added & selected",
+        description: memberEmail
+          ? `"${memberName}" will be invited when you create the group.`
+          : `"${memberName}" added for expense splits only.`,
+      });
       addNotification({
-        title: "New Contact Added",
+        title: "New Member Added",
         message: `You added "${memberName}" to your contacts.`,
         type: "success",
       });
       setNewQuickMemberName('');
+      setNewQuickMemberEmail('');
     } catch (error) {
       console.error("Error quick adding member:", error);
       toast({ title: "Error", description: "Could not add member to your contacts.", variant: "destructive" });
@@ -293,6 +309,14 @@ export default function CreateGroupPage() {
     const memberIds = selectedMembers.map(m => m.id);
     const uniqueMemberIds = Array.from(new Set(memberIds));
 
+    const invitedEmails = Array.from(
+      new Set(
+        selectedMembers
+          .map((m) => (m.email?.trim() && isValidEmail(normalizeEmail(m.email)) ? normalizeEmail(m.email) : null))
+          .filter(Boolean) as string[]
+      )
+    );
+
     const groupDataToSave: Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp } = {
       name: groupName.trim(),
       description: groupDescription.trim(),
@@ -302,12 +326,13 @@ export default function CreateGroupPage() {
       members: selectedMembers.map(m => ({ 
         id: m.id, 
         name: m.name, 
-        email: m.email, 
+        email: m.email?.trim() ? normalizeEmail(m.email) : null, 
         avatarUrl: m.avatarUrl || '' 
       })),
       memberIds: uniqueMemberIds,
       visibility: groupVisibility,
       category: groupCategory,
+      invitedEmails,
       createdAt: serverTimestamp() as Timestamp,
       ...(numericBudget !== undefined && { budgetAmount: numericBudget }),
     };
@@ -491,27 +516,34 @@ export default function CreateGroupPage() {
               
               <Card className="mb-4 border-dashed">
                 <CardContent className="p-3 space-y-2">
-                  <Label htmlFor="quickMemberName" className="text-sm font-medium">Quick Add New Contact & Select</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="quickMemberName"
-                      value={newQuickMemberName}
-                      onChange={(e) => setNewQuickMemberName(e.target.value)}
-                      placeholder="Enter new contact's name"
-                      disabled={isAddingQuickMember || isSubmitting}
-                      className="h-9"
-                    />
-                    <Button 
-                      type="button" 
-                      size="sm"
-                      onClick={handleQuickAddMember} 
-                      disabled={isAddingQuickMember || isSubmitting || !newQuickMemberName.trim()}
-                    >
-                      {isAddingQuickMember ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      <span className="ml-1.5">{isAddingQuickMember ? "Adding..." : "Add & Select"}</span>
-                    </Button>
-                  </div>
-                   <p className="text-xs text-muted-foreground">Adds to your app contacts and selects for this group.</p>
+                  <Label htmlFor="quickMemberName" className="text-sm font-medium">Add new person</Label>
+                  <Input
+                    id="quickMemberName"
+                    value={newQuickMemberName}
+                    onChange={(e) => setNewQuickMemberName(e.target.value)}
+                    placeholder="Name (e.g. Rahul)"
+                    disabled={isAddingQuickMember || isSubmitting}
+                    className="h-9"
+                  />
+                  <Input
+                    id="quickMemberEmail"
+                    type="email"
+                    value={newQuickMemberEmail}
+                    onChange={(e) => setNewQuickMemberEmail(e.target.value)}
+                    placeholder="Email (optional — for app access)"
+                    disabled={isAddingQuickMember || isSubmitting}
+                    className="h-9"
+                  />
+                  <Button 
+                    type="button" 
+                    size="sm"
+                    onClick={handleQuickAddMember} 
+                    disabled={isAddingQuickMember || isSubmitting || !newQuickMemberName.trim()}
+                  >
+                    {isAddingQuickMember ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    <span className="ml-1.5">{isAddingQuickMember ? "Adding..." : "Add & Select"}</span>
+                  </Button>
+                   <p className="text-xs text-muted-foreground">Name only = splits. Name + email = splits and app invite when they sign in.</p>
                 </CardContent>
               </Card>
               
@@ -545,7 +577,14 @@ export default function CreateGroupPage() {
                             <Avatar className="h-8 w-8">
                             <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                             </Avatar>
-                            <span>{user.name}</span>
+                            <div className="flex flex-col min-w-0">
+                            <span className="truncate">{user.name}</span>
+                            {user.email ? (
+                              <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Splits only</span>
+                            )}
+                            </div>
                         </div>
                         {selectedMembers.find(m => m.id === user.id) ? 
                             <Users className="h-5 w-5 text-primary" /> :

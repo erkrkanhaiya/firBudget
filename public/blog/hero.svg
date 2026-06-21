@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" role="img" aria-label="HisabKaro Blog - expense splitting tips and guides">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" role="img" aria-label="BillBuddy Blog - expense splitting tips and guides">
   <defs>
     <linearGradient id="hero-bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#eef5fc"/>
@@ -33,7 +33,7 @@
     <circle cx="200" cy="32" r="14" fill="#438cd9"/>
     <path d="M176 72 Q200 52 224 72" fill="#438cd9"/>
   </g>
-  <text x="80" y="130" fill="#1e293b" font-family="system-ui,sans-serif" font-size="22" font-weight="600" letter-spacing="2">HISABKARO BLOG</text>
+  <text x="80" y="130" fill="#1e293b" font-family="system-ui,sans-serif" font-size="22" font-weight="600" letter-spacing="2">BILLBUDDY BLOG</text>
   <text x="80" y="190" fill="#1e293b" font-family="system-ui,sans-serif" font-size="44" font-weight="800">Split smarter.</text>
   <text x="80" y="240" fill="#1e293b" font-family="system-ui,sans-serif" font-size="44" font-weight="800">Settle fairly.</text>
   <text x="80" y="300" fill="#64748b" font-family="system-ui,sans-serif" font-size="20">Guides for friends, roommates, trips and UPI bill splits</text>

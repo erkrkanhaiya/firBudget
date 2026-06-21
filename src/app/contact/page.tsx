@@ -13,10 +13,10 @@ import { JsonLd } from "@/components/seo/JsonLd";
 export const metadata: Metadata = buildPageMetadata({
   title: "Contact Us — Expense Splitter Support",
   description:
-    "Contact HisabKaro for support, feedback, or questions about our free group expense splitter and bill sharing app. We help with split bills, balances, and settle up features.",
+    "Contact BillBuddy for support, feedback, or questions about our free group expense splitter and bill sharing app. We help with split bills, balances, and settle up features.",
   path: "/contact",
   keywords: [
-    "HisabKaro contact",
+    "BillBuddy contact",
     "expense splitter support",
     "bill sharing help",
     "group expense app support",
@@ -30,7 +30,7 @@ export default function ContactPage() {
         data={buildWebPageJsonLd(
           "/contact",
           `Contact ${siteConfig.name}`,
-          "Get in touch with the HisabKaro team for support and feedback."
+          "Get in touch with the BillBuddy team for support and feedback."
         )}
       />
       <div className="flex min-h-screen flex-col">
@@ -58,7 +58,7 @@ export default function ContactPage() {
           <div className="container mx-auto max-w-6xl px-4">
             <section className="mb-16 text-center">
               <h1 className="mb-4 text-4xl font-bold tracking-tight md:text-5xl">
-                Contact HisabKaro Support
+                Contact BillBuddy Support
               </h1>
               <p className="mx-auto max-w-2xl text-lg text-muted-foreground md:text-xl">
                 Questions about splitting bills, group expenses, or your account?
@@ -136,7 +136,7 @@ export default function ContactPage() {
 
         <footer className="border-t bg-muted/30 py-8">
           <div className="container mx-auto text-center text-sm text-muted-foreground">
-            <p>&copy; {new Date().getFullYear()} HisabKaro. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} BillBuddy. All rights reserved.</p>
           </div>
         </footer>
       </div>

@@ -10,8 +10,7 @@ import { useUser } from '@/contexts/UserContext';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import React, { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase';
-import { collection, getDocs, query, where, Timestamp, or } from 'firebase/firestore';
+import { fetchUserGroups } from "@/lib/group-access";
 import type { Group as GroupType, GroupCategory } from '@/types';
 
 const groupCategoryIcons: Record<GroupCategory, React.ElementType> = {
@@ -46,39 +45,7 @@ export default function GroupsPage() {
       setIsLoadingGroups(true);
       setError(null);
       try {
-        const groupsCollectionRef = collection(db, 'groups');
-
-        const q = query(groupsCollectionRef,
-          or(
-            where("visibility", "==", "public"),
-            where("memberIds", "array-contains", currentUser.id)
-          )
-        );
-        const querySnapshot = await getDocs(q);
-
-        const groupsMap = new Map<string, GroupType>();
-
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          // Filter out private groups that the user is not a member of, 
-          // even if 'or' query brings them, just to be safe.
-          if (data.visibility === 'private' && !data.memberIds?.includes(currentUser.id)) {
-            return;
-          }
-          const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date(data.createdAt?.seconds * 1000 || Date.now()).toISOString();
-          groupsMap.set(doc.id, {
-            id: doc.id,
-            ...data,
-            members: data.members || [],
-            memberIds: data.memberIds || [],
-            createdAt,
-            category: data.category || 'OTHER',
-          } as GroupType);
-        });
-
-        const sortedGroups = Array.from(groupsMap.values()).sort((a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
+        const sortedGroups = await fetchUserGroups(currentUser);
         setVisibleGroups(sortedGroups);
 
       } catch (err) {
@@ -224,7 +191,7 @@ export default function GroupsPage() {
               <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-xl font-semibold mb-2">No groups found.</h3>
               <p className="text-muted-foreground mb-4">
-                Create a group, or check back later if you're expecting an invitation. Public groups will also appear here.
+                Create a group, or ask the admin to invite you by email. Public groups will also appear here.
               </p>
               <Button asChild>
                 <Link href="/groups/create">

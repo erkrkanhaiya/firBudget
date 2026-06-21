@@ -86,7 +86,7 @@ export default function SignupPage() {
             <AppLogo iconSize={40} textSize="text-3xl" />
           </div>
           <CardTitle className="text-2xl">Create Account</CardTitle>
-          <CardDescription>Join HisabKaro to share expenses easily.</CardDescription>
+          <CardDescription>Join BillBuddy to share expenses easily.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignup} className="space-y-4">

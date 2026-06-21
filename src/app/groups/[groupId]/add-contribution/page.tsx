@@ -19,6 +19,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db } from '@/lib/firebase';
+import { loadGroupAsMember } from '@/lib/group-access';
 import { doc, getDoc, collection, Timestamp, addDoc, writeBatch, serverTimestamp, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
 
@@ -63,31 +64,17 @@ export default function AddContributionPage() {
       setError(null);
 
       try {
-        const groupDocRef = doc(db, 'groups', groupId);
-        const groupDocSnap = await getDoc(groupDocRef);
+        const { group: fetchedGroup, denied } = await loadGroupAsMember(groupId, currentUser);
 
-        if (groupDocSnap.exists()) {
-          const groupData = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp };
-          const fetchedGroup: Group = {
-            id: groupDocSnap.id,
-            ...groupData,
-            members: groupData.members || [],
-            memberIds: groupData.memberIds || [],
-            createdAt: groupData.createdAt.toDate().toISOString(),
-          };
-
-          if (!fetchedGroup.memberIds.includes(currentUser.id)) {
-            toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
-            setError("Access Denied.");
-            setIsLoading(false);
-            return;
-          }
-          setGroup(fetchedGroup);
-          setContributorId(currentUser.id);
-        } else {
-          toast({ title: "Group not found", variant: "destructive" });
-          setError("Group not found.");
+        if (denied || !fetchedGroup) {
+          toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
+          setError("Access Denied.");
+          setIsLoading(false);
+          return;
         }
+
+        setGroup(fetchedGroup);
+        setContributorId(currentUser.id);
       } catch (err) {
         console.error("Error fetching data for contribution:", err);
         toast({ title: "Error", description: "Could not load group data.", variant: "destructive" });

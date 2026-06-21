@@ -34,7 +34,7 @@ export const blogPosts: BlogPost[] = [
     category: "Guides",
     publishedAt: "2025-03-15",
     readTimeMinutes: 6,
-    author: "HisabKaro Team",
+    author: "BillBuddy Team",
     coverImage: "/blog/covers/split-bills-friends.svg",
     blocks: [
       {
@@ -68,7 +68,7 @@ export const blogPosts: BlogPost[] = [
       {
         type: "ul",
         items: [
-          "Create a group in HisabKaro for your trip, dinner, or household.",
+          "Create a group in BillBuddy for your trip, dinner, or household.",
           "Add the expense with the total amount, date, and who paid.",
           "Select participants and choose equal or custom split.",
           "Let the app calculate balances automatically — no spreadsheet needed.",
@@ -100,7 +100,7 @@ export const blogPosts: BlogPost[] = [
     category: "Roommates",
     publishedAt: "2025-04-02",
     readTimeMinutes: 5,
-    author: "HisabKaro Team",
+    author: "BillBuddy Team",
     coverImage: "/blog/covers/roommates.svg",
     blocks: [
       {
@@ -127,7 +127,7 @@ export const blogPosts: BlogPost[] = [
       },
       {
         type: "p",
-        text: "Create a private group in HisabKaro for your apartment. Add all roommates, then log every shared expense as it occurs. Assign the payer and split equally or by room size if that is your agreement. The app shows each person's net balance in real time.",
+        text: "Create a private group in BillBuddy for your apartment. Add all roommates, then log every shared expense as it occurs. Assign the payer and split equally or by room size if that is your agreement. The app shows each person's net balance in real time.",
       },
       {
         type: "h2",
@@ -154,7 +154,7 @@ export const blogPosts: BlogPost[] = [
     category: "Travel",
     publishedAt: "2025-05-10",
     readTimeMinutes: 7,
-    author: "HisabKaro Team",
+    author: "BillBuddy Team",
     coverImage: "/blog/covers/travel.svg",
     blocks: [
       {
@@ -181,7 +181,7 @@ export const blogPosts: BlogPost[] = [
       },
       {
         type: "p",
-        text: "The biggest mistake groups make is waiting until they get home. Receipts get lost and memories fade. Add each expense to your HisabKaro travel group the same day it happens. Snap a photo of the receipt and use AI autofill to save time.",
+        text: "The biggest mistake groups make is waiting until they get home. Receipts get lost and memories fade. Add each expense to your BillBuddy travel group the same day it happens. Snap a photo of the receipt and use AI autofill to save time.",
       },
       {
         type: "h2",
@@ -209,12 +209,12 @@ export const blogPosts: BlogPost[] = [
     category: "India",
     publishedAt: "2025-06-01",
     readTimeMinutes: 5,
-    author: "HisabKaro Team",
+    author: "BillBuddy Team",
     coverImage: "/blog/covers/upi-india.svg",
     blocks: [
       {
         type: "p",
-        text: "UPI made paying friends instant — but it did not solve the harder question: who owes whom after a group dinner, trip, or shared purchase? Combining UPI with a group expense tracker like HisabKaro closes that gap.",
+        text: "UPI made paying friends instant — but it did not solve the harder question: who owes whom after a group dinner, trip, or shared purchase? Combining UPI with a group expense tracker like BillBuddy closes that gap.",
       },
       {
         type: "h2",
@@ -226,14 +226,14 @@ export const blogPosts: BlogPost[] = [
       },
       {
         type: "h2",
-        text: "How HisabKaro works with UPI",
+        text: "How BillBuddy works with UPI",
       },
       {
         type: "ul",
         items: [
           "Track all group expenses in INR with ₹ symbol support",
           "See simplified balances — who should pay whom and how much",
-          "Send UPI payment outside the app, then record it inside HisabKaro",
+          "Send UPI payment outside the app, then record it inside BillBuddy",
           "Keep a full payment history for every group",
         ],
       },
@@ -262,7 +262,7 @@ export const blogPosts: BlogPost[] = [
     category: "Tips",
     publishedAt: "2025-07-18",
     readTimeMinutes: 4,
-    author: "HisabKaro Team",
+    author: "BillBuddy Team",
     coverImage: "/blog/covers/equal-custom-split.svg",
     blocks: [
       {
@@ -301,7 +301,7 @@ export const blogPosts: BlogPost[] = [
       },
       {
         type: "p",
-        text: "HisabKaro supports both modes. Toggle equal split for quick entry, or switch to custom amounts and the app validates that shares add up to the total. Remaining balance indicators show if you are off by even a rupee or cent.",
+        text: "BillBuddy supports both modes. Toggle equal split for quick entry, or switch to custom amounts and the app validates that shares add up to the total. Remaining balance indicators show if you are off by even a rupee or cent.",
       },
     ],
   },
@@ -320,7 +320,7 @@ export const blogPosts: BlogPost[] = [
     category: "Tips",
     publishedAt: "2025-08-22",
     readTimeMinutes: 5,
-    author: "HisabKaro Team",
+    author: "BillBuddy Team",
     coverImage: "/blog/covers/settle-debts.svg",
     blocks: [
       {
@@ -333,7 +333,7 @@ export const blogPosts: BlogPost[] = [
       },
       {
         type: "p",
-        text: "When everyone sees the same numbers in HisabKaro, there is no he-said-she-said. Balances update automatically after every expense and payment. Transparency removes the need for uncomfortable reminders.",
+        text: "When everyone sees the same numbers in BillBuddy, there is no he-said-she-said. Balances update automatically after every expense and payment. Transparency removes the need for uncomfortable reminders.",
       },
       {
         type: "h2",

@@ -18,6 +18,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { format, parseISO } from 'date-fns';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db } from '@/lib/firebase';
+import { loadGroupAsMember } from '@/lib/group-access';
 import { doc, getDoc, collection, query, getDocs, Timestamp, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
 
@@ -157,26 +158,16 @@ export default function SettleUpPage() {
     setError(null);
 
     try {
-      const groupDocRef = doc(db, 'groups', groupId);
-      const groupDocSnap = await getDoc(groupDocRef);
+      const { group: fetchedGroup, denied } = await loadGroupAsMember(groupId, currentUser);
 
-      if (groupDocSnap.exists()) {
-        const groupData = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp };
-        const fetchedGroup: Group = {
-          id: groupDocSnap.id,
-          ...groupData,
-          members: groupData.members || [],
-          memberIds: groupData.memberIds || [],
-          createdAt: safeParseDate(groupData.createdAt, 'group.createdAt'),
-        };
+      if (denied || !fetchedGroup) {
+        toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
+        setError("Access Denied.");
+        setIsLoading(false);
+        return;
+      }
 
-        if (!fetchedGroup.memberIds.includes(currentUser.id)) {
-          toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
-          setError("Access Denied.");
-          setIsLoading(false);
-          return;
-        }
-        setGroup(fetchedGroup);
+      setGroup(fetchedGroup);
         
         const queryPayerId = searchParams.get('payerId');
         const queryPayeeId = searchParams.get('payeeId');
@@ -239,11 +230,6 @@ export default function SettleUpPage() {
         
         const calculatedBalances = calculateGroupBalancesForSettlement(fetchedGroup.members, fetchedExpenses, fetchedPayments, fetchedContributions);
         setBalances(calculatedBalances);
-        
-      } else {
-        toast({ title: "Group not found", variant: "destructive" });
-        setError("Group not found.");
-      }
     } catch (err) {
       console.error("Error fetching data for settle up:", err);
       toast({ title: "Error", description: "Could not load group data.", variant: "destructive" });

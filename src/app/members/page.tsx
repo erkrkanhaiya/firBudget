@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { AlertTriangle, UserPlus, Users2, Loader2, Trash2 } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import { db } from '@/lib/firebase';
+import { isValidEmail, normalizeEmail } from '@/lib/group-access';
 import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, where, doc, deleteDoc } from 'firebase/firestore';
 import type { AppMemberContact } from '@/types';
 import { useToast } from "@/hooks/use-toast";
@@ -35,6 +36,7 @@ export default function MembersPage() {
 
   const [members, setMembers] = useState<AppMemberContact[]>([]);
   const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberEmail, setNewMemberEmail] = useState('');
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<AppMemberContact | null>(null);
@@ -60,6 +62,7 @@ export default function MembersPage() {
         return {
           id: doc.id,
           name: data.name,
+          email: data.email ?? null,
           addedByUid: data.addedByUid,
           createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
         } as AppMemberContact;
@@ -82,21 +85,35 @@ export default function MembersPage() {
       return;
     }
 
+    const trimmedEmail = newMemberEmail.trim();
+    if (trimmedEmail && !isValidEmail(normalizeEmail(trimmedEmail))) {
+      toast({ title: "Invalid email", description: "Enter a valid email or leave it blank.", variant: "destructive" });
+      return;
+    }
+
     setIsSubmitting(true);
     const memberName = newMemberName.trim();
+    const memberEmail = trimmedEmail ? normalizeEmail(trimmedEmail) : null;
     try {
       await addDoc(collection(db, 'appMemberContacts'), {
         name: memberName,
+        ...(memberEmail ? { email: memberEmail } : {}),
         addedByUid: currentUser.id,
         createdAt: serverTimestamp(),
       });
-      toast({ title: "Contact Added", description: `"${memberName}" has been added to your contacts.` });
+      toast({
+        title: "Contact Added",
+        description: memberEmail
+          ? `"${memberName}" saved with email for group invites.`
+          : `"${memberName}" saved for expense splits only.`,
+      });
       addNotification({
         title: "New Contact Added",
         message: `You added "${memberName}" to your contacts.`,
         type: "success",
       });
       setNewMemberName('');
+      setNewMemberEmail('');
     } catch (error) {
       console.error("Error adding member:", error);
       toast({ title: "Error", description: "Could not add member.", variant: "destructive" });
@@ -164,23 +181,35 @@ export default function MembersPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Manage Your Contacts</h1>
-        <p className="text-muted-foreground">Add and view contacts you've saved to the application. Only contacts you added are shown here.</p>
+        <p className="text-muted-foreground">Save people by name for expense splits. Add an email to invite them to groups in the app.</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Add New Contact</CardTitle>
+          <CardDescription>Name only = splits. Name + email = can be invited to groups.</CardDescription>
         </CardHeader>
         <form onSubmit={handleAddMember}>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="memberName">Contact Name*</Label>
+              <Label htmlFor="memberName">Name*</Label>
               <Input
                 id="memberName"
                 value={newMemberName}
                 onChange={(e) => setNewMemberName(e.target.value)}
-                placeholder="Enter contact's name"
+                placeholder="e.g. Rahul"
                 required
+                disabled={isSubmitting}
+              />
+            </div>
+            <div>
+              <Label htmlFor="memberEmail">Email (optional)</Label>
+              <Input
+                id="memberEmail"
+                type="email"
+                value={newMemberEmail}
+                onChange={(e) => setNewMemberEmail(e.target.value)}
+                placeholder="For app access when added to a group"
                 disabled={isSubmitting}
               />
             </div>
@@ -222,6 +251,9 @@ export default function MembersPage() {
                 <li key={member.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50">
                   <div>
                     <p className="font-medium">{member.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {member.email ? member.email : 'Splits only — no email'}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       Added on: {format(new Date(member.createdAt), "MMMM d, yyyy 'at' h:mm a")}
                     </p>

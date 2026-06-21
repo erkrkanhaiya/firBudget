@@ -24,6 +24,7 @@ export interface Group {
   visibility: GroupVisibility;
   category?: GroupCategory;
   budgetAmount?: number; // Optional budget for the group
+  invitedEmails?: string[]; // Pending email invites (lowercase); no email is sent
 }
 
 export interface ExpenseParticipant {
@@ -101,7 +102,7 @@ export interface ActivityLog {
   userId: string; // User who performed the action OR the user central to the action
   actionType: 'expense_added' | 'expense_edited' | 'expense_deleted' |
                 'payment_recorded' |
-                'member_added' | 'member_removed' |
+                'member_added' | 'member_removed' | 'member_invited' |
                 'group_created' | 'group_edited' |
                 'contribution_added' |
                 'note_added' | 'note_edited' | 'note_deleted' |
@@ -132,6 +133,7 @@ export type Currency = 'USD' | 'INR';
 export interface AppMemberContact {
   id: string;
   name: string;
+  email?: string | null;
   addedByUid: string; // Firebase UID of the user who added this contact
   createdAt: string; // ISO string representation of Firestore Timestamp
 }

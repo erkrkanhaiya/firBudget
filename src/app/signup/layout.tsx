@@ -4,10 +4,10 @@ import { buildPageMetadata } from "@/lib/seo";
 export const metadata: Metadata = buildPageMetadata({
   title: "Sign Up Free — Create Your Expense Splitter Account",
   description:
-    "Create a free HisabKaro account to start splitting bills with friends. Track group expenses, calculate balances automatically, and settle up in USD or INR.",
+    "Create a free BillBuddy account to start splitting bills with friends. Track group expenses, calculate balances automatically, and settle up in USD or INR.",
   path: "/signup",
   keywords: [
-    "HisabKaro sign up",
+    "BillBuddy sign up",
     "free expense splitter register",
     "create bill sharing account",
     "group expense app free",

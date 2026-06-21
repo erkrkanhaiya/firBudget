@@ -103,7 +103,7 @@ export default async function BlogPostPage({ params }: PageProps) {
           <BlogArticle blocks={post.blocks} />
 
           <div className="mt-12 rounded-xl border bg-muted/30 p-8 text-center">
-            <h2 className="mb-2 text-xl font-bold">Try HisabKaro free</h2>
+            <h2 className="mb-2 text-xl font-bold">Try BillBuddy free</h2>
             <p className="mb-6 text-muted-foreground">
               Split bills with friends, track group expenses, and settle up in minutes.
             </p>

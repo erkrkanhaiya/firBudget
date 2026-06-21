@@ -21,6 +21,7 @@ import { format, parseISO } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db, storage } from '@/lib/firebase';
+import { loadGroupAsMember } from '@/lib/group-access';
 import { doc, getDoc, collection, serverTimestamp, Timestamp, writeBatch, type DocumentData } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useNotification } from '@/contexts/NotificationContext';
@@ -75,24 +76,9 @@ export default function EditExpensePage() {
 
       setIsLoading(true);
       try {
-        const groupDocRef = doc(db, 'groups', groupId);
-        const groupDocSnap = await getDoc(groupDocRef);
-        if (!groupDocSnap.exists()) {
-          toast({ title: "Group not found", variant: "destructive" });
-          router.push('/groups');
-          return;
-        }
+        const { group: fetchedGroup, denied } = await loadGroupAsMember(groupId, currentUser);
 
-        const groupData = groupDocSnap.data() as Omit<Group, 'id' | 'createdAt'> & { createdAt: Timestamp };
-        const fetchedGroup: Group = {
-          id: groupDocSnap.id,
-          ...groupData,
-          members: groupData.members || [],
-          memberIds: groupData.memberIds || [],
-          createdAt: groupData.createdAt.toDate().toISOString(),
-        };
-
-        if (!fetchedGroup.memberIds.includes(currentUser.id)) {
+        if (denied || !fetchedGroup) {
           toast({ title: "Access Denied", description: "You are not a member of this group.", variant: "destructive" });
           router.push('/groups');
           return;

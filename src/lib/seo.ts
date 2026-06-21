@@ -8,20 +8,20 @@ export function getSiteUrl(): string {
   const vercelUrl = process.env.VERCEL_URL?.replace(/\/$/, "");
   if (vercelUrl) return `https://${vercelUrl}`;
 
-  return "https://hisabkaro.app";
+  return "https://billbuddy.vercel.app";
 }
 
 export const siteConfig = {
-  name: "HisabKaro",
+  name: "BillBuddy",
   tagline: "Free Group Expense Splitter & Bill Sharing App",
   description:
-    "HisabKaro is a free expense splitter app to track shared bills, split costs with friends and roommates, calculate group balances automatically, and settle up via UPI or cash. Supports USD & INR.",
+    "BillBuddy is a free expense splitter app to track shared bills, split costs with friends and roommates, calculate group balances automatically, and settle up via UPI or cash. Supports USD & INR.",
   get url() {
     return getSiteUrl();
   },
-  email: "support@hisabkaro.app",
+  email: "support@billbuddy.vercel.app",
   locale: "en_US",
-  twitterHandle: "@hisabkaro",
+  twitterHandle: "@billbuddy",
 } as const;
 
 /** Primary & long-tail keywords for search ranking */
@@ -34,9 +34,9 @@ export const seoKeywords = [
   "bill splitting app",
   "bill sharing app",
   "group expense sharing",
-  "HisabKaro",
-  "hisab karo",
-  "hisab karo app",
+  "BillBuddy",
+  "bill buddy",
+  "bill buddy app",
 
   // Use cases
   "split bills with friends",
@@ -88,34 +88,34 @@ export const publicRoutes = [
 
 export const faqItems = [
   {
-    question: "What is HisabKaro?",
+    question: "What is BillBuddy?",
     answer:
-      "HisabKaro is a free group expense splitter and bill sharing app. It helps friends, roommates, and travel groups track shared expenses, split bills fairly, calculate who owes whom, and settle up easily.",
+      "BillBuddy is a free group expense splitter and bill sharing app. It helps friends, roommates, and travel groups track shared expenses, split bills fairly, calculate who owes whom, and settle up easily.",
   },
   {
-    question: "Is HisabKaro free to use?",
+    question: "Is BillBuddy free to use?",
     answer:
-      "Yes. HisabKaro is free to start. You can create groups, add expenses, view balances, and settle up without any subscription or credit card.",
+      "Yes. BillBuddy is free to start. You can create groups, add expenses, view balances, and settle up without any subscription or credit card.",
   },
   {
     question: "Can I split bills unequally or by custom amounts?",
     answer:
-      "Yes. HisabKaro supports equal splits and custom splits. Assign specific amounts to each member so the total always matches the expense.",
+      "Yes. BillBuddy supports equal splits and custom splits. Assign specific amounts to each member so the total always matches the expense.",
   },
   {
-    question: "Does HisabKaro support UPI and INR?",
+    question: "Does BillBuddy support UPI and INR?",
     answer:
-      "Yes. HisabKaro supports INR (₹) and USD ($) currencies. You can record UPI, cash, and bank transfer settlements in your group payment history.",
+      "Yes. BillBuddy supports INR (₹) and USD ($) currencies. You can record UPI, cash, and bank transfer settlements in your group payment history.",
   },
   {
-    question: "Who can use HisabKaro?",
+    question: "Who can use BillBuddy?",
     answer:
       "Anyone sharing costs — roommates splitting rent, friends on trips, couples managing household bills, teams tracking office lunches, or groups organizing events.",
   },
   {
-    question: "How does HisabKaro calculate balances?",
+    question: "How does BillBuddy calculate balances?",
     answer:
-      "HisabKaro automatically calculates net balances from all group expenses, contributions, and settlement payments. You always see an up-to-date view of who owes whom.",
+      "BillBuddy automatically calculates net balances from all group expenses, contributions, and settlement payments. You always see an up-to-date view of who owes whom.",
   },
 ];
 

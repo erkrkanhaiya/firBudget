@@ -23,7 +23,7 @@ export function PublicPageShell({ children }: PublicPageShellProps) {
             <Link href="/about" className="hidden text-sm font-medium text-muted-foreground transition-colors hover:text-primary sm:inline">
               About
             </Link>
-            <PwaInstallButton variant="outline" size="sm" className="hidden sm:inline-flex" />
+            <PwaInstallButton variant="outline" size="sm" />
             <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
               <Link href="/login">Log in</Link>
             </Button>
@@ -43,7 +43,7 @@ export function PublicPageShell({ children }: PublicPageShellProps) {
             <Link href="/contact" className="hover:text-primary">Contact</Link>
             <Link href="/signup" className="hover:text-primary">Sign up</Link>
           </nav>
-          <p>&copy; {new Date().getFullYear()} HisabKaro. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} BillBuddy. All rights reserved.</p>
         </div>
       </footer>
     </div>

@@ -75,7 +75,7 @@ export function AppHeader() {
          <AppLogo iconSize={24} textSize="text-xl" />
       </div>
       <div className="flex w-full items-center justify-end gap-1 sm:gap-2">
-        <PwaInstallButton variant="ghost" size="sm" className="hidden sm:inline-flex" label="Download" />
+        <PwaInstallButton variant="ghost" size="sm" label="Download" />
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

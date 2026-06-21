@@ -11,10 +11,10 @@ import { JsonLd } from "@/components/seo/JsonLd";
 export const metadata: Metadata = buildPageMetadata({
   title: "About Us — Free Expense Splitter for Groups",
   description:
-    "Learn about HisabKaro, the free bill splitting app built to help friends, roommates, and travel groups track shared expenses, split costs fairly, and settle up with transparency.",
+    "Learn about BillBuddy, the free bill splitting app built to help friends, roommates, and travel groups track shared expenses, split costs fairly, and settle up with transparency.",
   path: "/about",
   keywords: [
-    "about HisabKaro",
+    "about BillBuddy",
     "expense splitter company",
     "bill sharing mission",
     "group finance transparency",
@@ -30,7 +30,7 @@ export default function AboutPage() {
           buildWebPageJsonLd(
             "/about",
             `About ${siteConfig.name}`,
-            "Learn about HisabKaro — the free group expense splitter and bill sharing app."
+            "Learn about BillBuddy — the free group expense splitter and bill sharing app."
           ),
         ]}
       />
@@ -59,7 +59,7 @@ export default function AboutPage() {
           <div className="container mx-auto max-w-6xl px-4">
             <section className="mb-16 text-center">
               <h1 className="mb-4 text-4xl font-bold tracking-tight md:text-5xl">
-                About HisabKaro — Free Group Expense Splitter
+                About BillBuddy — Free Group Expense Splitter
               </h1>
               <p className="mx-auto max-w-3xl text-lg text-muted-foreground md:text-xl">
                 Simplifying shared expenses for everyone, everywhere. We believe managing money
@@ -70,7 +70,7 @@ export default function AboutPage() {
             <section className="mb-16">
               <Image
                 src="https://placehold.co/1200x400.png"
-                alt="HisabKaro team collaboration — group expense sharing and bill splitting"
+                alt="BillBuddy team collaboration — group expense sharing and bill splitting"
                 width={1200}
                 height={400}
                 className="mx-auto mb-12 rounded-lg shadow-xl"
@@ -81,7 +81,7 @@ export default function AboutPage() {
                 </CardHeader>
                 <CardContent className="space-y-4 text-muted-foreground">
                   <p>
-                    HisabKaro was born from a simple idea: make splitting bills and tracking
+                    BillBuddy was born from a simple idea: make splitting bills and tracking
                     shared expenses as effortless as possible. Whether you are dividing a trip
                     budget, sharing rent with roommates, or managing group event costs — money
                     should never strain relationships.
@@ -147,10 +147,10 @@ export default function AboutPage() {
             <section className="text-center">
               <h2 className="mb-4 text-3xl font-bold">Start Splitting Bills for Free</h2>
               <p className="mb-8 text-muted-foreground">
-                Join groups, track expenses, and settle up with HisabKaro today.
+                Join groups, track expenses, and settle up with BillBuddy today.
               </p>
               <Button asChild size="lg">
-                <Link href="/signup">Get Started with HisabKaro</Link>
+                <Link href="/signup">Get Started with BillBuddy</Link>
               </Button>
             </section>
           </div>
@@ -158,7 +158,7 @@ export default function AboutPage() {
 
         <footer className="border-t bg-muted/30 py-8">
           <div className="container mx-auto text-center text-sm text-muted-foreground">
-            <p>&copy; {new Date().getFullYear()} HisabKaro. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} BillBuddy. All rights reserved.</p>
           </div>
         </footer>
       </div>

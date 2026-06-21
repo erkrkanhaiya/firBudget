@@ -12,7 +12,7 @@ import { buildPageMetadata, buildWebPageJsonLd, siteConfig } from "@/lib/seo";
 export const metadata: Metadata = buildPageMetadata({
   title: "Blog — Expense Splitting Tips & Guides",
   description:
-    "Read HisabKaro blog articles on splitting bills with friends, roommate expense tracking, trip cost sharing, UPI bill split in India, and settling group debts fairly.",
+    "Read BillBuddy blog articles on splitting bills with friends, roommate expense tracking, trip cost sharing, UPI bill split in India, and settling group debts fairly.",
   path: "/blog",
   keywords: [
     "expense splitting blog",
@@ -25,7 +25,7 @@ export const metadata: Metadata = buildPageMetadata({
     url: BLOG_HERO_IMAGE,
     width: 1200,
     height: 400,
-    alt: "HisabKaro Blog — expense splitting tips and guides",
+    alt: "BillBuddy Blog — expense splitting tips and guides",
   },
 });
 
@@ -53,14 +53,14 @@ export default function BlogPage() {
         <div className="container mx-auto max-w-6xl px-4">
           <BlogBanner
             src={BLOG_HERO_IMAGE}
-            alt="HisabKaro Blog — expense splitting tips and guides"
+            alt="BillBuddy Blog — expense splitting tips and guides"
             priority
             className="mb-12"
           />
 
           <div className="mx-auto mb-12 max-w-3xl text-center">
             <p className="mb-3 text-sm font-medium uppercase tracking-wider text-primary">
-              HisabKaro Blog
+              BillBuddy Blog
             </p>
             <h1 className="mb-4 text-3xl font-bold tracking-tight md:text-4xl lg:text-5xl">
               Expense splitting tips & guides
@@ -111,7 +111,7 @@ export default function BlogPage() {
           <div className="mx-auto mt-16 max-w-2xl rounded-xl border bg-muted/30 p-8 text-center">
             <h2 className="mb-2 text-2xl font-bold">Ready to split expenses fairly?</h2>
             <p className="mb-6 text-muted-foreground">
-              Create a free group, add expenses, and let HisabKaro calculate who owes whom.
+              Create a free group, add expenses, and let BillBuddy calculate who owes whom.
             </p>
             <Button asChild size="lg">
               <Link href="/signup">Get started free</Link>
