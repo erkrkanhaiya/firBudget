@@ -11,6 +11,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useState } from "react";
+import { useUser } from "@/contexts/UserContext";
 
 const links = [
   { href: "#features", label: "Features" },
@@ -23,6 +24,12 @@ const links = [
 
 export function LandingMobileNav() {
   const [open, setOpen] = useState(false);
+  const { currentUser } = useUser();
+
+  const userDisplayName =
+    currentUser?.name?.split(" ")[0] ||
+    currentUser?.email?.split("@")[0] ||
+    "Account";
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -47,18 +54,37 @@ export function LandingMobileNav() {
             </Link>
           ))}
           <div className="my-3 h-px bg-border" />
-          <Link
-            href="/login"
-            onClick={() => setOpen(false)}
-            className="rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted"
-          >
-            Log in
-          </Link>
-          <Button asChild className="mt-2 rounded-xl shadow-md shadow-primary/20">
-            <Link href="/signup" onClick={() => setOpen(false)}>
-              Get started free
-            </Link>
-          </Button>
+          {currentUser ? (
+            <>
+              <Link
+                href="/dashboard"
+                onClick={() => setOpen(false)}
+                className="rounded-xl px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                {userDisplayName}
+              </Link>
+              <Button asChild className="mt-2 rounded-xl shadow-md shadow-primary/20">
+                <Link href="/dashboard" onClick={() => setOpen(false)}>
+                  Dashboard
+                </Link>
+              </Button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                onClick={() => setOpen(false)}
+                className="rounded-xl px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted"
+              >
+                Log in
+              </Link>
+              <Button asChild className="mt-2 rounded-xl shadow-md shadow-primary/20">
+                <Link href="/signup" onClick={() => setOpen(false)}>
+                  Get started free
+                </Link>
+              </Button>
+            </>
+          )}
         </nav>
       </SheetContent>
     </Sheet>

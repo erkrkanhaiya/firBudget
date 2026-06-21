@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PlusCircle, Users, ArrowRight, BarChart3, AlertTriangle, ListChecks, Activity as ActivityIcon, Loader2, Zap } from 'lucide-react';
+import { PlusCircle, Users, ArrowRight, BarChart3, AlertTriangle, ListChecks, Activity as ActivityIcon, Loader2, Zap, User } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
 import Image from 'next/image';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -30,6 +30,13 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Helper function to get initials
 const getInitials = (name: string | undefined | null) => {
@@ -93,8 +100,16 @@ export default function DashboardPage() {
   const [lastActiveGroup, setLastActiveGroup] = useState<GroupType | null>(null);
   const [quickExpenseDescription, setQuickExpenseDescription] = useState('');
   const [quickExpenseAmount, setQuickExpenseAmount] = useState('');
+  const [quickExpensePaidByUserId, setQuickExpensePaidByUserId] = useState('');
   const [isSubmittingQuickExpense, setIsSubmittingQuickExpense] = useState(false);
   const [isQuickAddDialogOpen, setIsQuickAddDialogOpen] = useState(false);
+
+  const handleQuickAddDialogOpenChange = (open: boolean) => {
+    setIsQuickAddDialogOpen(open);
+    if (open && currentUser) {
+      setQuickExpensePaidByUserId(currentUser.id);
+    }
+  };
 
 
   useEffect(() => {
@@ -235,8 +250,8 @@ export default function DashboardPage() {
 
   const handleQuickAddExpense = async (event: FormEvent) => {
     event.preventDefault();
-    if (!currentUser || !lastActiveGroup || !quickExpenseDescription.trim() || !quickExpenseAmount.trim() || parseFloat(quickExpenseAmount) <= 0) {
-      toast({ title: "Invalid Input", description: "Please enter a valid description and amount.", variant: "destructive" });
+    if (!currentUser || !lastActiveGroup || !quickExpenseDescription.trim() || !quickExpenseAmount.trim() || parseFloat(quickExpenseAmount) <= 0 || !quickExpensePaidByUserId) {
+      toast({ title: "Invalid Input", description: "Please enter a valid description, amount, and payer.", variant: "destructive" });
       return;
     }
     setIsSubmittingQuickExpense(true);
@@ -262,11 +277,14 @@ export default function DashboardPage() {
         expenseParticipants[expenseParticipants.length - 1].amountOwed = parseFloat(expenseParticipants[expenseParticipants.length - 1].amountOwed.toFixed(2));
     }
 
+    const payer = lastActiveGroup.members.find((member) => member.id === quickExpensePaidByUserId);
+    const payerName = payer?.name || currentUser.name || 'User';
+
     const expenseForFirestore: Omit<Expense, 'id' | 'createdAt'> = {
       groupId: lastActiveGroup.id,
       description: quickExpenseDescription.trim(),
       amount: numericAmount,
-      paidByUserId: currentUser.id,
+      paidByUserId: quickExpensePaidByUserId,
       date: new Date().toISOString(),
       participants: expenseParticipants,
     };
@@ -275,7 +293,7 @@ export default function DashboardPage() {
       groupId: lastActiveGroup.id,
       userId: currentUser.id,
       actionType: 'expense_added',
-      description: `${currentUser.name || 'User'} added expense: ${quickExpenseDescription.trim()} (quick add)`,
+      description: `${currentUser.name || 'User'} added expense: ${quickExpenseDescription.trim()} (paid by ${payerName}, quick add)`,
     };
     
     try {
@@ -303,12 +321,17 @@ export default function DashboardPage() {
       });
       setQuickExpenseDescription('');
       setQuickExpenseAmount('');
+      setQuickExpensePaidByUserId(currentUser.id);
       setIsQuickAddDialogOpen(false); // Close dialog on success
       // Manually update overall balances after quick add
       if (netOverallBalance !== null) {
+        const currentUserShare = expenseParticipants.find((p) => p.userId === currentUser.id)?.amountOwed ?? 0;
         let updatedBalance = netOverallBalance;
-        // Current user paid, so their net balance increases by (amount - their_share)
-        updatedBalance += (numericAmount - share);
+        if (quickExpensePaidByUserId === currentUser.id) {
+          updatedBalance += numericAmount - currentUserShare;
+        } else {
+          updatedBalance -= currentUserShare;
+        }
         setNetOverallBalance(updatedBalance);
       }
     } catch (error) {
@@ -361,7 +384,7 @@ export default function DashboardPage() {
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           {currentUser && lastActiveGroup && (
-            <Dialog open={isQuickAddDialogOpen} onOpenChange={setIsQuickAddDialogOpen}>
+            <Dialog open={isQuickAddDialogOpen} onOpenChange={handleQuickAddDialogOpenChange}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="lg" className="w-full rounded-xl sm:w-auto" disabled={!lastActiveGroup}>
                   <Zap className="mr-2 h-5 w-5 text-primary" /> 
@@ -372,7 +395,7 @@ export default function DashboardPage() {
                 <DialogHeader>
                   <DialogTitle>Quick Add Expense to "{lastActiveGroup?.name}"</DialogTitle>
                   <DialogDescription>
-                    Payer: You | Date: Today | Splits equally with all {lastActiveGroup?.members.length} members.
+                    Date: Today | Splits equally with all {lastActiveGroup?.members.length} members.
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleQuickAddExpense} className="space-y-4 py-4">
@@ -405,13 +428,38 @@ export default function DashboardPage() {
                       />
                     </div>
                   </div>
+                  <div>
+                    <Label htmlFor="quickExpensePaidByDialog">Paid by*</Label>
+                    <Select
+                      value={quickExpensePaidByUserId}
+                      onValueChange={setQuickExpensePaidByUserId}
+                      required
+                      disabled={isSubmittingQuickExpense}
+                    >
+                      <SelectTrigger id="quickExpensePaidByDialog">
+                        <User className="mr-2 h-4 w-4 text-muted-foreground inline-block" />
+                        <SelectValue placeholder="Select who paid" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {lastActiveGroup.members.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.name} {member.id === currentUser.id && "(You)"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <DialogFooter>
                     <DialogClose asChild>
-                      <Button type="button" variant="outline" disabled={isSubmittingQuickExpense}>
+                      <Button type="button" variant="outline" className="rounded-xl" disabled={isSubmittingQuickExpense}>
                         Cancel
                       </Button>
                     </DialogClose>
-                    <Button type="submit" disabled={isSubmittingQuickExpense || !quickExpenseDescription || !quickExpenseAmount}>
+                    <Button
+                      type="submit"
+                      className="rounded-xl shadow-glow"
+                      disabled={isSubmittingQuickExpense || !quickExpenseDescription || !quickExpenseAmount || !quickExpensePaidByUserId}
+                    >
                       {isSubmittingQuickExpense ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (

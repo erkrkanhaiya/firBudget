@@ -17,6 +17,7 @@ import {
   Zap,
   Download,
 } from "lucide-react";
+import { useUser } from "@/contexts/UserContext";
 import { AppLogo } from "@/components/AppLogo";
 import { RevealOnScroll } from "@/components/landing/RevealOnScroll";
 import { PwaInstallButton } from "@/components/pwa/PwaInstallButton";
@@ -94,6 +95,13 @@ const stats = [
 ];
 
 export function LandingHome() {
+  const { currentUser } = useUser();
+
+  const userDisplayName =
+    currentUser?.name?.split(" ")[0] ||
+    currentUser?.email?.split("@")[0] ||
+    "Account";
+
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden app-shell">
       <header className="sticky top-0 z-50 glass">
@@ -122,12 +130,25 @@ export function LandingHome() {
           <div className="flex items-center gap-2 sm:gap-3">
             <LandingMobileNav />
             <PwaInstallButton variant="outline" size="sm" className="hidden sm:inline-flex rounded-xl" />
-            <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex rounded-xl">
-              <Link href="/login">Log in</Link>
-            </Button>
-            <Button asChild size="sm" className="rounded-lg">
-              <Link href="/signup">Get started</Link>
-            </Button>
+            {currentUser ? (
+              <>
+                <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex rounded-xl">
+                  <Link href="/dashboard">{userDisplayName}</Link>
+                </Button>
+                <Button asChild size="sm" className="rounded-lg">
+                  <Link href="/dashboard">Dashboard</Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex rounded-xl">
+                  <Link href="/login">Log in</Link>
+                </Button>
+                <Button asChild size="sm" className="rounded-lg">
+                  <Link href="/signup">Get started</Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -177,21 +198,32 @@ export function LandingHome() {
             </p>
 
             <div className="animate-fade-up animation-delay-300 opacity-0 mt-10 flex w-full max-w-md flex-col gap-3 sm:max-w-none sm:flex-row sm:justify-center">
-              <Button asChild size="lg" className="h-11 px-8 text-base">
-                <Link href="/signup">
-                  Start for free
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
+              {currentUser ? (
+                <Button asChild size="lg" className="h-11 px-8 text-base">
+                  <Link href="/dashboard">
+                    Go to Dashboard
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              ) : (
+                <>
+                  <Button asChild size="lg" className="h-11 px-8 text-base">
+                    <Link href="/signup">
+                      Start for free
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" size="lg" className="h-12 px-8 text-base transition-transform hover:scale-[1.02]">
+                    <Link href="/login">Sign in</Link>
+                  </Button>
+                </>
+              )}
               <PwaInstallButton
                 variant="outline"
                 size="lg"
                 className="h-12 px-8 text-base transition-transform hover:scale-[1.02]"
                 label="Download app"
               />
-              <Button asChild variant="outline" size="lg" className="h-12 px-8 text-base transition-transform hover:scale-[1.02]">
-                <Link href="/login">Sign in</Link>
-              </Button>
             </div>
 
             <ul className="animate-fade-up animation-delay-400 opacity-0 mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
@@ -453,15 +485,26 @@ export function LandingHome() {
                     Free forever for personal use. Create your account and add your first group in under 60 seconds.
                   </p>
                   <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                    <Button asChild size="lg" className="h-11 w-full sm:w-auto">
-                      <Link href="/signup">
-                        Create free account
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Link>
-                    </Button>
-                    <Button asChild size="lg" variant="outline" className="h-11 w-full sm:w-auto">
-                      <Link href="/about">Learn more</Link>
-                    </Button>
+                    {currentUser ? (
+                      <Button asChild size="lg" className="h-11 w-full sm:w-auto">
+                        <Link href="/dashboard">
+                          Go to Dashboard
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Link>
+                      </Button>
+                    ) : (
+                      <>
+                        <Button asChild size="lg" className="h-11 w-full sm:w-auto">
+                          <Link href="/signup">
+                            Create free account
+                            <ArrowRight className="ml-2 h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button asChild size="lg" variant="outline" className="h-11 w-full sm:w-auto">
+                          <Link href="/about">Learn more</Link>
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -479,8 +522,17 @@ export function LandingHome() {
               <Link href="/about" className="transition-colors hover:text-primary">About</Link>
               <Link href="/contact" className="transition-colors hover:text-primary">Contact</Link>
               <Link href="#features" className="transition-colors hover:text-primary">Features</Link>
-              <Link href="/login" className="transition-colors hover:text-primary">Log in</Link>
-              <Link href="/signup" className="transition-colors hover:text-primary">Sign up</Link>
+              {currentUser ? (
+                <>
+                  <Link href="/dashboard" className="transition-colors hover:text-primary">{userDisplayName}</Link>
+                  <Link href="/dashboard" className="transition-colors hover:text-primary">Dashboard</Link>
+                </>
+              ) : (
+                <>
+                  <Link href="/login" className="transition-colors hover:text-primary">Log in</Link>
+                  <Link href="/signup" className="transition-colors hover:text-primary">Sign up</Link>
+                </>
+              )}
             </nav>
           </div>
           <div className="mt-8 border-t pt-6 text-center text-sm text-muted-foreground">

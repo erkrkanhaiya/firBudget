@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Camera, Edit3, Save, AlertTriangle, Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Camera, Edit3, Save, AlertTriangle, Loader2, LogOut } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 import { updateProfile } from 'firebase/auth';
@@ -17,7 +18,8 @@ import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebas
 import { useNotification } from '@/contexts/NotificationContext';
 
 export default function ProfilePage() {
-  const { currentUser, isLoadingAuth, setCurrentUser } = useUser(); // Added setCurrentUser from context
+  const router = useRouter();
+  const { currentUser, isLoadingAuth, setCurrentUser, logout } = useUser(); // Added setCurrentUser from context
   const { addNotification } = useNotification();
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState('');
@@ -175,8 +177,13 @@ export default function ProfilePage() {
     setIsEditing(false);
   };
 
+  const handleLogout = async () => {
+    await logout();
+    router.push('/login');
+  };
+
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">User Profile</CardTitle>
@@ -227,6 +234,24 @@ export default function ProfilePage() {
               <Edit3 className="mr-2 h-4 w-4" /> Edit Profile
             </Button>
           )}
+        </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Account</CardTitle>
+          <CardDescription>Sign out of your account on this device.</CardDescription>
+        </CardHeader>
+        <CardFooter className="border-t px-6 py-4">
+          <Button
+            variant="outline"
+            className="ml-auto rounded-xl text-destructive hover:text-destructive"
+            onClick={handleLogout}
+            disabled={isEditing || isSaving}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Log out
+          </Button>
         </CardFooter>
       </Card>
     </div>
