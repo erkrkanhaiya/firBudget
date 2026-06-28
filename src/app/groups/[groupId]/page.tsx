@@ -719,17 +719,17 @@ export default function GroupDetailPage() {
         if (!user) return;
         let balanceText = "";
         if (balance.netBalance > 0.005) {
-          balanceText = `Is Owed by Group Fund: ${formatCurrency(balance.netBalance)}`;
+          balanceText = `Should get back: ${formatCurrency(balance.netBalance)}`;
         } else if (balance.netBalance < -0.005) {
-          balanceText = `Owes to Group Fund: ${formatCurrency(Math.abs(balance.netBalance))}`;
+          balanceText = `Owes: ${formatCurrency(Math.abs(balance.netBalance))}`;
         } else {
-          balanceText = "Settled with Group Fund";
+          balanceText = "All settled";
         }
         balanceSummary.push([user.name || balance.userId.substring(0,6), balanceText]);
       });
        doc.autoTable({
         startY: yPos,
-        head: [['Member', 'Net Position with Group Fund']],
+        head: [['Member', 'Overall balance']],
         body: balanceSummary,
         theme: 'grid',
         headStyles: { fillColor: [52, 73, 94], fontSize: 9 },
@@ -751,9 +751,9 @@ export default function GroupDetailPage() {
           .filter(item => item.user);
 
         if (owedToList.length > 0) {
-            detailedOwesText += `${user.name || balance.userId.substring(0,6)} should pay:\n`;
+            detailedOwesText += `${user.name || balance.userId.substring(0,6)} needs to pay:\n`;
             owedToList.forEach(item => {
-                 detailedOwesText += `  - ${formatCurrency(item.amount)} to ${item.user!.name || item.user!.id.substring(0,6)}\n`;
+                 detailedOwesText += `  - Pay ${formatCurrency(item.amount)} to ${item.user!.name || item.user!.id.substring(0,6)}\n`;
             });
             detailedOwesText += "\n";
         }
@@ -1305,8 +1305,115 @@ export default function GroupDetailPage() {
             <div className="flex-1 min-w-0"> 
               <TabsContent value="balances">
                 <Card>
-                  <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>Who owes whom in this group, calculated from Firestore transactions (contributions, expenses, payments).</CardDescription> </CardHeader>
-                  <CardContent> {balances.length > 0 ? ( <ul className="space-y-3"> {balances.map(balance => { const user = memberDetailsMap.get(balance.userId); if (!user) return null; const owedToList = Object.entries(balance.owes).map(([owedToId, amount]) => ({ user: memberDetailsMap.get(owedToId), amount })).filter(item => item.user && item.amount > 0.005); const owedByList = Object.entries(balance.owedBy).map(([owedById, amount]) => ({ user: memberDetailsMap.get(owedById), amount })).filter(item => item.user && item.amount > 0.005); return ( <li key={balance.userId} className="p-3.5 border rounded-lg"> <div className="flex items-center gap-2 mb-2"> <Avatar className="h-9 w-9"> <AvatarImage src={user.avatarUrl || undefined} /> <AvatarFallback>{getInitials(user.name)}</AvatarFallback> </Avatar> <div> <span className="font-medium">{user.name || balance.userId.substring(0,6)}'s Net Position:</span> <span className={`font-semibold ${balance.netBalance > 0.005 ? 'text-green-600 dark:text-green-400' : balance.netBalance < -0.005 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}> {formatCurrency(Math.abs(balance.netBalance))} {balance.netBalance > 0.005 ? "is owed by group fund" : balance.netBalance < -0.005 ? "owes to group fund" : "is settled with group fund"} </span> </div> </div> {owedToList.length > 0 && ( <div className="pl-3 text-sm space-y-1"> <p className="text-red-600 dark:text-red-400 font-medium">Should Pay (Simplified):</p> <ul className="list-none ml-1.5 space-y-1"> {owedToList.map(item => ( <li key={item.user!.id} className="flex justify-between items-center"> <span>{`${formatCurrency(item.amount)} to ${item.user!.name || item.user!.id.substring(0,6)}`}</span> {balance.userId === currentUser.id && isMember && ( <Link href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "px-2 py-0.5 h-auto text-xs inline-flex items-center")}><DollarSignIcon className="mr-1 h-2.5 w-2.5" />Settle</Link> )} </li> ))} </ul> </div> )} {!owedToList.length && !owedByList.length && Math.abs(balance.netBalance) < 0.01 && ( <p className="pl-3 text-sm text-muted-foreground">All settled up!</p> )} </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">Balances are being calculated or no transactions yet in Firestore.</p> )} </CardContent>
+                  <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>See who should pay whom and how much. Amounts are worked out from shared bills, money added to the group, and settle-up payments.</CardDescription> </CardHeader>
+                  <CardContent>
+                    {balances.length > 0 ? (
+                      <ul className="space-y-3">
+                        {balances.map((balance) => {
+                          const user = memberDetailsMap.get(balance.userId);
+                          if (!user) return null;
+
+                          const memberName = user.name || balance.userId.substring(0, 6);
+                          const owedToList = Object.entries(balance.owes)
+                            .map(([owedToId, amount]) => ({
+                              user: memberDetailsMap.get(owedToId),
+                              amount,
+                            }))
+                            .filter((item) => item.user && item.amount > 0.005);
+                          const owedByList = Object.entries(balance.owedBy)
+                            .map(([owedById, amount]) => ({
+                              user: memberDetailsMap.get(owedById),
+                              amount,
+                            }))
+                            .filter((item) => item.user && item.amount > 0.005);
+
+                          const overallLabel =
+                            balance.netBalance > 0.005
+                              ? `Should get back ${formatCurrency(balance.netBalance)}`
+                              : balance.netBalance < -0.005
+                                ? `Owes ${formatCurrency(Math.abs(balance.netBalance))} overall`
+                                : "All settled";
+
+                          return (
+                            <li key={balance.userId} className="rounded-lg border p-3.5">
+                              <div className="mb-2 flex items-center gap-2">
+                                <Avatar className="h-9 w-9">
+                                  <AvatarImage src={user.avatarUrl || undefined} />
+                                  <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="font-medium">{memberName}</p>
+                                  <p
+                                    className={`text-sm font-semibold ${
+                                      balance.netBalance > 0.005
+                                        ? "text-green-600 dark:text-green-400"
+                                        : balance.netBalance < -0.005
+                                          ? "text-red-600 dark:text-red-400"
+                                          : "text-muted-foreground"
+                                    }`}
+                                  >
+                                    {overallLabel}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {owedToList.length > 0 && (
+                                <div className="space-y-1 pl-3 text-sm">
+                                  <p className="font-medium text-red-600 dark:text-red-400">Needs to pay</p>
+                                  <ul className="ml-1.5 list-none space-y-1">
+                                    {owedToList.map((item) => (
+                                      <li key={item.user!.id} className="flex items-center justify-between">
+                                        <span>
+                                          Pay {formatCurrency(item.amount)} to{" "}
+                                          {item.user!.name || item.user!.id.substring(0, 6)}
+                                        </span>
+                                        {balance.userId === currentUser.id && isMember && (
+                                          <Link
+                                            href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}
+                                            className={cn(
+                                              buttonVariants({ variant: "outline", size: "sm" }),
+                                              "inline-flex h-auto items-center px-2 py-0.5 text-xs"
+                                            )}
+                                          >
+                                            <DollarSignIcon className="mr-1 h-2.5 w-2.5" />
+                                            Settle
+                                          </Link>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {owedByList.length > 0 && (
+                                <div className="mt-2 space-y-1 pl-3 text-sm">
+                                  <p className="font-medium text-green-600 dark:text-green-400">Should get paid by</p>
+                                  <ul className="ml-1.5 list-none space-y-1">
+                                    {owedByList.map((item) => (
+                                      <li key={item.user!.id}>
+                                        {item.user!.name || item.user!.id.substring(0, 6)} owes{" "}
+                                        {formatCurrency(item.amount)}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {!owedToList.length &&
+                                !owedByList.length &&
+                                Math.abs(balance.netBalance) < 0.01 && (
+                                  <p className="pl-3 text-sm text-muted-foreground">No payments needed.</p>
+                                )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="py-6 text-center text-muted-foreground">
+                        Balances will show here once you add expenses or payments to this group.
+                      </p>
+                    )}
+                  </CardContent>
                 </Card>
               </TabsContent>
 
