@@ -46,7 +46,7 @@ export function AppHeader() {
   };
   
   const getInitials = (name: string | undefined | null) => {
-    if (!name) return 'U';
+    if (!name || typeof name !== 'string') return 'U';
     const names = name.split(' ');
     if (names.length > 1 && names[0] && names[names.length - 1]) {
       return (names[0][0] + names[names.length - 1][0]).toUpperCase();
@@ -116,7 +116,9 @@ export function AppHeader() {
                         <p className={`text-sm font-medium ${!notification.read ? 'text-foreground' : 'text-foreground'}`}>{notification.title}</p>
                         <p className="text-xs text-muted-foreground">{notification.message}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatDistanceToNow(parseISO(notification.time), { addSuffix: true })}
+                          {notification.time
+                            ? formatDistanceToNow(parseISO(notification.time), { addSuffix: true })
+                            : "Just now"}
                         </p>
                       </div>
                       {!notification.read && (

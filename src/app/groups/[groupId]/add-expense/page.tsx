@@ -29,19 +29,11 @@ import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebas
 import { useNotification } from '@/contexts/NotificationContext';
 import { extractExpenseDetails } from '@/ai/flows/extract-expense-details-flow';
 import { buildExpenseParticipants } from '@/lib/expense-utils';
-
-interface StoredExpenseData {
-  groupId: string;
-  description: string;
-  amount: number;
-  paidByUserId: string;
-  date: string; // ISO string
-  participants: ExpenseParticipant[];
-  tempId: string; // For UI identification before sync
-  actorNameForLog: string | null;
-  receiptUrl?: string;
-  receiptFileName?: string;
-}
+import {
+  savePendingExpense,
+  syncPendingExpensesForGroup,
+  type PendingExpense,
+} from '@/lib/pending-expenses';
 
 export default function AddExpensePage() {
   const params = useParams();
@@ -163,82 +155,31 @@ export default function AddExpensePage() {
 
   useEffect(() => {
     const syncPendingExpenses = async () => {
-      if (isOnline && group && currentUser) {
-        const pendingExpensesData = localStorage.getItem('pendingExpenses');
-        if (!pendingExpensesData) return;
+      if (!isOnline || !group || !currentUser) return;
 
-        const allPendingStoredExpenses: StoredExpenseData[] = JSON.parse(pendingExpensesData);
-        const expensesToSyncForThisGroup = allPendingStoredExpenses.filter(exp => exp.groupId === groupId);
-
-        if (expensesToSyncForThisGroup.length > 0) {
-          const batch = writeBatch(db);
-          let syncedCount = 0;
-
-          for (const storedExp of expensesToSyncForThisGroup) {
-            const expenseColRef = collection(db, 'groups', storedExp.groupId, 'expenses');
-            const newExpenseDocRef = doc(expenseColRef);
-
-            const expenseDataForFirestore: DocumentData = {
-              groupId: storedExp.groupId,
-              description: storedExp.description,
-              amount: storedExp.amount,
-              paidByUserId: storedExp.paidByUserId,
-              date: storedExp.date,
-              participants: storedExp.participants,
-              createdAt: serverTimestamp(),
-            };
-            
-            if (storedExp.receiptFileName) {
-              expenseDataForFirestore.receiptFileName = storedExp.receiptFileName;
-            }
-            if (storedExp.receiptUrl) {
-              expenseDataForFirestore.receiptUrl = storedExp.receiptUrl;
-            }
-
-            batch.set(newExpenseDocRef, expenseDataForFirestore);
-
-            const activityLogColRef = collection(db, 'groups', storedExp.groupId, 'activityLog');
-            const activityLogForFirestore: Omit<ActivityLog, 'id' | 'timestamp'> = {
-              groupId: storedExp.groupId,
-              userId: storedExp.paidByUserId,
-              actionType: 'expense_added',
-              description: `${storedExp.actorNameForLog || 'User'} added expense: ${storedExp.description} (synced from offline)`,
-              relatedExpenseId: newExpenseDocRef.id,
-            };
-            batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
-            syncedCount++;
-
-            addNotification({
-              title: "Offline Expense Synced",
-              message: `Expense "${storedExp.description}" for group "${group.name}" submitted.`,
-              type: "success",
-              href: `/groups/${storedExp.groupId}`,
-            });
-          }
-
-          try {
-            await batch.commit();
-            const remainingOverallPendingExpenses = allPendingStoredExpenses.filter(exp => exp.groupId !== groupId);
-            if (remainingOverallPendingExpenses.length > 0) {
-              localStorage.setItem('pendingExpenses', JSON.stringify(remainingOverallPendingExpenses));
-            } else {
-              localStorage.removeItem('pendingExpenses');
-            }
-            toast({
-              title: "Back Online!",
-              description: `${syncedCount} pending expense(s) for this group have been submitted to Firestore.`,
-            });
-             router.refresh();
-          } catch (error) {
-            console.error("Error syncing expenses to Firestore:", error);
-            toast({ title: "Sync Error", description: "Some offline expenses could not be synced.", variant: "destructive" });
-            addNotification({
-              title: "Expense Sync Failed",
-              message: `Could not sync ${syncedCount} offline expense(s).`,
-              type: "destructive",
-            });
-          }
+      try {
+        const syncedCount = await syncPendingExpensesForGroup(groupId, currentUser.name ?? undefined);
+        if (syncedCount > 0) {
+          addNotification({
+            title: "Offline Expense Synced",
+            message: `${syncedCount} pending expense(s) for "${group.name}" were submitted.`,
+            type: "success",
+            href: `/groups/${groupId}?tab=expenses`,
+          });
+          toast({
+            title: "Back Online!",
+            description: `${syncedCount} pending expense(s) for this group have been submitted.`,
+          });
+          router.refresh();
         }
+      } catch (error) {
+        console.error("Error syncing expenses to Firestore:", error);
+        toast({ title: "Sync Error", description: "Some offline expenses could not be synced.", variant: "destructive" });
+        addNotification({
+          title: "Expense Sync Failed",
+          message: "Could not sync offline expense(s). They will retry when you revisit the group.",
+          type: "destructive",
+        });
       }
     };
     syncPendingExpenses();
@@ -438,7 +379,7 @@ export default function AddExpensePage() {
         let receiptUrlToStore: string | undefined = undefined;
         let receiptFileNameToStore: string | undefined = undefined;
 
-        if (receiptFile && isOnline) {
+        if (receiptFile) {
             toast({ title: "Uploading Receipt", description: "Please wait...", variant: "default" });
             try {
                 const filePath = `receipts/${groupId}/${expenseId}/${receiptFile.name}`;
@@ -459,38 +400,21 @@ export default function AddExpensePage() {
                     receiptFileNameToStore = receiptFile.name;
                 }
             }
-        } else if (receiptFile && !isOnline) {
-            receiptFileNameToStore = receiptFile.name;
-            toast({ title: "Offline Receipt", description: "Receipt file noted. Upload will be attempted when online if app supports it.", variant: "default" });
         }
 
-        const expenseDataForStorage: StoredExpenseData = {
+        const expenseDataForStorage: PendingExpense = {
             groupId,
             description: description.trim(),
             amount: numericAmount,
             paidByUserId,
             date: expenseDate.toISOString(),
             participants: expenseParticipants,
-            tempId: isOnline ? expenseId : `offline-${Date.now()}`,
+            tempId: expenseId,
             actorNameForLog: actor?.name || 'User',
             receiptUrl: receiptUrlToStore,
             receiptFileName: receiptFileNameToStore,
+            savedAt: new Date().toISOString(),
         };
-
-        if (!isOnline) {
-            const pending = JSON.parse(localStorage.getItem('pendingExpenses') || '[]') as StoredExpenseData[];
-            pending.push(expenseDataForStorage);
-            localStorage.setItem('pendingExpenses', JSON.stringify(pending));
-            toast({ title: "Offline", description: "Expense saved locally. Will submit to Firestore when online." });
-            addNotification({
-                title: "Expense Saved Offline",
-                message: `"${description.trim()}" for group "${group.name}" saved locally.`,
-                type: "info",
-            });
-            resetFormFields();
-            router.push(`/groups/${groupId}?refresh=${Date.now()}&tab=expenses`); // Navigate immediately for offline
-            return;
-        }
 
         const dataToSetInFirestore: DocumentData = {
             groupId: expenseDataForStorage.groupId,
@@ -523,7 +447,28 @@ export default function AddExpensePage() {
         batch.set(newExpenseDocRef, dataToSetInFirestore);
         batch.set(doc(activityLogColRef), { ...activityLogForFirestore, timestamp: serverTimestamp() });
 
-        await batch.commit();
+        try {
+          await batch.commit();
+        } catch (firestoreError) {
+          console.error("[AddExpense] Firestore save failed, saving locally:", firestoreError);
+          savePendingExpense({
+            ...expenseDataForStorage,
+            tempId: `offline-${Date.now()}`,
+          });
+          toast({
+            title: "Saved Offline",
+            description: "Could not reach the server. Expense saved locally and will sync when you're back online.",
+          });
+          addNotification({
+            title: "Expense Saved Offline",
+            message: `"${description.trim()}" for group "${group.name}" saved locally.`,
+            type: "info",
+            href: `/groups/${groupId}?tab=expenses`,
+          });
+          resetFormFields();
+          router.push(`/groups/${groupId}?refresh=${Date.now()}&tab=expenses`);
+          return;
+        }
 
         addNotification({
             title: "Expense Added",

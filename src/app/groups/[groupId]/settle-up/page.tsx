@@ -19,6 +19,7 @@ import { format, parseISO } from 'date-fns';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { db } from '@/lib/firebase';
 import { loadGroupAsMember } from '@/lib/group-access';
+import { calculateGroupBalances } from '@/lib/balance-utils';
 import { doc, getDoc, collection, query, getDocs, Timestamp, addDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { useNotification } from '@/contexts/NotificationContext';
 
@@ -43,86 +44,6 @@ const safeParseDate = (dateVal: any, fieldName: string = 'date'): string => {
   }
   console.warn(`Unexpected data type or missing value for ${fieldName}:`, dateVal, `- defaulting.`);
   return '1970-01-01T00:00:00.000Z';
-};
-
-
-const calculateGroupBalancesForSettlement = (
-    currentGroupMembers: UserType[], 
-    groupExpenses: Expense[], 
-    groupPayments: Payment[],
-    groupContributions: Contribution[]
-  ): Balance[] => {
-    if (currentGroupMembers.length === 0) return [];
-    
-    const memberNetBalances: Record<string, number> = {};
-    currentGroupMembers.forEach(member => {
-      memberNetBalances[member.id] = 0;
-    });
-
-    groupContributions.forEach(contrib => {
-      if (memberNetBalances[contrib.contributorId] !== undefined) {
-        memberNetBalances[contrib.contributorId] += contrib.amount;
-      }
-    });
-
-    groupExpenses.forEach(expense => {
-      if (memberNetBalances[expense.paidByUserId] !== undefined) {
-        memberNetBalances[expense.paidByUserId] += expense.amount;
-      }
-      expense.participants.forEach(p => {
-        if (memberNetBalances[p.userId] !== undefined) {
-          memberNetBalances[p.userId] -= p.amountOwed;
-        }
-      });
-    });
-
-    groupPayments.forEach(payment => {
-      if (memberNetBalances[payment.paidByUserId] !== undefined) {
-        memberNetBalances[payment.paidByUserId] -= payment.amount;
-      }
-      if (memberNetBalances[payment.paidToUserId] !== undefined) {
-        memberNetBalances[payment.paidToUserId] += payment.amount;
-      }
-    });
-
-    const finalBalances: Balance[] = [];
-    const creditors: Array<{ id: string, amount: number }> = [];
-    const debtors: Array<{ id: string, amount: number }> = [];
-
-    currentGroupMembers.forEach(member => {
-      const net = parseFloat((memberNetBalances[member.id] || 0).toFixed(2));
-      if (net > 0.005) creditors.push({ id: member.id, amount: net });
-      else if (net < -0.005) debtors.push({ id: member.id, amount: Math.abs(net) });
-      finalBalances.push({ userId: member.id, owes: {}, owedBy: {}, netBalance: net });
-    });
-
-    creditors.sort((a, b) => b.amount - a.amount);
-    debtors.sort((a, b) => b.amount - a.amount);
-
-    let i = 0, j = 0;
-    while (i < debtors.length && j < creditors.length) {
-      const debtor = debtors[i];
-      const creditor = creditors[j];
-      const amountToSettle = parseFloat(Math.min(debtor.amount, creditor.amount).toFixed(2));
-
-      if (amountToSettle > 0.005) {
-        const debtorBalanceEntry = finalBalances.find(b => b.userId === debtor.id);
-        const creditorBalanceEntry = finalBalances.find(b => b.userId === creditor.id);
-        
-        if (debtorBalanceEntry && creditorBalanceEntry) {
-            debtorBalanceEntry.owes[creditor.id] = (debtorBalanceEntry.owes[creditor.id] || 0) + amountToSettle;
-            creditorBalanceEntry.owedBy[debtor.id] = (creditorBalanceEntry.owedBy[debtor.id] || 0) + amountToSettle;
-        }
-
-
-        debtor.amount = parseFloat((debtor.amount - amountToSettle).toFixed(2));
-        creditor.amount = parseFloat((creditor.amount - amountToSettle).toFixed(2));
-      }
-
-      if (debtor.amount < 0.005) i++;
-      if (creditor.amount < 0.005) j++;
-    }
-    return finalBalances;
 };
 
 
@@ -228,7 +149,12 @@ export default function SettleUpPage() {
             } as Contribution;
         });
         
-        const calculatedBalances = calculateGroupBalancesForSettlement(fetchedGroup.members, fetchedExpenses, fetchedPayments, fetchedContributions);
+        const { balances: calculatedBalances } = calculateGroupBalances(
+          fetchedGroup.members,
+          fetchedExpenses,
+          fetchedPayments,
+          fetchedContributions
+        );
         setBalances(calculatedBalances);
     } catch (err) {
       console.error("Error fetching data for settle up:", err);

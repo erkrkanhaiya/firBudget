@@ -8,7 +8,7 @@ import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigat
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Coins as CoinsIcon, TrendingUp, FileText, Edit2, MessageSquare as MessageSquareIcon, BarChartHorizontal, Save } from 'lucide-react';
+import { ArrowLeft, Users, CreditCard, ListChecks, Activity as ActivityIcon, PlusCircle, Edit, Trash2, UserPlus, DollarSign as DollarSignIcon, Download, Lock, Eye, AlertTriangle, Share2, Link as LinkIconProp, MessageCircle, Facebook, Twitter, Mail, Loader2, Plane, Home as HomeIconLucide, Heart, PartyPopper, Shapes, Check, Paperclip, HandCoins, Coins as CoinsIcon, TrendingUp, FileText, Edit2, MessageSquare as MessageSquareIcon, BarChartHorizontal, Save, MoreHorizontal, ChevronDown } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import type { Group, Expense, User as UserType, ActivityLog, Balance, GroupCategory, AppMemberContact, Payment, Contribution, GroupNote } from '@/types';
 import { useUser } from '@/contexts/UserContext';
@@ -31,7 +31,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
@@ -79,6 +78,15 @@ import {
   resendGroupInvite,
   revokeGroupInvite,
 } from '@/lib/group-access';
+import { calculateGroupBalances, type NettedSettlement, getSettlementBetween } from '@/lib/balance-utils';
+import {
+  getPendingExpensesForGroup,
+  mergeExpensesForDisplay,
+  removePendingExpenseById,
+  removePendingExpensesForGroup,
+  syncPendingExpensesForGroup,
+  type PendingExpense,
+} from '@/lib/pending-expenses';
 
 
 interface jsPDFWithAutoTable extends jsPDF {
@@ -87,7 +95,7 @@ interface jsPDFWithAutoTable extends jsPDF {
 }
 
 const getInitials = (name: string | undefined | null) => {
-  if (!name) return "U";
+  if (!name || typeof name !== 'string') return "U";
   const names = name.split(' ');
   if (names.length > 1 && names[0] && names[names.length - 1]) {
     return (names[0][0] + names[names.length - 1][0]).toUpperCase();
@@ -147,11 +155,13 @@ export default function GroupDetailPage() {
 
   const [group, setGroup] = useState<Group | null>(null);
   const [firestoreExpenses, setFirestoreExpenses] = useState<Expense[]>([]);
+  const [pendingExpenses, setPendingExpenses] = useState<PendingExpense[]>([]);
   const [firestorePayments, setFirestorePayments] = useState<Payment[]>([]);
   const [firestoreContributions, setFirestoreContributions] = useState<Contribution[]>([]);
   const [firestoreActivityLogs, setFirestoreActivityLogs] = useState<ActivityLog[]>([]);
   const [firestoreGroupNotes, setFirestoreGroupNotes] = useState<GroupNote[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
+  const [nettedSettlements, setNettedSettlements] = useState<NettedSettlement[]>([]);
 
   const [isLoadingPageData, setIsLoadingPageData] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
@@ -204,84 +214,34 @@ export default function GroupDetailPage() {
     );
   }, [memberToRemove, firestoreExpenses, firestorePayments, firestoreContributions]);
 
-  const calculateGroupBalances = useCallback((
-    currentGroupMembers: UserType[],
-    groupExpenses: Expense[],
-    groupPayments: Payment[],
-    groupContributions: Contribution[]
-  ): Balance[] => {
-    if (currentGroupMembers.length === 0) return [];
+  const displayExpenses = useMemo(
+    () => mergeExpensesForDisplay(firestoreExpenses, pendingExpenses),
+    [firestoreExpenses, pendingExpenses]
+  );
 
-    const memberNetBalances: Record<string, number> = {};
-    currentGroupMembers.forEach(member => {
-      memberNetBalances[member.id] = 0;
+  const refreshPendingExpenses = useCallback(() => {
+    setPendingExpenses(getPendingExpensesForGroup(groupId));
+  }, [groupId]);
+
+  const handleDiscardPendingExpense = useCallback((tempId: string, description: string) => {
+    removePendingExpenseById(tempId);
+    refreshPendingExpenses();
+    toast({
+      title: "Unsynced expense removed",
+      description: `"${description}" was removed from this device only.`,
     });
+  }, [refreshPendingExpenses, toast]);
 
-    groupContributions.forEach(contrib => {
-      if (memberNetBalances[contrib.contributorId] !== undefined) {
-        memberNetBalances[contrib.contributorId] += contrib.amount;
-      }
+  const handleClearAllPendingExpenses = useCallback(() => {
+    const count = pendingExpenses.length;
+    if (count === 0) return;
+    removePendingExpensesForGroup(groupId);
+    refreshPendingExpenses();
+    toast({
+      title: "Unsynced expenses cleared",
+      description: `Removed ${count} local-only expense(s) from this group.`,
     });
-
-    groupExpenses.forEach(expense => {
-      if (memberNetBalances[expense.paidByUserId] !== undefined) {
-        memberNetBalances[expense.paidByUserId] += expense.amount;
-      }
-      expense.participants.forEach(p => {
-        if (memberNetBalances[p.userId] !== undefined) {
-          memberNetBalances[p.userId] -= p.amountOwed;
-        }
-      });
-    });
-
-    groupPayments.forEach(payment => {
-      if (memberNetBalances[payment.paidByUserId] !== undefined) {
-        memberNetBalances[payment.paidByUserId] -= payment.amount;
-      }
-      if (memberNetBalances[payment.paidToUserId] !== undefined) {
-        memberNetBalances[payment.paidToUserId] += payment.amount;
-      }
-    });
-
-    const finalBalances: Balance[] = [];
-    const creditors: Array<{ id: string, amount: number }> = [];
-    const debtors: Array<{ id: string, amount: number }> = [];
-
-    currentGroupMembers.forEach(member => {
-      const net = parseFloat((memberNetBalances[member.id] || 0).toFixed(2));
-      if (net > 0.005) creditors.push({ id: member.id, amount: net });
-      else if (net < -0.005) debtors.push({ id: member.id, amount: Math.abs(net) });
-      finalBalances.push({ userId: member.id, owes: {}, owedBy: {}, netBalance: net });
-    });
-
-    creditors.sort((a, b) => b.amount - a.amount);
-    debtors.sort((a, b) => b.amount - a.amount);
-
-    let i = 0, j = 0;
-    while (i < debtors.length && j < creditors.length) {
-      const debtor = debtors[i];
-      const creditor = creditors[j];
-      const amountToSettle = parseFloat(Math.min(debtor.amount, creditor.amount).toFixed(2));
-
-      if (amountToSettle > 0.005) {
-        const debtorBalanceEntry = finalBalances.find(b => b.userId === debtor.id);
-        const creditorBalanceEntry = finalBalances.find(b => b.userId === creditor.id);
-
-        if(debtorBalanceEntry && creditorBalanceEntry) {
-            debtorBalanceEntry.owes[creditor.id] = (debtorBalanceEntry.owes[creditor.id] || 0) + amountToSettle;
-            creditorBalanceEntry.owedBy[debtor.id] = (creditorBalanceEntry.owedBy[debtor.id] || 0) + amountToSettle;
-        }
-
-        debtor.amount = parseFloat((debtor.amount - amountToSettle).toFixed(2));
-        creditor.amount = parseFloat((creditor.amount - amountToSettle).toFixed(2));
-      }
-
-      if (debtor.amount < 0.005) i++;
-      if (creditor.amount < 0.005) j++;
-    }
-    return finalBalances;
-  }, []);
-
+  }, [groupId, pendingExpenses.length, refreshPendingExpenses, toast]);
 
   const fetchGroupData = useCallback(async (showLoadingSpinner = true) => {
     if (showLoadingSpinner) setIsLoadingPageData(true);
@@ -325,8 +285,23 @@ export default function GroupDetailPage() {
         }
         setGroup(fetchedGroup);
 
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          try {
+            const syncedCount = await syncPendingExpensesForGroup(groupId, currentUser.name ?? undefined);
+            if (syncedCount > 0) {
+              toast({
+                title: "Expenses Synced",
+                description: `${syncedCount} offline expense(s) were submitted to the group.`,
+              });
+            }
+          } catch (syncError) {
+            console.error("Error syncing pending expenses:", syncError);
+          }
+        }
+        setPendingExpenses(getPendingExpensesForGroup(groupId));
+
         const expensesColRef = collection(db, 'groups', groupId, 'expenses');
-        const expensesQuery = query(expensesColRef, orderBy('date', 'desc'));
+        const expensesQuery = query(expensesColRef, orderBy('createdAt', 'desc'));
         const expensesSnapshot = await getDocs(expensesQuery);
         const fetchedExpenses = expensesSnapshot.docs.map(docSnap => {
             const data = docSnap.data();
@@ -335,6 +310,7 @@ export default function GroupDetailPage() {
                 ...data,
                 date: safeParseDate(data.date, `expense[${docSnap.id}].date`),
                 createdAt: safeParseDate(data.createdAt, `expense[${docSnap.id}].createdAt`),
+                participants: Array.isArray(data.participants) ? data.participants : [],
                 receiptUrl: data.receiptUrl,
                 receiptFileName: data.receiptFileName,
             } as Expense;
@@ -400,8 +376,14 @@ export default function GroupDetailPage() {
         });
         setFirestoreActivityLogs(fetchedActivityLogs);
 
-        const calculatedBalances = calculateGroupBalances(fetchedGroup.members, fetchedExpenses, fetchedPayments, fetchedContributions);
+        const { balances: calculatedBalances, settlements } = calculateGroupBalances(
+          fetchedGroup.members,
+          fetchedExpenses,
+          fetchedPayments,
+          fetchedContributions
+        );
         setBalances(calculatedBalances);
+        setNettedSettlements(settlements);
 
       } else {
         toast({ title: "Group not found", description: "The group you are looking for does not exist.", variant: "destructive" });
@@ -415,7 +397,7 @@ export default function GroupDetailPage() {
     } finally {
        if(showLoadingSpinner) setIsLoadingPageData(false);
     }
-  }, [groupId, currentUser, toast, calculateGroupBalances]);
+  }, [groupId, currentUser, toast]);
 
 
   useEffect(() => {
@@ -739,24 +721,21 @@ export default function GroupDetailPage() {
       yPos = doc.lastAutoTable.finalY + 8;
 
       let detailedOwesText = "";
-      balances.forEach(balance => {
-        const user = memberDetailsMap.get(balance.userId);
-        if (!user) return;
-        const owedToList = Object.entries(balance.owes)
-          .filter(([, amount]) => amount > 0.005)
-          .map(([owedToId, amount]) => ({
-            user: memberDetailsMap.get(owedToId),
-            amount
-          }))
-          .filter(item => item.user);
-
-        if (owedToList.length > 0) {
-            detailedOwesText += `${user.name || balance.userId.substring(0,6)} needs to pay:\n`;
-            owedToList.forEach(item => {
-                 detailedOwesText += `  - Pay ${formatCurrency(item.amount)} to ${item.user!.name || item.user!.id.substring(0,6)}\n`;
-            });
-            detailedOwesText += "\n";
+      nettedSettlements.forEach((settlement) => {
+        const fromUser = memberDetailsMap.get(settlement.fromUserId);
+        const toUser = memberDetailsMap.get(settlement.toUserId);
+        const fromName = fromUser?.name || settlement.fromUserId.substring(0, 6);
+        const toName = toUser?.name || settlement.toUserId.substring(0, 6);
+        detailedOwesText += `${fromName} pays ${toName}: ${formatCurrency(settlement.netAmount)}`;
+        if (
+          settlement.grossFromTo &&
+          settlement.grossToFrom &&
+          settlement.grossFromTo > 0.005 &&
+          settlement.grossToFrom > 0.005
+        ) {
+          detailedOwesText += ` (${formatCurrency(settlement.grossFromTo)} owed - ${formatCurrency(settlement.grossToFrom)} back)`;
         }
+        detailedOwesText += "\n";
       });
 
       if (detailedOwesText) {
@@ -1186,7 +1165,7 @@ export default function GroupDetailPage() {
   const remainingBudget = budgetAmount > 0 ? budgetAmount - totalExpenses : 0;
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="w-full min-w-0 space-y-6 overflow-x-hidden pb-8">
       <div className="flex items-center justify-between">
         <Button variant="outline" size="sm" asChild>
           <Link href="/groups">
@@ -1223,9 +1202,9 @@ export default function GroupDetailPage() {
                         {isMember && isOwner && <Badge variant="default" className="py-0.5 px-1.5 text-xs">Admin</Badge>}
                     </div>
                      <div className="flex flex-wrap gap-2">
-                        {isMember && (
-                            <Button onClick={() => handleOpenNoteDialog()} size="sm" variant="outline" className="justify-start">
-                                <PlusCircle className="mr-2 h-4 w-4" /> Add Note
+                        {isOwner && (
+                            <Button onClick={() => handleAddMemberDialogOpenChange(true)} size="sm" variant="outline" className="justify-start">
+                                <UserPlus className="mr-2 h-4 w-4" /> Add Member
                             </Button>
                         )}
                         {isOwner && (
@@ -1250,64 +1229,312 @@ export default function GroupDetailPage() {
             </div>
         </CardHeader>
       </Card>
+
+      {isOwner && (
+        <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}>
+          <DialogContent className="sm:max-w-[520px]">
+            <DialogHeader>
+              <DialogTitle>Add members to &quot;{group.name}&quot;</DialogTitle>
+              <DialogDescription>
+                Add a name to split expenses. Add an email too and they can sign in to see the group — no email is sent automatically.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <Card className="border-dashed">
+                <CardContent className="p-3 space-y-2">
+                  <Label className="text-sm font-medium">Add new person</Label>
+                  <Input
+                    value={newQuickMemberName}
+                    onChange={(e) => setNewQuickMemberName(e.target.value)}
+                    placeholder="Name (e.g. Rahul)"
+                    disabled={isAddingQuickMember || isAddingMembers}
+                  />
+                  <Input
+                    type="email"
+                    value={newQuickMemberEmail}
+                    onChange={(e) => setNewQuickMemberEmail(e.target.value)}
+                    placeholder="Email (optional — for app access)"
+                    disabled={isAddingQuickMember || isAddingMembers}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleQuickAddMember}
+                    disabled={isAddingQuickMember || isAddingMembers || !newQuickMemberName.trim()}
+                  >
+                    {isAddingQuickMember ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                    Add to list
+                  </Button>
+                </CardContent>
+              </Card>
+              {isLoadingPotentialMembers ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-10 w-full rounded-md" />
+                  ))}
+                </div>
+              ) : potentialNewMembers.length > 0 ? (
+                <ScrollArea className="h-[220px] pr-3">
+                  <div className="space-y-2">
+                    {potentialNewMembers.map((contact) => (
+                      <label
+                        key={contact.id}
+                        htmlFor={`contact-${contact.id}`}
+                        className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer"
+                      >
+                        <Checkbox
+                          id={`contact-${contact.id}`}
+                          checked={selectedContactsToAdd.includes(contact.id)}
+                          onCheckedChange={() => handleToggleContactSelection(contact.id)}
+                        />
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback>{getInitials(contact.name)}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{contact.name || 'Unknown'}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {contact.email ? contact.email : 'Splits only — no app access'}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No saved contacts yet. Add someone above.
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddSelectedMembers}
+                disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers}
+              >
+                {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-6 mt-5">
-        <Card className="p-3 surface-positive"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-success/90">Total Contributions</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold stat-positive">{formatCurrency(totalContributions)}</p> </CardContent> </Card>
-        <Card className="p-3 surface-negative"> <CardHeader className="p-0 pb-1"> <CardDescription className="text-destructive/90">Total Expenses</CardDescription> </CardHeader> <CardContent className="p-0"> <p className="text-xl font-semibold stat-negative">{formatCurrency(totalExpenses)}</p> </CardContent> </Card>
-        <Card className={`p-3 ${remainingFunds >= 0 ? 'surface-info' : 'surface-warning border-warning/20 bg-warning/10'}`}> <CardHeader className="p-0 pb-1"> <CardDescription className={remainingFunds >= 0 ? 'text-info/90' : 'text-warning/90'}>Remaining Funds</CardDescription> </CardHeader> <CardContent className="p-0"> <p className={`text-xl font-semibold ${remainingFunds >= 0 ? 'stat-info' : 'stat-warning'}`}> {formatCurrency(remainingFunds)} </p> </CardContent> </Card>
-          {group.budgetAmount && group.budgetAmount > 0 && ( <Card className="p-3 border-primary/20 bg-primary/5"> <CardHeader className="p-0 pb-1"> <div className="flex justify-between items-baseline"> <CardDescription className="text-primary/90">Budget vs Spent</CardDescription> <span className="text-xs text-primary/80">{formatCurrency(budgetAmount)} total</span></div> </CardHeader> <CardContent className="p-0"> <Progress value={budgetProgress} className="h-2 my-1" /> <p className={`text-xs text-right ${remainingBudget >= 0 ? 'text-primary/90' : 'stat-warning font-medium'}`}> {remainingBudget >= 0 ? `${formatCurrency(remainingBudget)} remaining` : `${formatCurrency(Math.abs(remainingBudget))} over`} </p> </CardContent> </Card> )}
+      <div className="mb-6 mt-5 space-y-2">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <Card className="surface-positive rounded-xl border p-2.5 sm:p-3">
+            <div className="flex items-start justify-between gap-1.5">
+              <div className="min-w-0">
+                <p className="text-[10px] font-medium leading-tight text-success/90 sm:text-xs">Contributions</p>
+                <p className="mt-0.5 truncate text-sm font-bold stat-positive sm:text-base">{formatCurrency(totalContributions)}</p>
+              </div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 sm:h-8 sm:w-8">
+                <CoinsIcon className="h-3.5 w-3.5 text-success sm:h-4 sm:w-4" />
+              </div>
+            </div>
+          </Card>
+          <Card className="surface-negative rounded-xl border p-2.5 sm:p-3">
+            <div className="flex items-start justify-between gap-1.5">
+              <div className="min-w-0">
+                <p className="text-[10px] font-medium leading-tight text-destructive/90 sm:text-xs">Expenses</p>
+                <p className="mt-0.5 truncate text-sm font-bold stat-negative sm:text-base">{formatCurrency(totalExpenses)}</p>
+              </div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-500/15 sm:h-8 sm:w-8">
+                <CreditCard className="h-3.5 w-3.5 text-destructive sm:h-4 sm:w-4" />
+              </div>
+            </div>
+          </Card>
+          <Card className={`rounded-xl border p-2.5 sm:p-3 ${remainingFunds >= 0 ? "surface-info" : "surface-warning border-warning/20 bg-warning/10"}`}>
+            <div className="flex items-start justify-between gap-1.5">
+              <div className="min-w-0">
+                <p className={`text-[10px] font-medium leading-tight sm:text-xs ${remainingFunds >= 0 ? "text-info/90" : "text-warning/90"}`}>Remaining</p>
+                <p className={`mt-0.5 truncate text-sm font-bold sm:text-base ${remainingFunds >= 0 ? "stat-info" : "stat-warning"}`}>
+                  {formatCurrency(remainingFunds)}
+                </p>
+              </div>
+              <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-8 sm:w-8 ${remainingFunds >= 0 ? "bg-primary/15" : "bg-warning/15"}`}>
+                <TrendingUp className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${remainingFunds >= 0 ? "text-primary" : "text-warning"}`} />
+              </div>
+            </div>
+          </Card>
+        </div>
+        {group.budgetAmount && group.budgetAmount > 0 && (
+          <Card className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 sm:p-3">
+            <div className="flex items-center justify-between gap-2 pb-1.5">
+              <p className="text-xs font-medium text-primary/90 sm:text-sm">Budget vs spent</p>
+              <span className="text-[10px] text-primary/80 sm:text-xs">{formatCurrency(budgetAmount)} total</span>
+            </div>
+            <Progress value={budgetProgress} className="h-1.5" />
+            <p className={`mt-1 text-right text-[10px] sm:text-xs ${remainingBudget >= 0 ? "text-primary/90" : "stat-warning font-medium"}`}>
+              {remainingBudget >= 0 ? `${formatCurrency(remainingBudget)} left` : `${formatCurrency(Math.abs(remainingBudget))} over`}
+            </p>
+          </Card>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 my-6">
-        {isMember && ( <>
+        {isMember && (
           <Button asChild className="w-full sm:w-auto justify-start">
             <Link href={`/groups/${groupId}/add-expense`}>
-              <span className='flex items-center'><PlusCircle className="mr-2 h-4 w-4" /> Add Expense</span>
+              <span className="flex items-center">
+                <PlusCircle className="mr-2 h-4 w-4" /> Add Expense
+              </span>
             </Link>
           </Button>
-          <Button variant="secondary" asChild className="w-full sm:w-auto justify-start">
-            <Link href={`/groups/${groupId}/add-contribution`}>
-              <span className='flex items-center'><CoinsIcon className="mr-2 h-4 w-4" /> Add Funds</span>
-            </Link>
-          </Button>
-          <Button variant="outline" asChild className="w-full sm:w-auto justify-start">
-            <Link href={`/groups/${groupId}/settle-up`}>
-              <span className='flex items-center'><DollarSignIcon className="mr-2 h-4 w-4" /> Settle Up</span>
-            </Link>
-          </Button>
-        </> )}
-        <Button variant="outline" onClick={handleDownloadPdf} className="w-full sm:w-auto justify-start">
-          <Download className="mr-2 h-4 w-4" /> Download PDF
-        </Button>
-        {(group.visibility === 'public' || isMember) && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className={cn(buttonVariants({variant: 'outline'}), "w-full sm:w-auto justify-start")}>
-                  <Share2 className="mr-2 h-4 w-4" /> Share Group
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 "> <DropdownMenuLabel>Share "{group.name}"</DropdownMenuLabel> <DropdownMenuSeparator /> {isWebShareSupported && ( <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer"> <Share2 className="mr-2 h-4 w-4" /> Share via System </DropdownMenuItem> )} <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer"> <LinkIconProp className="mr-2 h-4 w-4" /> Copy Link </DropdownMenuItem> <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer"> <MessageSquareIcon className="mr-2 h-4 w-4" /> Share on WhatsApp </DropdownMenuItem> <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Share on Facebook </DropdownMenuItem> <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Share on Twitter </DropdownMenuItem> <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer"> <Mail className="mr-2 h-4 w-4" /> Share via Email </DropdownMenuItem> </DropdownMenuContent> </DropdownMenu> )}
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="w-full sm:w-auto justify-start">
+              <MoreHorizontal className="mr-2 h-4 w-4" />
+              More actions
+              <ChevronDown className="ml-1 h-4 w-4 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {isMember && (
+              <>
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href={`/groups/${groupId}/add-contribution`}>
+                    <CoinsIcon className="mr-2 h-4 w-4" />
+                    Add Funds
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="cursor-pointer">
+                  <Link href={`/groups/${groupId}/settle-up`}>
+                    <DollarSignIcon className="mr-2 h-4 w-4" />
+                    Settle Up
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuItem onClick={handleDownloadPdf} className="cursor-pointer">
+              <Download className="mr-2 h-4 w-4" />
+              Download PDF
+            </DropdownMenuItem>
+            {(group.visibility === "public" || isMember) && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Share &quot;{group.name}&quot;</DropdownMenuLabel>
+                {isWebShareSupported && (
+                  <DropdownMenuItem onClick={handleNativeShare} className="cursor-pointer">
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Share via System
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={handleCopyLink} className="cursor-pointer">
+                  <LinkIconProp className="mr-2 h-4 w-4" />
+                  Copy Link
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleShareWhatsApp} className="cursor-pointer">
+                  <MessageSquareIcon className="mr-2 h-4 w-4" />
+                  Share on WhatsApp
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleShareFacebook} className="cursor-pointer">
+                  <Facebook className="mr-2 h-4 w-4" />
+                  Share on Facebook
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleShareTwitter} className="cursor-pointer">
+                  <Twitter className="mr-2 h-4 w-4" />
+                  Share on Twitter
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleShareEmail} className="cursor-pointer">
+                  <Mail className="mr-2 h-4 w-4" />
+                  Share via Email
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       
       <Tabs defaultValue="balances" className="w-full" value={searchParams.get('tab') || 'balances'} onValueChange={(value) => router.replace(`/groups/${groupId}?tab=${value}`, { scroll: false })}>
-          <div className="mt-6 flex flex-col md:flex-row gap-x-6 gap-y-4">
-            <TabsList className="flex-col md:w-48 shrink-0 h-auto md:h-fit p-1.5 md:p-2 self-start md:sticky md:top-20 overflow-x-auto md:overflow-x-visible">
-              <TabsTrigger value="balances" className="w-full justify-start px-3 py-2 md:mb-1"><ListChecks className="mr-2 h-4 w-4" />Balances</TabsTrigger>
-              <TabsTrigger value="expenses" className="w-full justify-start px-3 py-2 md:mb-1"><CreditCard className="mr-2 h-4 w-4" />Expenses</TabsTrigger>
-              <TabsTrigger value="contributions" className="w-full justify-start px-3 py-2 md:mb-1"><CoinsIcon className="mr-2 h-4 w-4" />Contributions</TabsTrigger>
-              <TabsTrigger value="payments" className="w-full justify-start px-3 py-2 md:mb-1"><HandCoins className="mr-2 h-4 w-4" />Payments</TabsTrigger>
-              <TabsTrigger value="members" className="w-full justify-start px-3 py-2 md:mb-1"><Users className="mr-2 h-4 w-4" />Members</TabsTrigger>
-              <TabsTrigger value="reports" className="w-full justify-start px-3 py-2 md:mb-1"><BarChartHorizontal className="mr-2 h-4 w-4" />Reports</TabsTrigger>
-              <TabsTrigger value="notes" className="w-full justify-start px-3 py-2 md:mb-1"><FileText className="mr-2 h-4 w-4" />Notes</TabsTrigger>
-              <TabsTrigger value="activity" className="w-full justify-start px-3 py-2"><ActivityIcon className="mr-2 h-4 w-4" />Activity</TabsTrigger>
+          <div className="mt-6 flex w-full min-w-0 flex-col gap-4 md:flex-row md:gap-6">
+            <TabsList className="grid h-auto w-full grid-cols-2 gap-1.5 rounded-xl border bg-muted/50 p-1.5 sm:grid-cols-4 md:flex md:h-fit md:w-48 md:flex-col md:gap-1 md:self-start md:sticky md:top-20 md:p-2">
+              <TabsTrigger value="balances" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs leading-tight sm:text-sm md:mb-1 md:w-full md:justify-start"><ListChecks className="h-4 w-4 shrink-0 md:mr-0.5" /><span>Balances</span></TabsTrigger>
+              <TabsTrigger value="expenses" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs leading-tight sm:text-sm md:mb-1 md:w-full md:justify-start"><CreditCard className="h-4 w-4 shrink-0 md:mr-0.5" /><span>Expenses</span></TabsTrigger>
+              <TabsTrigger value="contributions" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs leading-tight sm:text-sm md:mb-1 md:w-full md:justify-start"><CoinsIcon className="h-4 w-4 shrink-0 md:mr-0.5" /><span className="md:hidden">Funds</span><span className="hidden md:inline">Contributions</span></TabsTrigger>
+              <TabsTrigger value="payments" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs leading-tight sm:text-sm md:mb-1 md:w-full md:justify-start"><HandCoins className="h-4 w-4 shrink-0 md:mr-0.5" /><span>Payments</span></TabsTrigger>
+              <TabsTrigger value="members" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs leading-tight sm:text-sm md:mb-1 md:w-full md:justify-start"><Users className="h-4 w-4 shrink-0 md:mr-0.5" /><span>Members</span></TabsTrigger>
+              <TabsTrigger value="reports" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs leading-tight sm:text-sm md:mb-1 md:w-full md:justify-start"><BarChartHorizontal className="h-4 w-4 shrink-0 md:mr-0.5" /><span>Reports</span></TabsTrigger>
+              <TabsTrigger value="notes" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs leading-tight sm:text-sm md:mb-1 md:w-full md:justify-start"><FileText className="h-4 w-4 shrink-0 md:mr-0.5" /><span>Notes</span></TabsTrigger>
+              <TabsTrigger value="activity" className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-xs leading-tight sm:text-sm md:w-full md:justify-start"><ActivityIcon className="h-4 w-4 shrink-0 md:mr-0.5" /><span>Activity</span></TabsTrigger>
             </TabsList>
 
-            <div className="flex-1 min-w-0"> 
-              <TabsContent value="balances">
-                <Card>
-                  <CardHeader> <CardTitle>Balances</CardTitle> <CardDescription>See who should pay whom and how much. Amounts are worked out from shared bills, money added to the group, and settle-up payments.</CardDescription> </CardHeader>
-                  <CardContent>
+            <div className="w-full min-w-0 flex-1">
+              <TabsContent value="balances" className="mt-0 w-full focus-visible:outline-none">
+                <Card className="w-full overflow-hidden">
+                  <CardHeader className="space-y-1 px-4 sm:px-6">
+                    <CardTitle>Balances</CardTitle>
+                    <CardDescription className="text-sm leading-relaxed">See who should pay whom and how much. When two people owe each other, amounts are netted — e.g. ₹3,000 owed minus ₹2,000 back = ₹1,000 to settle.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-4 sm:px-6">
                     {balances.length > 0 ? (
+                      <>
+                        {nettedSettlements.length > 0 && (
+                          <div className="mb-4 rounded-lg border bg-muted/30 p-3 sm:p-4">
+                            <p className="text-sm font-semibold">Simplified settlements</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              Net amounts after matching what each person owes the other.
+                            </p>
+                            <ul className="mt-3 space-y-3">
+                              {nettedSettlements.map((settlement) => {
+                                const fromUser = memberDetailsMap.get(settlement.fromUserId);
+                                const toUser = memberDetailsMap.get(settlement.toUserId);
+                                const fromName = fromUser?.name || settlement.fromUserId.substring(0, 6);
+                                const toName = toUser?.name || settlement.toUserId.substring(0, 6);
+                                const hasOffset =
+                                  settlement.grossFromTo &&
+                                  settlement.grossToFrom &&
+                                  settlement.grossFromTo > 0.005 &&
+                                  settlement.grossToFrom > 0.005;
+
+                                return (
+                                  <li
+                                    key={`${settlement.fromUserId}-${settlement.toUserId}`}
+                                    className="flex flex-col gap-2 rounded-md border bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between"
+                                  >
+                                    <div className="min-w-0 text-sm">
+                                      <p>
+                                        <span className="font-medium">{fromName}</span> pays{" "}
+                                        <span className="font-medium">{toName}</span>{" "}
+                                        <span className="font-semibold text-red-600 dark:text-red-400">
+                                          {formatCurrency(settlement.netAmount)}
+                                        </span>
+                                      </p>
+                                      {hasOffset && (
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                          {formatCurrency(settlement.grossFromTo!)} owed −{" "}
+                                          {formatCurrency(settlement.grossToFrom!)} owed back ={" "}
+                                          {formatCurrency(settlement.netAmount)} net
+                                        </p>
+                                      )}
+                                    </div>
+                                    {settlement.fromUserId === currentUser?.id && isMember && (
+                                      <Link
+                                        href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${settlement.toUserId}&amount=${settlement.netAmount.toFixed(2)}`}
+                                        className={cn(
+                                          buttonVariants({ variant: "outline", size: "sm" }),
+                                          "inline-flex h-auto shrink-0 items-center self-start px-2 py-1 text-xs sm:self-center"
+                                        )}
+                                      >
+                                        <DollarSignIcon className="mr-1 h-3 w-3" />
+                                        Settle
+                                      </Link>
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        )}
+
+                        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          By member
+                        </p>
                       <ul className="space-y-3">
                         {balances.map((balance) => {
                           const user = memberDetailsMap.get(balance.userId);
@@ -1361,18 +1588,38 @@ export default function GroupDetailPage() {
                                 <div className="space-y-1 pl-3 text-sm">
                                   <p className="font-medium text-red-600 dark:text-red-400">Needs to pay</p>
                                   <ul className="ml-1.5 list-none space-y-1">
-                                    {owedToList.map((item) => (
-                                      <li key={item.user!.id} className="flex items-center justify-between">
-                                        <span>
-                                          Pay {formatCurrency(item.amount)} to{" "}
-                                          {item.user!.name || item.user!.id.substring(0, 6)}
-                                        </span>
+                                    {owedToList.map((item) => {
+                                      const settlement = getSettlementBetween(
+                                        nettedSettlements,
+                                        balance.userId,
+                                        item.user!.id
+                                      );
+                                      const hasOffset =
+                                        settlement?.grossFromTo &&
+                                        settlement?.grossToFrom &&
+                                        settlement.grossFromTo > 0.005 &&
+                                        settlement.grossToFrom > 0.005;
+
+                                      return (
+                                      <li key={item.user!.id} className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <span>
+                                            Pay {formatCurrency(item.amount)} to{" "}
+                                            {item.user!.name || item.user!.id.substring(0, 6)}
+                                          </span>
+                                          {hasOffset && (
+                                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                              {formatCurrency(settlement.grossFromTo!)} owed −{" "}
+                                              {formatCurrency(settlement.grossToFrom!)} back
+                                            </p>
+                                          )}
+                                        </div>
                                         {balance.userId === currentUser.id && isMember && (
                                           <Link
                                             href={`/groups/${groupId}/settle-up?payerId=${currentUser.id}&payeeId=${item.user!.id}&amount=${item.amount.toFixed(2)}`}
                                             className={cn(
                                               buttonVariants({ variant: "outline", size: "sm" }),
-                                              "inline-flex h-auto items-center px-2 py-0.5 text-xs"
+                                              "inline-flex h-auto shrink-0 items-center px-2 py-0.5 text-xs"
                                             )}
                                           >
                                             <DollarSignIcon className="mr-1 h-2.5 w-2.5" />
@@ -1380,7 +1627,8 @@ export default function GroupDetailPage() {
                                           </Link>
                                         )}
                                       </li>
-                                    ))}
+                                    );
+                                    })}
                                   </ul>
                                 </div>
                               )}
@@ -1408,6 +1656,7 @@ export default function GroupDetailPage() {
                           );
                         })}
                       </ul>
+                      </>
                     ) : (
                       <p className="py-6 text-center text-muted-foreground">
                         Balances will show here once you add expenses or payments to this group.
@@ -1473,31 +1722,64 @@ export default function GroupDetailPage() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="expenses">
-                <Card>
-                  <CardHeader> <CardTitle>Expenses</CardTitle> <CardDescription>All expenses recorded in this group from Firestore.</CardDescription> </CardHeader>
-                  <CardContent>
-                    {firestoreExpenses.length > 0 ? (
+              <TabsContent value="expenses" className="mt-0 w-full focus-visible:outline-none">
+                <Card className="w-full overflow-hidden">
+                  <CardHeader className="space-y-1 px-4 sm:px-6">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <CardTitle>Expenses</CardTitle>
+                        <CardDescription>All expenses recorded in this group.</CardDescription>
+                      </div>
+                      {pendingExpenses.length > 0 && isMember && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 text-destructive hover:text-destructive"
+                          onClick={handleClearAllPendingExpenses}
+                        >
+                          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                          Clear {pendingExpenses.length} unsynced
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 sm:px-6">
+                    {displayExpenses.length > 0 ? (
                       <ul className="space-y-3">
-                        {firestoreExpenses.map(expense => {
+                        {displayExpenses.map(expense => {
                           const payer = memberDetailsMap.get(expense.paidByUserId);
-                          const currentUserShare = expense.participants.find(p => p.userId === currentUser.id);
+                          const currentUserShare = expense.participants?.find(p => p.userId === currentUser.id);
                           return (
-                          <li key={expense.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors">
-                            <div className="flex items-center gap-3 flex-1 min-w-0 mb-2 sm:mb-0">
+                          <li key={expense.id} className="flex flex-col gap-2 rounded-lg border p-3.5 transition-colors hover:bg-muted/20 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="mb-0 flex min-w-0 flex-1 items-center gap-3">
                               <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} /> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar>
-                              <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-1.5"> <p className="font-medium truncate" title={expense.description}>{expense.description}</p>
+                              <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap"> <p className="font-medium break-words" title={expense.description}>{expense.description}</p>
+                                    {expense.isPending && (
+                                      <Badge variant="outline" className="text-xs shrink-0">Waiting to sync</Badge>
+                                    )}
                                     {expense.receiptFileName && ( <Tooltip> <TooltipTrigger asChild>{expense.receiptUrl ? ( <Link href={expense.receiptUrl} target="_blank" rel="noopener noreferrer" aria-label={`View receipt for ${expense.description}`} className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-6 w-6 text-muted-foreground hover:text-primary shrink-0")}><Paperclip className="h-4 w-4" /></Link> ) : ( <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/50 hover:text-primary shrink-0 cursor-not-allowed" disabled><Paperclip className="h-4 w-4" /></Button> )}</TooltipTrigger> <TooltipContent> <p> {expense.receiptUrl ? "View Receipt: " : "Receipt: "} {expense.receiptFileName} </p> {!expense.receiptUrl && <p className="text-xs">(Offline, not uploaded)</p>} </TooltipContent> </Tooltip> )}
                                   </div> <p className="text-sm text-muted-foreground"> Paid by {payer?.name || expense.paidByUserId.substring(0,6)} on {format(parseISO(expense.date), "MMM d, yyyy")} </p>
                               </div>
                             </div>
-                            <div className="text-left sm:text-right sm:ml-2 shrink-0 flex flex-col items-end gap-1.5">
-                              <p className="text-md font-semibold">{formatCurrency(expense.amount)}</p>
+                            <div className="flex shrink-0 flex-col items-start gap-1.5 sm:ml-2 sm:items-end sm:text-right">
+                              <p className="text-base font-semibold">{formatCurrency(expense.amount)}</p>
                               {isMember && currentUserShare && (
                                 <p className="text-xs text-blue-600 dark:text-blue-400">Your share: {formatCurrency(currentUserShare.amountOwed)}</p>
                               )}
-                              {isMember && (
+                              {isMember && expense.isPending && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                                  onClick={() => handleDiscardPendingExpense(expense.id, expense.description)}
+                                >
+                                  <Trash2 className="mr-1 h-3 w-3" />Discard
+                                </Button>
+                              )}
+                              {isMember && !expense.isPending && (
                                 <Link href={`/groups/${groupId}/edit-expense/${expense.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 px-2 text-xs inline-flex items-center")}>
                                   <Edit className="mr-1 h-3 w-3" />Edit
                                 </Link>
@@ -1505,22 +1787,109 @@ export default function GroupDetailPage() {
                             </div>
                           </li> )})}
                       </ul>
-                    ) : ( <p className="text-muted-foreground text-center py-6">No expenses recorded yet in Firestore for this group.</p> )}
+                    ) : (
+                      <p className="py-6 text-center text-muted-foreground">No expenses recorded yet for this group.</p>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
 
-              <TabsContent value="contributions">
-                <Card>
-                  <CardHeader> <CardTitle>Fund Contributions</CardTitle> <CardDescription>All funds contributed by members to this group's pool.</CardDescription> </CardHeader>
-                  <CardContent> {firestoreContributions.length > 0 ? ( <ul className="space-y-3"> {firestoreContributions.map(contribution => { const contributor = memberDetailsMap.get(contribution.contributorId); return ( <li key={contribution.id} className="flex items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name ?? undefined} /> <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback> </Avatar> <div> <p className="font-medium"> {contributor?.name || contribution.contributorId.substring(0,6)} contributed </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(contribution.date), "MMM d, yyyy")} {contribution.description && <span className="italic">- "{contribution.description}"</span>} </p> </div> </div> <div className="text-right ml-2 shrink-0"> <p className="text-md font-semibold text-green-600 dark:text-green-400"> +{formatCurrency(contribution.amount)} </p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No contributions recorded yet for this group.</p> )} </CardContent>
+              <TabsContent value="contributions" className="mt-0 w-full focus-visible:outline-none">
+                <Card className="w-full overflow-hidden">
+                  <CardHeader className="space-y-1 px-4 sm:px-6">
+                    <CardTitle>Fund Contributions</CardTitle>
+                    <CardDescription>All funds contributed by members to this group&apos;s pool.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-4 sm:px-6">
+                    {firestoreContributions.length > 0 ? (
+                      <ul className="space-y-3">
+                        {firestoreContributions.map((contribution) => {
+                          const contributor = memberDetailsMap.get(contribution.contributorId);
+                          return (
+                            <li
+                              key={contribution.id}
+                              className="flex flex-col gap-2 rounded-lg border p-3.5 transition-colors hover:bg-muted/20 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div className="flex min-w-0 flex-1 items-center gap-3">
+                                <Avatar className="h-10 w-10 shrink-0">
+                                  <AvatarImage src={contributor?.avatarUrl || undefined} alt={contributor?.name ?? undefined} />
+                                  <AvatarFallback>{getInitials(contributor?.name)}</AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <p className="font-medium">
+                                    {contributor?.name || contribution.contributorId.substring(0, 6)} contributed
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    On {format(parseISO(contribution.date), "MMM d, yyyy")}
+                                    {contribution.description && (
+                                      <span className="italic"> — &quot;{contribution.description}&quot;</span>
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="shrink-0 sm:ml-2 sm:text-right">
+                                <p className="text-base font-semibold text-green-600 dark:text-green-400">
+                                  +{formatCurrency(contribution.amount)}
+                                </p>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="py-6 text-center text-muted-foreground">No contributions recorded yet for this group.</p>
+                    )}
+                  </CardContent>
                 </Card>
               </TabsContent>
 
-              <TabsContent value="payments">
-                <Card>
-                  <CardHeader> <CardTitle>Payment History</CardTitle> <CardDescription>All settlement payments recorded in this group from Firestore.</CardDescription> </CardHeader>
-                  <CardContent> {firestorePayments.length > 0 ? ( <ul className="space-y-3"> {firestorePayments.map(payment => { const payer = memberDetailsMap.get(payment.paidByUserId); const payee = memberDetailsMap.get(payment.paidToUserId); return ( <li key={payment.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3.5 border rounded-lg hover:bg-muted/20 transition-colors"> <div className="flex items-center gap-3 mb-1.5 sm:mb-0 flex-1 min-w-0"> <Avatar className="h-10 w-10 shrink-0"> <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name ?? undefined}/> <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback> </Avatar> <div className="flex-1 min-w-0"> <p className="font-medium truncate"> {payer?.name || payment.paidByUserId.substring(0,6)} paid {payee?.name || payment.paidToUserId.substring(0,6)} </p> <p className="text-sm text-muted-foreground"> On {format(parseISO(payment.date), "MMM d, yyyy")} via {payment.method.replace("_", " ")} </p> {payment.notes && <p className="text-xs text-muted-foreground italic mt-0.5">Note: {payment.notes}</p>} </div> </div> <div className="text-left sm:text-right sm:ml-2 shrink-0"> <p className="text-md font-semibold">{formatCurrency(payment.amount)}</p> </div> </li> ); })} </ul> ) : ( <p className="text-muted-foreground text-center py-6">No payments recorded yet in Firestore for this group.</p> )} </CardContent>
+              <TabsContent value="payments" className="mt-0 w-full focus-visible:outline-none">
+                <Card className="w-full overflow-hidden">
+                  <CardHeader className="space-y-1 px-4 sm:px-6">
+                    <CardTitle>Payment History</CardTitle>
+                    <CardDescription>All settlement payments recorded in this group.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-4 sm:px-6">
+                    {firestorePayments.length > 0 ? (
+                      <ul className="space-y-3">
+                        {firestorePayments.map((payment) => {
+                          const payer = memberDetailsMap.get(payment.paidByUserId);
+                          const payee = memberDetailsMap.get(payment.paidToUserId);
+                          return (
+                            <li
+                              key={payment.id}
+                              className="flex flex-col gap-2 rounded-lg border p-3.5 transition-colors hover:bg-muted/20 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div className="flex min-w-0 flex-1 items-center gap-3">
+                                <Avatar className="h-10 w-10 shrink-0">
+                                  <AvatarImage src={payer?.avatarUrl || undefined} alt={payer?.name ?? undefined} />
+                                  <AvatarFallback>{getInitials(payer?.name)}</AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <p className="font-medium break-words">
+                                    {payer?.name || payment.paidByUserId.substring(0, 6)} paid{" "}
+                                    {payee?.name || payment.paidToUserId.substring(0, 6)}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    On {format(parseISO(payment.date), "MMM d, yyyy")} via{" "}
+                                    {payment.method.replace("_", " ")}
+                                  </p>
+                                  {payment.notes && (
+                                    <p className="mt-0.5 text-xs italic text-muted-foreground">Note: {payment.notes}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="shrink-0 sm:ml-2 sm:text-right">
+                                <p className="text-base font-semibold">{formatCurrency(payment.amount)}</p>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="py-6 text-center text-muted-foreground">No payments recorded yet for this group.</p>
+                    )}
+                  </CardContent>
                 </Card>
               </TabsContent>
 
@@ -1542,102 +1911,10 @@ export default function GroupDetailPage() {
                       </CardDescription>
                     </div>
                     {isOwner && (
-                      <Dialog open={isAddMemberDialogOpen} onOpenChange={handleAddMemberDialogOpenChange}>
-                        <DialogTrigger asChild>
-                          <button className={cn(buttonVariants({ variant: 'default', size: 'sm' }))}>
-                            <UserPlus className="mr-2 h-4 w-4" />
-                            Add Member
-                          </button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[520px]">
-                          <DialogHeader>
-                            <DialogTitle>Add members to &quot;{group.name}&quot;</DialogTitle>
-                            <DialogDescription>
-                              Add a name to split expenses. Add an email too and they can sign in to see the group — no email is sent automatically.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="space-y-4 py-2">
-                            <Card className="border-dashed">
-                              <CardContent className="p-3 space-y-2">
-                                <Label className="text-sm font-medium">Add new person</Label>
-                                <Input
-                                  value={newQuickMemberName}
-                                  onChange={(e) => setNewQuickMemberName(e.target.value)}
-                                  placeholder="Name (e.g. Rahul)"
-                                  disabled={isAddingQuickMember || isAddingMembers}
-                                />
-                                <Input
-                                  type="email"
-                                  value={newQuickMemberEmail}
-                                  onChange={(e) => setNewQuickMemberEmail(e.target.value)}
-                                  placeholder="Email (optional — for app access)"
-                                  disabled={isAddingQuickMember || isAddingMembers}
-                                />
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={handleQuickAddMember}
-                                  disabled={isAddingQuickMember || isAddingMembers || !newQuickMemberName.trim()}
-                                >
-                                  {isAddingQuickMember ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-                                  Add to list
-                                </Button>
-                              </CardContent>
-                            </Card>
-                            {isLoadingPotentialMembers ? (
-                              <div className="space-y-2">
-                                {[1, 2, 3].map((i) => (
-                                  <Skeleton key={i} className="h-10 w-full rounded-md" />
-                                ))}
-                              </div>
-                            ) : potentialNewMembers.length > 0 ? (
-                              <ScrollArea className="h-[220px] pr-3">
-                                <div className="space-y-2">
-                                  {potentialNewMembers.map((contact) => (
-                                    <label
-                                      key={contact.id}
-                                      htmlFor={`contact-${contact.id}`}
-                                      className="flex items-center p-2 space-x-3 rounded-md border hover:bg-accent hover:text-accent-foreground has-[:checked]:border-primary has-[:checked]:bg-primary/10 transition-colors cursor-pointer"
-                                    >
-                                      <Checkbox
-                                        id={`contact-${contact.id}`}
-                                        checked={selectedContactsToAdd.includes(contact.id)}
-                                        onCheckedChange={() => handleToggleContactSelection(contact.id)}
-                                      />
-                                      <Avatar className="h-8 w-8">
-                                        <AvatarFallback>{getInitials(contact.name)}</AvatarFallback>
-                                      </Avatar>
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-medium truncate">{contact.name || 'Unknown'}</p>
-                                        <p className="text-xs text-muted-foreground truncate">
-                                          {contact.email ? contact.email : 'Splits only — no app access'}
-                                        </p>
-                                      </div>
-                                    </label>
-                                  ))}
-                                </div>
-                              </ScrollArea>
-                            ) : (
-                              <p className="text-sm text-muted-foreground text-center py-4">
-                                No saved contacts yet. Add someone above.
-                              </p>
-                            )}
-                          </div>
-                          <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)} disabled={isAddingMembers}>
-                              Cancel
-                            </Button>
-                            <Button
-                              onClick={handleAddSelectedMembers}
-                              disabled={isAddingMembers || selectedContactsToAdd.length === 0 || isLoadingPotentialMembers}
-                            >
-                              {isAddingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                              {isAddingMembers ? "Adding..." : `Add ${selectedContactsToAdd.length} Member(s)`}
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
+                      <Button onClick={() => handleAddMemberDialogOpenChange(true)} size="sm">
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Add Member
+                      </Button>
                     )}
                   </CardHeader>
                   <CardContent>

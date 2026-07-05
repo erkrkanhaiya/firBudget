@@ -49,13 +49,14 @@ export function GroupReportsTab({ expenses, members, formatCurrency }: GroupRepo
     const shareTotals: Record<string, number> = {};
     const monthlyTotals: Record<string, { amount: number; month: string }> = {};
 
-    expenses.forEach((expense) => {
+    (expenses ?? []).forEach((expense) => {
       payerTotals[expense.paidByUserId] = (payerTotals[expense.paidByUserId] || 0) + expense.amount;
 
-      expense.participants.forEach((p) => {
+      (expense.participants ?? []).forEach((p) => {
         shareTotals[p.userId] = (shareTotals[p.userId] || 0) + p.amountOwed;
       });
 
+      if (!expense.date) return;
       const monthStart = startOfMonth(parseISO(expense.date));
       const monthKey = format(monthStart, "yyyy-MM");
       const monthLabel = format(monthStart, "MMM yy");
